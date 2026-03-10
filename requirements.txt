@@ -1,0 +1,32 @@
+# Spring Boot Dependencies
+spring-boot-starter-web=3.4.4
+spring-boot-starter-data-jpa=3.4.4
+spring-boot-starter-security=3.4.4
+spring-boot-starter-validation=3.4.4
+spring-boot-starter-mail=3.4.4
+
+# Database
+mysql-connector-java=8.0.33
+h2database=2.2.224
+
+# Security
+jjwt-api=0.11.5
+jjwt-impl=0.11.5
+jjwt-jackson=0.11.5
+
+# PDF Processing
+pdfbox=2.0.27
+
+# HTTP Clients
+okhttp=4.12.0
+unirest-java=3.13.6
+
+# JSON Processing
+json=20240303
+
+# Utilities
+lombok=1.18.30
+
+# Testing
+junit-jupiter=5.10.2
+mockito-core=5.10.0 

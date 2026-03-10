@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vendor Registration</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .card {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            font-weight: bold;
+        }
+        .form-label {
+            font-weight: 500;
+        }
+        .required::after {
+            content: " *";
+            color: red;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4">Vendor Registration</h1>
+        
+        <!-- Step 1: Basic Information -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">Step 1: Basic Information</h5>
+            </div>
+            <div class="card-body">
+                <form id="basicInfoForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="email" class="form-label required">Email</label>
+                            <input type="email" class="form-control" id="email" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="password" class="form-label required">Password</label>
+                            <input type="password" class="form-control" id="password" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="firstName" class="form-label required">First Name</label>
+                            <input type="text" class="form-control" id="firstName" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="lastName" class="form-label required">Last Name</label>
+                            <input type="text" class="form-control" id="lastName" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="phoneNumber" class="form-label required">Phone Number</label>
+                            <input type="tel" class="form-control" id="phoneNumber" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Register</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Step 2: Document Upload (Initially Hidden) -->
+        <div id="documentUploadSection" class="card mb-4" style="display: none;">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">Step 2: Document Upload</h5>
+            </div>
+            <div class="card-body">
+                <form id="documentUploadForm">
+                    <input type="hidden" id="userId">
+                    <input type="hidden" id="superAdminId">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="gstFile" class="form-label required">GST Document</label>
+                            <input type="file" class="form-control" id="gstFile" accept=".pdf,.jpg,.jpeg" required>
+                            <small class="text-muted">Accepted formats: PDF, JPG</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="panFile" class="form-label required">PAN Document</label>
+                            <input type="file" class="form-control" id="panFile" accept=".pdf,.jpg,.jpeg" required>
+                            <small class="text-muted">Accepted formats: PDF, JPG</small>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="chequeFile" class="form-label required">Cheque Document</label>
+                            <input type="file" class="form-control" id="chequeFile" accept=".pdf,.jpg,.jpeg" required>
+                            <small class="text-muted">Accepted formats: PDF, JPG</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="coiFile" class="form-label">Certificate of Incorporation</label>
+                            <input type="file" class="form-control" id="coiFile" accept=".pdf,.jpg,.jpeg">
+                            <small class="text-muted">Accepted formats: PDF, JPG (Optional)</small>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload Documents</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3">Processing documents, please wait...</p>
+        </div>
+        
+        <!-- Step 3: Extracted Data (Initially Hidden) -->
+        <div id="extractedDataSection" class="card mb-4" style="display: none;">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">Step 3: Extracted Data</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- GST Block -->
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="card-title mb-0">GST Details</h5>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>GSTIN Number:</strong> <span id="gstinNumber">-</span></p>
+                                <p><strong>Legal Trade Name:</strong> <span id="legalTradeName">-</span></p>
+                                <p><strong>Date of Registration:</strong> <span id="dateOfRegistration">-</span></p>
+                                <p><strong>PAN/TIN/CST:</strong> <span id="panTinCst">-</span></p>
+                                <p><strong>Type of Registration:</strong> <span id="typeOfRegistration">-</span></p>
+                                <p><strong>Registered Address:</strong> <span id="registeredAddress">-</span></p>
+                                <p><strong>Company Name:</strong> <span id="companyName">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bank Details Block -->
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="card-title mb-0">Bank Details</h5>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>Bank:</strong> <span id="bank">-</span></p>
+                                <p><strong>Code:</strong> <span id="code">-</span></p>
+                                <p><strong>Issued To:</strong> <span id="issuedTo">-</span></p>
+                                <p><strong>Signatory:</strong> <span id="signatory">-</span></p>
+                                <p><strong>Account Number:</strong> <span id="accountNumber">-</span></p>
+                                <p><strong>IFSC Code:</strong> <span id="ifsc">-</span></p>
+                                <p><strong>Issued Date:</strong> <span id="issued">-</span></p>
+                                <p><strong>Branch:</strong> <span id="branch">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PAN Block -->
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="card-title mb-0">PAN Details</h5>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>PAN Number:</strong> <span id="panNumber">-</span></p>
+                                <p><strong>Name:</strong> <span id="name">-</span></p>
+                                <p><strong>Date of Birth/Incorporation:</strong> <span id="dateOfBirthIncorporation">-</span></p>
+                                <p><strong>Father's Name:</strong> <span id="fathersName">-</span></p>
+                                <p><strong>Category:</strong> <span id="category">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Certificate of Incorporation Block -->
+                    <div class="col-md-6 mb-4">
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="card-title mb-0">Certificate of Incorporation</h5>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>CIN No:</strong> <span id="cinNo">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Company Address Form -->
+                <div class="card mt-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">Company Address</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="companyAddressForm">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="companyId" class="form-label required">Company ID</label>
+                                    <input type="text" class="form-control" id="companyId" required>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="address1" class="form-label required">Address Line 1</label>
+                                    <input type="text" class="form-control" id="address1" required>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="address2" class="form-label">Address Line 2</label>
+                                    <input type="text" class="form-control" id="address2">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="city" class="form-label required">City</label>
+                                    <input type="text" class="form-control" id="city" required>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="state" class="form-label required">State</label>
+                                    <input type="text" class="form-control" id="state" required>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="country" class="form-label required">Country</label>
+                                    <input type="text" class="form-control" id="country" required>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="pincode" class="form-label required">Pincode</label>
+                                    <input type="text" class="form-control" id="pincode" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success">Submit Registration</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Store JWT token
+        let jwtToken = '';
+        
+        // Step 1: Basic Information Form
+        document.getElementById('basicInfoForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const firstName = document.getElementById('firstName').value;
+            const lastName = document.getElementById('lastName').value;
+            const phoneNumber = document.getElementById('phoneNumber').value;
+            
+            try {
+                const response = await fetch('http://localhost:8080/api/users/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email,
+                        password,
+                        firstName,
+                        lastName,
+                        phoneNumber,
+                        authKey: 'vendor' // Specify vendor role
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Registration failed');
+                }
+                
+                const data = await response.json();
+                document.getElementById('userId').value = data.userId;
+                document.getElementById('superAdminId').value = data.superAdminId;
+                
+                // Show document upload section
+                document.getElementById('documentUploadSection').style.display = 'block';
+                
+                // Login to get JWT token
+                await login(email, password);
+                
+                alert('Registration successful! Please proceed to upload your documents.');
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Registration failed: ' + error.message);
+            }
+        });
+        
+        // Login function
+        async function login(email, password) {
+            try {
+                const response = await fetch('http://localhost:8080/api/users/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email,
+                        password
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Login failed');
+                }
+                
+                const data = await response.json();
+                jwtToken = data.token;
+                console.log('Login successful, JWT token received');
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('Login failed: ' + error.message);
+            }
+        }
+        
+        // Step 2: Document Upload Form
+        document.getElementById('documentUploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const userId = document.getElementById('userId').value;
+            const superAdminId = document.getElementById('superAdminId').value;
+            const gstFile = document.getElementById('gstFile').files[0];
+            const panFile = document.getElementById('panFile').files[0];
+            const chequeFile = document.getElementById('chequeFile').files[0];
+            const coiFile = document.getElementById('coiFile').files[0];
+            
+            if (!gstFile || !panFile || !chequeFile) {
+                alert('Please upload all required documents');
+                return;
+            }
+            
+            // Show loading indicator
+            document.getElementById('loadingIndicator').style.display = 'block';
+            
+            const formData = new FormData();
+            formData.append('gstFile', gstFile);
+            formData.append('panFile', panFile);
+            formData.append('chequeFile', chequeFile);
+            if (coiFile) {
+                formData.append('coiFile', coiFile);
+            }
+            formData.append('superAdminId', superAdminId);
+            
+            try {
+                const response = await fetch('http://localhost:8080/api/files/extract', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + jwtToken
+                    },
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Document processing failed');
+                }
+                
+                const data = await response.json();
+                
+                // Hide loading indicator
+                document.getElementById('loadingIndicator').style.display = 'none';
+                
+                // Show extracted data section
+                document.getElementById('extractedDataSection').style.display = 'block';
+                
+                // Display extracted data
+                displayExtractedData(data);
+                
+                // Pre-fill company address form with GST address
+                prefillCompanyAddress(data.extractedData.gst);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Document processing failed: ' + error.message);
+                document.getElementById('loadingIndicator').style.display = 'none';
+            }
+        });
+        
+        function displayExtractedData(response) {
+            const data = response.data.extractedData;
+            
+            // GST Details
+            document.getElementById('gstinNumber').textContent = data.gst['GSTIN Number'] || '-';
+            document.getElementById('legalTradeName').textContent = data.gst['Legal Trade Name'] || '-';
+            document.getElementById('dateOfRegistration').textContent = data.gst['Registration Date'] || '-';
+            document.getElementById('panTinCst').textContent = data.gst['PAN/TIN/CST'] || '-';
+            document.getElementById('typeOfRegistration').textContent = data.gst['Registration Type'] || '-';
+            document.getElementById('registeredAddress').textContent = data.gst['Registered Address'] || '-';
+            document.getElementById('companyName').textContent = data.gst['Legal Trade Name'] || '-';
+
+            // Bank Details
+            document.getElementById('bank').textContent = data.cheque['Bank Name'] || '-';
+            document.getElementById('code').textContent = data.cheque['Bank Code'] || '-';
+            document.getElementById('issuedTo').textContent = data.cheque['Issued To'] || '-';
+            document.getElementById('signatory').textContent = data.cheque['Signatory'] || '-';
+            document.getElementById('accountNumber').textContent = data.cheque['Account Number'] || '-';
+            document.getElementById('ifsc').textContent = data.cheque['IFSC Code'] || '-';
+            document.getElementById('issued').textContent = data.cheque['Issued Date'] || '-';
+            document.getElementById('branch').textContent = data.cheque['Branch'] || '-';
+
+            // PAN Details
+            document.getElementById('panNumber').textContent = data.pan['PAN Number'] || '-';
+            document.getElementById('name').textContent = data.pan['Name'] || '-';
+            document.getElementById('dateOfBirthIncorporation').textContent = data.pan['Date of Birth/Incorporation'] || '-';
+            document.getElementById('fathersName').textContent = data.pan['Father\'s Name'] || '-';
+            document.getElementById('category').textContent = data.pan['Category'] || '-';
+
+            // COI Details
+            document.getElementById('cinNo').textContent = data.coi['cinNumber'] || '-';
+        }
+        
+        // Pre-fill company address form with GST address
+        function prefillCompanyAddress(gstData) {
+            if (!gstData || !gstData['Registered Address']) return;
+            
+            const addressParts = gstData['Registered Address'].split(',');
+            
+            if (addressParts.length >= 3) {
+                document.getElementById('address1').value = addressParts[0].trim();
+                document.getElementById('city').value = addressParts[1].trim();
+                document.getElementById('state').value = addressParts[2].trim();
+                document.getElementById('country').value = 'India';
+                
+                // Extract pincode if available
+                const pincodeMatch = gstData['Registered Address'].match(/\b\d{6}\b/);
+                if (pincodeMatch) {
+                    document.getElementById('pincode').value = pincodeMatch[0];
+                }
+            }
+        }
+        
+        // Company Address Form
+        document.getElementById('companyAddressForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const userId = document.getElementById('userId').value;
+            const companyId = document.getElementById('companyId').value;
+            const address1 = document.getElementById('address1').value;
+            const address2 = document.getElementById('address2').value;
+            const city = document.getElementById('city').value;
+            const state = document.getElementById('state').value;
+            const country = document.getElementById('country').value;
+            const pincode = document.getElementById('pincode').value;
+            
+            try {
+                const response = await fetch('http://localhost:8080/api/company-addresses', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + jwtToken
+                    },
+                    body: JSON.stringify({
+                        userId: parseInt(userId),
+                        companyId,
+                        address1,
+                        address2,
+                        city,
+                        state,
+                        country,
+                        pincode
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to save company address');
+                }
+                
+                const data = await response.json();
+                alert('Registration completed successfully!');
+                
+                // Redirect to dashboard or confirmation page
+                // window.location.href = '/dashboard';
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to save company address: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html> 

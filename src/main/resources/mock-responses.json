@@ -1,0 +1,56 @@
+{
+  "gst": {
+    "valid": true,
+    "confidence": 0.95,
+    "data": {
+      "Registration Date": "05/10/2024",
+      "PAN/TIN/CST": "ABCDP3063A",
+      "Registered Address": "10th Floor, 1006, Road, Ahmedabad, B Square-1, Gujarat, Near Neptune House, 380058 Ambli Brts,",
+      "Legal Trade Name": "ACME INFO PRIVATE LIMITED",
+      "GSTIN Number": "24ABCD1234R1ZN",
+      "Registration Type": "Regular"
+    }
+  },
+  "pan": {
+    "valid": true,
+    "confidence": 0.98,
+    "data": {
+      "Category": "BUSINESS",
+      "Date of Birth/Incorporation": "13/07/2017",
+      "PAN Number": "ABCDP3063A",
+      "Father's Name": "Not Available",
+      "Name": "ACME INFO PRIVATE LIMITED"
+    }
+  },
+  "cheque": {
+    "valid": true,
+    "confidence": 0.92,
+    "data": {
+      "Account Number": "12345678901234",
+      "IFSC Code": "HDFC0001234",
+      "Branch": "Mumbai Main",
+      "Signatory": "John Doe",
+      "Issued Date": "08/04/2024",
+      "Issued To": "ACME INFO PRIVATE LIMITED",
+      "Bank Code": "CHQ123456",
+      "Bank Name": "HDFC Bank"
+    }
+  },
+  "coi": {
+    "valid": true,
+    "confidence": 0.95,
+    "data": {
+      "cinNumber": "U72200GJ2017PTC123456",
+      "Company Name": "ACME INFO PRIVATE LIMITED",
+      "Date of Incorporation": "13/07/2017",
+      "Registered Office": "10th Floor, 1006, Road, Ahmedabad, B Square-1, Gujarat, Near Neptune House, 380058 Ambli Brts,",
+      "Authorized Capital": "1000000",
+      "Paid-up Capital": "1000000",
+      "Company Category": "Company limited by Shares",
+      "Company Sub Category": "Non-govt company",
+      "Class of Company": "Private",
+      "Date of Last AGM": "30/09/2023",
+      "Date of Balance Sheet": "31/03/2023"
+    }
+  }
+} 
