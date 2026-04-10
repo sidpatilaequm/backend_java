@@ -31,18 +31,14 @@ public class CustomUserDetailsService implements UserDetailsService {
         Optional<SuperAdmin> superAdminOpt = superAdminRepository.findByEmail(email);
         if (superAdminOpt.isPresent()) {
             SuperAdmin superAdmin = superAdminOpt.get();
-            return new User(
-                superAdmin.getEmail(),
-                superAdmin.getPassword(),
-                Collections.singletonList(new SimpleGrantedAuthority("super_admin"))
-            );
+            return new SuperAdminUserDetails(superAdmin);
         }
 
         // If not a SuperAdmin, try to find a regular user
         Optional<UserDetail> userOpt = userDetailRepository.findByEmail(email);
         if (userOpt.isPresent()) {
             UserDetail user = userOpt.get();
-        return new User(user.getEmail(), user.getPassword(), new ArrayList<>());
+            return new User(user.getEmail(), user.getPassword(), new ArrayList<>());
         }
 
         throw new UsernameNotFoundException("User not found with email: " + email);
@@ -60,4 +56,4 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
         return user.getUserId();
     }
-} 
+}
