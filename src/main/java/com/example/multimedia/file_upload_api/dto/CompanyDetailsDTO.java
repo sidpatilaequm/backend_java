@@ -15,16 +15,21 @@ import lombok.AllArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CompanyDetailsDTO {
+    private Long companyId;
+    private String companyCode;
+    private String status;
+    private CountryDTO country;
+    private CurrencyDTO currency;
     private String companyName;
     private String gstinNumber;
     private String legalTradeName;
     private String registeredAddress;
     private String panNumber;
     private String panTinCst;
-    
+
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime dateOfRegistration;
-    
+
     private String typeOfRegistration;
     private String authKey;
     private String gstFileName;

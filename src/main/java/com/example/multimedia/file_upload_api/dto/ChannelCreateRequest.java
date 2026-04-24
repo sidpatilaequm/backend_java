@@ -8,8 +8,12 @@ public class ChannelCreateRequest {
     private String channelName;
     private String channelCode;
     private String description;
+    private String status;
+    private Long companyId;
+    private Long countryId;
+    private Long currencyId;
     private List<ChannelCategoryRequest> categories;
-    
+
     @Data
     public static class ChannelCategoryRequest {
         private String categoryCode;

@@ -11,7 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @RestController
-@RequestMapping("/api/channels")
+@RequestMapping({ "/api/channels", "/api/organization/channels" })
 public class ChannelController {
     private static final Logger logger = LoggerFactory.getLogger(ChannelController.class);
 
@@ -24,11 +24,11 @@ public class ChannelController {
     @PostMapping("/create")
     public ResponseEntity<?> createChannel(@RequestBody ChannelCreateRequest request) {
         try {
-            logger.info("Creating channel with name: {}, code: {}, categories count: {}", 
-                request != null ? request.getChannelName() : "null",
-                request != null ? request.getChannelCode() : "null",
-                request != null && request.getCategories() != null ? request.getCategories().size() : 0);
-            
+            logger.info("Creating channel with name: {}, code: {}, categories count: {}",
+                    request != null ? request.getChannelName() : "null",
+                    request != null ? request.getChannelCode() : "null",
+                    request != null && request.getCategories() != null ? request.getCategories().size() : 0);
+
             ServiceResponse response = channelService.createChannel(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -152,8 +152,8 @@ public class ChannelController {
             ServiceResponse response = channelService.deleteCategoryFromChannel(channelId, categoryId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            logger.error("Error deleting category ID: {} from channel ID: {}: {}", 
-                categoryId, channelId, e.getMessage(), e);
+            logger.error("Error deleting category ID: {} from channel ID: {}: {}",
+                    categoryId, channelId, e.getMessage(), e);
             return ResponseEntity.status(500).body("Failed to delete category: " + e.getMessage());
         }
     }
@@ -161,7 +161,7 @@ public class ChannelController {
     /**
      * Get all materials associated with a specific channel
      */
-    @GetMapping("/{channelId}/materials")
+    @GetMapping("/materials")
     public ResponseEntity<?> getMaterialsByChannelId(@PathVariable Long channelId) {
         try {
             logger.info("Retrieving all materials for channel ID: {}", channelId);
@@ -171,6 +171,28 @@ public class ChannelController {
             logger.error("Error retrieving materials for channel ID {}: {}", channelId, e.getMessage(), e);
             return ResponseEntity.status(500).body("Failed to retrieve materials for channel: " + e.getMessage());
         }
+    }
+
+    // Organization module standard CRUD mappings
+    @GetMapping
+    public ResponseEntity<?> organizationGetAllChannels() {
+        return getAllChannels();
+    }
+
+    @PostMapping
+    public ResponseEntity<?> organizationCreateChannel(@RequestBody ChannelCreateRequest request) {
+        return createChannel(request);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<?> organizationUpdateChannel(@PathVariable Long id,
+            @RequestBody ChannelUpdateRequest request) {
+        return updateChannel(id, request);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> organizationDeleteChannel(@PathVariable Long id) {
+        return deleteChannel(id);
     }
 
 }

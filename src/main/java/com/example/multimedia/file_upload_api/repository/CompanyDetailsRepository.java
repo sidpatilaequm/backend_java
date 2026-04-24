@@ -13,11 +13,11 @@ import java.util.Optional;
 public interface CompanyDetailsRepository extends JpaRepository<CompanyDetails, Long> {
 
     List<CompanyDetails> findByGstinNumberAndUser_UserIdIn(String gstinNumber, List<Long> userIds);
-    
+
     List<CompanyDetails> findByGstinNumber(String gstinNumber);
 
     Optional<CompanyDetails> findByCompanyIdAndUserUserId(Long companyId, Long userId);
-    
+
     List<CompanyDetails> findByUserUserId(Long userId);
 
     @Query("SELECT cd FROM CompanyDetails cd JOIN cd.user u WHERE u.userId IN :userIds")
@@ -26,12 +26,18 @@ public interface CompanyDetailsRepository extends JpaRepository<CompanyDetails, 
     List<CompanyDetails> findBySuperAdminSuperAdminId(Long superAdminId);
 
     List<CompanyDetails> findByAuthKey(String authKey);
-    
+
     List<CompanyDetails> findBySuperAdmin_SuperAdminIdAndAuthKey(Long superAdminId, String authKey);
-    
+
     // New method for data isolation - filter by GST number and super admin
     List<CompanyDetails> findByGstinNumberAndSuperAdmin_SuperAdminId(String gstinNumber, Long superAdminId);
-    
-    // New method for data isolation - filter by GST number, super admin, and auth key
-    List<CompanyDetails> findByGstinNumberAndSuperAdmin_SuperAdminIdAndAuthKey(String gstinNumber, Long superAdminId, String authKey);
+
+    // New method for data isolation - filter by GST number, super admin, and auth
+    // key
+    List<CompanyDetails> findByGstinNumberAndSuperAdmin_SuperAdminIdAndAuthKey(String gstinNumber, Long superAdminId,
+            String authKey);
+
+    boolean existsByCompanyCodeAndSuperAdmin_SuperAdminId(String companyCode, Long superAdminId);
+
+    Optional<CompanyDetails> findByCompanyCodeAndSuperAdmin_SuperAdminId(String companyCode, Long superAdminId);
 }

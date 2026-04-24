@@ -13,6 +13,9 @@ public class ChannelDTO {
     private Boolean isActive;
     private Long companyId;
     private Long userId;
+    private String status;
+    private CountryDTO country;
+    private CurrencyDTO currency;
     private List<ChannelCategoryDTO> categories;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

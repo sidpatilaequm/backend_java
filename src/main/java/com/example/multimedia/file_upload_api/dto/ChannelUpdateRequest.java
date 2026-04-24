@@ -9,8 +9,11 @@ public class ChannelUpdateRequest {
     private String channelCode;
     private String description;
     private Boolean isActive;
+    private String status;
+    private Long countryId;
+    private Long currencyId;
     private List<ChannelCategoryRequest> categories;
-    
+
     @Data
     public static class ChannelCategoryRequest {
         private Long categoryId;

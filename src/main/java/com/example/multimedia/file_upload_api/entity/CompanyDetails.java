@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.Date;
 import java.util.List;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import jakarta.validation.constraints.NotBlank;
 
 @Entity
 @Table(name = "company_details")
@@ -21,6 +22,21 @@ public class CompanyDetails {
 
     @Column(name = "company_name")
     private String companyName;
+
+    @NotBlank(message = "Company code is required")
+    @Column(name = "company_code")
+    private String companyCode;
+
+    @Column(name = "status")
+    private String status;
+
+    @ManyToOne
+    @JoinColumn(name = "country_id")
+    private Country country;
+
+    @ManyToOne
+    @JoinColumn(name = "currency_id")
+    private Currency currency;
 
     @Column(name = "gstin_number")
     private String gstinNumber;
@@ -83,5 +99,3 @@ public class CompanyDetails {
     @JsonManagedReference
     private List<FinancialTerms> financialTerms;
 }
-
-
