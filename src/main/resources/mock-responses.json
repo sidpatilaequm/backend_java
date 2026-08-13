@@ -52,5 +52,76 @@
       "Date of Last AGM": "30/09/2023",
       "Date of Balance Sheet": "31/03/2023"
     }
+  },
+  "msme": {
+    "valid": true,
+    "reg": "UDYAM-TS-99-9999999",
+    "entity": "GOENKA AGENCY",
+    "type": "Proprietary",
+    "majorActivity": [
+      "Manufacturing"
+    ],
+    "gender": "Male",
+    "socialCategory": "OBC",
+    "incorporated": "05/06/1988",
+    "commenced": "26/04/2020",
+    "registered": "02/07/2021",
+    "classifications": [
+      {
+        "date": "09/05/2023",
+        "year": "2023-24",
+        "type": "Micro"
+      }
+    ],
+    "locations": [
+      {
+        "unitName": "GOENKA AGENCY",
+        "unitNumber": "11/62/1",
+        "building": "GOENKA AGENCY",
+        "villageOrTown": "MUDHOLE",
+        "block": "KOAT GALLI",
+        "road": "KOAT GALLI",
+        "city": "MUDHOLE",
+        "zip": "504102",
+        "state": "TELANGANA",
+        "district": "Nirmal"
+      }
+    ],
+    "officialAddress": {
+      "unitNumber": "11/62/1",
+      "building": "GOENKA AGENCY",
+      "villageOrTown": "MUDHOLE",
+      "block": "KOAT GALLI",
+      "road": "KOAT GALLI",
+      "city": "MUDHOLE",
+      "state": "TELANGANA",
+      "district": "ADILABAD",
+      "zip": "504102",
+      "maskedMobile": "89*****286",
+      "maskedEmail": "lutesainath@gmail.com"
+    },
+    "nicCodes": [
+      {
+        "digit2": "47 - Retail trade, except of motor vehicles and motorcycles",
+        "digit4": "4711 - Retail sale in non-specialized stores with food, beverages or tobacco predominating",
+        "digit5": "47110 - Retail sale in non-specialized stores with food, beverages or tobacco predominating",
+        "activity": "Trading",
+        "date": "02/05/2023"
+      }
+    ],
+    "dic": "ADILABAD",
+    "dfo": "HYDERABAD"
+  },
+  "itr": {
+    "valid": true,
+    "message": null,
+    "panStatus": "VALID_DETAILS_MATCHED",
+    "fy": "2022-23",
+    "itrFiled": true,
+    "itrType": "ITR_3_5_6",
+    "grossTurnover": "19243457",
+    "grossTurnoverFormatted": "₹1,92,43,457.00",
+    "exportTurnover": "78320",
+    "exportTurnoverFormatted": "₹78,320.00"
   }
-} 
+}

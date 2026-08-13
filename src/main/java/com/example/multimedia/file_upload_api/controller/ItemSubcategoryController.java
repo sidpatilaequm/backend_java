@@ -26,7 +26,7 @@ public class ItemSubcategoryController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping
+    @GetMapping("/all")
     public ResponseEntity<ServiceResponse> getAllItemSubcategories() {
         ServiceResponse response = itemSubcategoryService.getAllItemSubcategories();
         return ResponseEntity.ok(response);
@@ -49,4 +49,4 @@ public class ItemSubcategoryController {
         ServiceResponse response = itemSubcategoryService.getAllSubcategoriesWithCategoryDetails();
         return ResponseEntity.ok(response);
     }
-} 
+}

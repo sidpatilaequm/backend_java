@@ -39,6 +39,9 @@ public class FileUploadService {
     private FileUploadRepository fileUploadRepository;
 
     @Autowired
+    private FolderItService folderItService;
+
+    @Autowired
     private UserDetailRepository userDetailRepository;
 
     @Autowired
@@ -305,7 +308,7 @@ public class FileUploadService {
         return file;
     }
 
-    public FileUpload uploadFile(MultipartFile file, String documentType, Long userId) throws IOException {
+    public FileUpload uploadFile(MultipartFile file, String documentType, Long userId, String vendorName, String monthYear) throws IOException {
         UserDetail user = userDetailRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -317,6 +320,14 @@ public class FileUploadService {
 
         FileUpload fileUpload = new FileUpload();
         fileUpload.setFileName(originalFilename);
+
+        try {
+            folderItService.uploadFileToFolderIt(file, documentType, vendorName, monthYear);
+        } catch (Exception e) {
+            logger.error("Failed to upload file to FolderIt", e);
+            // Decide if we should throw an exception or just log it
+            // For now, let's proceed with saving locally and in the DB
+        }
         
         // Ensure fileType is never null
         String contentType = file.getContentType();
@@ -397,6 +408,16 @@ public class FileUploadService {
         companyDetails.setDateOfRegistration(java.time.LocalDate.now());
         companyDetails.setTypeOfRegistration("Regular");
         companyDetails.setRegisteredAddress("Address to be updated");
+        
+        // Set company code to avoid validation failure
+        String companyCode = confirmationDTO.getGstinNumber();
+        if (companyCode == null || companyCode.trim().isEmpty()) {
+            companyCode = confirmationDTO.getPanNumber();
+        }
+        if (companyCode == null || companyCode.trim().isEmpty()) {
+            companyCode = "COMP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        }
+        companyDetails.setCompanyCode(companyCode);
         
         companyDetails = companyDetailsRepository.save(companyDetails);
         

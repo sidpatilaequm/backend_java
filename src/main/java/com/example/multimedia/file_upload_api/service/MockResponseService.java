@@ -31,6 +31,9 @@ public class MockResponseService {
             mockResponses.put("gst", jsonObject.getJSONObject("gst"));
             mockResponses.put("pan", jsonObject.getJSONObject("pan"));
             mockResponses.put("cheque", jsonObject.getJSONObject("cheque"));
+            mockResponses.put("coi", jsonObject.getJSONObject("coi"));
+            mockResponses.put("msme", jsonObject.getJSONObject("msme"));
+            mockResponses.put("itr", jsonObject.getJSONObject("itr"));
         } catch (IOException e) {
             e.printStackTrace();
         }

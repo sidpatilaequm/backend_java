@@ -173,26 +173,4 @@ public class ChannelController {
         }
     }
 
-    // Organization module standard CRUD mappings
-    @GetMapping
-    public ResponseEntity<?> organizationGetAllChannels() {
-        return getAllChannels();
-    }
-
-    @PostMapping
-    public ResponseEntity<?> organizationCreateChannel(@RequestBody ChannelCreateRequest request) {
-        return createChannel(request);
-    }
-
-    @PutMapping("/{id}")
-    public ResponseEntity<?> organizationUpdateChannel(@PathVariable Long id,
-            @RequestBody ChannelUpdateRequest request) {
-        return updateChannel(id, request);
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<?> organizationDeleteChannel(@PathVariable Long id) {
-        return deleteChannel(id);
-    }
-
 }

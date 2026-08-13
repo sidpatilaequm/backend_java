@@ -26,7 +26,8 @@ public class ItemCategoryController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping
+
+    @GetMapping("/all")
     public ResponseEntity<ServiceResponse> getAllItemCategories() {
         ServiceResponse response = itemCategoryService.getAllItemCategories();
         return ResponseEntity.ok(response);

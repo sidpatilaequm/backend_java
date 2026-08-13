@@ -28,15 +28,26 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/users/register", "/api/users/login").permitAll()
+                        .requestMatchers("/api/users/register", "/api/users/login", "/api/users/generate-hash/**", "/employee/login", "/api/employee/login").permitAll()
                         .requestMatchers("/api/super-admin/**").permitAll()
                         .requestMatchers("/api/v1/bom/master/**").hasAuthority("super_admin")
                         .requestMatchers("/api/business-card/**").permitAll()
                         .requestMatchers("/api/ocr/**").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
+                        // Department list — public so Create Employee form can load the dropdown without auth
+                        .requestMatchers("/api/departments/**").permitAll()
                         .requestMatchers("/api/company-addresses/**").authenticated()
                         .requestMatchers("/api/upload/**").authenticated()
+                        .requestMatchers("/api/files/**").permitAll()
                         .requestMatchers("/api/users/**").authenticated()
+                        .requestMatchers("/api/material/upload", "/api/material/all").permitAll()
+                        .requestMatchers("/api/vendor-master/upload", "/api/vendor-master/all").permitAll()
+                        .requestMatchers("/api/material-master/upload").permitAll()
+                        .requestMatchers("/api/master-purchase-orders/upload").permitAll()
+                        .requestMatchers("/api/vendor/asns/**").permitAll()
+                        .requestMatchers("/api/vendor/purchase-orders/**").permitAll()
+                        .requestMatchers("/api/vendor/gate-entry/**").permitAll()
+                        .requestMatchers("/api/employee/gate-entry/**").permitAll()
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS));

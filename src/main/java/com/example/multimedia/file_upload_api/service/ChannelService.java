@@ -14,12 +14,7 @@ import com.example.multimedia.file_upload_api.entity.ChannelCategory;
 import com.example.multimedia.file_upload_api.entity.CompanyDetails;
 import com.example.multimedia.file_upload_api.entity.SuperAdmin;
 import com.example.multimedia.file_upload_api.entity.MaterialChannelMapping;
-import com.example.multimedia.file_upload_api.repository.ChannelCategoryRepository;
-import com.example.multimedia.file_upload_api.repository.ChannelRepository;
-import com.example.multimedia.file_upload_api.repository.CompanyDetailsRepository;
-import com.example.multimedia.file_upload_api.repository.MaterialChannelMappingRepository;
-import com.example.multimedia.file_upload_api.repository.CountryRepository;
-import com.example.multimedia.file_upload_api.repository.CurrencyRepository;
+import com.example.multimedia.file_upload_api.repository.*;
 import com.example.multimedia.file_upload_api.entity.Country;
 import com.example.multimedia.file_upload_api.entity.Currency;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +39,12 @@ public class ChannelService {
 
     @Autowired
     private CompanyDetailsRepository companyDetailsRepository;
+
+    @Autowired
+    private MaterialChannelListingRepository listingRepository;
+
+    @Autowired
+    private CategoryChannelMappingRepository categoryMappingRepository;
 
     @Autowired
     private MaterialChannelMappingRepository mappingRepository;
@@ -467,11 +468,20 @@ public class ChannelService {
 
             Channel channel = channelOpt.get();
 
-            // Delete categories first
+            // 1. Delete all Marketplace Listings (SKUs)
+            listingRepository.deleteByChannel_ChannelId(channelId);
+
+            // 2. Delete all Category Mappings (Internal <-> External)
+            categoryMappingRepository.deleteByChannel_ChannelId(channelId);
+
+            // 3. Delete Legacy Mappings (if any)
+            mappingRepository.deleteByChannel_ChannelId(channelId);
+
+            // 4. Delete all Marketplace Categories (Tree)
             List<ChannelCategory> categories = channelCategoryRepository.findByChannel_ChannelId(channelId);
             channelCategoryRepository.deleteAll(categories);
 
-            // Delete channel
+            // 5. Delete the Channel itself
             channelRepository.delete(channel);
 
             response.setStatus("SUCCESS");
@@ -597,8 +607,8 @@ public class ChannelService {
         dto.setCategoryCode(category.getCategoryCode());
         dto.setCategoryName(category.getCategoryName());
         dto.setIsActive(category.getIsActive());
-        dto.setDescription(""); // ChannelCategory doesn't have description field
-        dto.setProductCount(0L); // Will be set separately if needed
+//        dto.setDescription(""); // ChannelCategory doesn't have description field
+//        dto.setProductCount(0L); // Will be set separately if needed
         return dto;
     }
 

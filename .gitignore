@@ -4,6 +4,15 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### Custom ignores ###
+logs/
+*.log
+*.class
+*.jar
+.env
+upload-dir/
+tessdata/
+
 ### STS ###
 .apt_generated
 .classpath
@@ -14,7 +23,7 @@ target/
 .sts4-cache
 
 ### IntelliJ IDEA ###
-.idea
+.idea/
 *.iws
 *.iml
 *.ipr

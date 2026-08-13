@@ -19,6 +19,8 @@ public interface PurchaseRequisitionRepository extends JpaRepository<PurchaseReq
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<PurchaseRequisition> findTopByOrderByIdDesc();
 
+    Optional<PurchaseRequisition> findByPrNumber(String prNumber);
+
     @Query("SELECT p FROM PurchaseRequisition p WHERE p.requestedBy = :requestedBy " +
             "AND (:locationId IS NULL OR p.locationId = :locationId) " +
             "AND (:status IS NULL OR p.status = :status) " +
@@ -29,4 +31,16 @@ public interface PurchaseRequisitionRepository extends JpaRepository<PurchaseReq
             @Param("status") PurchaseRequisitionStatus status,
             @Param("search") String search,
             Pageable pageable);
+
+    @Query("SELECT p FROM PurchaseRequisition p WHERE p.requestedBy IN :requestedByIds " +
+            "AND (:locationId IS NULL OR p.locationId = :locationId) " +
+            "AND (:status IS NULL OR p.status = :status) " +
+            "AND (:search IS NULL OR LOWER(p.prNumber) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<PurchaseRequisition> findWithFiltersIn(
+            @Param("requestedByIds") java.util.Collection<Long> requestedByIds,
+            @Param("locationId") Long locationId,
+            @Param("status") PurchaseRequisitionStatus status,
+            @Param("search") String search,
+            Pageable pageable);
 }
+

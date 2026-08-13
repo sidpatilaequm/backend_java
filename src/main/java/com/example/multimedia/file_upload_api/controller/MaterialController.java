@@ -254,8 +254,13 @@ public class MaterialController {
     }
 
     @GetMapping
-    public ResponseEntity<ServiceResponse> getAllMaterials() {
-        ServiceResponse response = materialService.getAllMaterials();
+    public ResponseEntity<ServiceResponse> getAllMaterials(
+            @RequestParam(required = false) Long locationId,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) Long l1Id,
+            @RequestParam(required = false) Long l2Id,
+            @RequestParam(required = false) Long l3Id) {
+        ServiceResponse response = materialService.filterMaterials(locationId, categoryId, l1Id, l2Id, l3Id);
         return ResponseEntity.ok(response);
     }
 

@@ -107,6 +107,9 @@ public class MaterialService {
     @Autowired
     private InventoryService inventoryService;
 
+    @Autowired
+    private HierarchyService hierarchyService;
+
     @Transactional(rollbackFor = Exception.class)
     public ServiceResponse saveMaterial(MaterialCreateRequest req, MultipartFile barcodeImage, List<MultipartFile> materialImages) throws IOException {
         ServiceResponse response = new ServiceResponse();
@@ -160,6 +163,14 @@ public class MaterialService {
             material.setItemCategory(itemCategory);
             material.setSubcategory(subcategory);
             material.setLocation(location);
+
+            // Set hierarchy levels
+            List<ItemSubcategory> hierarchy = hierarchyService.getParentHierarchy(subcategory.getItemSubcategoryId());
+            for (ItemSubcategory h : hierarchy) {
+                if (h.getLevelNo() == 1) material.setSubcategoryL1(h);
+                else if (h.getLevelNo() == 2) material.setSubcategoryL2(h);
+                else if (h.getLevelNo() == 3) material.setSubcategoryL3(h);
+            }
 
             if (barcodeImage != null && !barcodeImage.isEmpty()) {
                 material.setBarcodeImage(barcodeImage.getBytes());
@@ -380,6 +391,17 @@ public class MaterialService {
             material.setSubcategory(subcategory);
             material.setLocation(location);
 
+            // Update hierarchy levels
+            material.setSubcategoryL1(null);
+            material.setSubcategoryL2(null);
+            material.setSubcategoryL3(null);
+            List<ItemSubcategory> hierarchy = hierarchyService.getParentHierarchy(subcategory.getItemSubcategoryId());
+            for (ItemSubcategory h : hierarchy) {
+                if (h.getLevelNo() == 1) material.setSubcategoryL1(h);
+                else if (h.getLevelNo() == 2) material.setSubcategoryL2(h);
+                else if (h.getLevelNo() == 3) material.setSubcategoryL3(h);
+            }
+
             // Update barcode image if provided
             if (barcodeImage != null && !barcodeImage.isEmpty()) {
                 material.setBarcodeImage(barcodeImage.getBytes());
@@ -488,11 +510,22 @@ public class MaterialService {
         ServiceResponse response = new ServiceResponse();
 
         try {
-            // Get current admin ID for filtering
-            Long currentAdminId = currentUserService.getCurrentSuperAdminId();
-            
-            // Filter materials by current admin
-            List<Material> materials = materialRepository.findBySuperAdmin_SuperAdminId(currentAdminId);
+            // Check if current user is SuperAdmin or Vendor
+            List<Material> materials;
+            if (currentUserService.isCurrentUserSuperAdmin()) {
+                Long currentAdminId = currentUserService.getCurrentSuperAdminId();
+                materials = materialRepository.findBySuperAdmin_SuperAdminId(currentAdminId);
+            } else {
+                // It's a Vendor (UserDetail)
+                com.example.multimedia.file_upload_api.entity.UserDetail currentUser = currentUserService.getCurrentUser();
+                if (currentUser.getCompany() != null) {
+                    Long vendorCompanyId = currentUser.getCompany().getCompanyId();
+                    materials = materialRepository.findByVendorId(vendorCompanyId);
+                } else {
+                    materials = new ArrayList<>();
+                }
+            }
+
             List<MaterialDTO> materialDTOs = materials.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
@@ -635,6 +668,22 @@ public class MaterialService {
                 AppConstants.ERRORCODE,
                 "Failed to retrieve material: " + e.getMessage()
             );
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public ServiceResponse filterMaterials(Long locationId, Long categoryId, Long l1Id, Long l2Id, Long l3Id) {
+        ServiceResponse response = new ServiceResponse();
+        try {
+            Long currentAdminId = currentUserService.getCurrentSuperAdminId();
+            List<Material> materials = materialRepository.filterMaterials(currentAdminId, locationId, categoryId, l1Id, l2Id, l3Id);
+            List<MaterialDTO> dtos = materials.stream().map(this::convertToDTO).collect(Collectors.toList());
+            
+            response.addData("materials", dtos);
+            return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Materials filtered successfully");
+        } catch (Exception e) {
+            logger.error("Error filtering materials: {}", e.getMessage(), e);
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Failed to filter materials: " + e.getMessage());
         }
     }
 
@@ -1219,6 +1268,18 @@ public class MaterialService {
         if (material.getSubcategory() != null) {
             dto.setSubcategoryId(material.getSubcategory().getItemSubcategoryId());
             dto.setSubcategoryName(material.getSubcategory().getItemSubcategoryName());
+        }
+        if (material.getSubcategoryL1() != null) {
+            dto.setSubcategoryL1Id(material.getSubcategoryL1().getItemSubcategoryId());
+            dto.setSubcategoryL1Name(material.getSubcategoryL1().getItemSubcategoryName());
+        }
+        if (material.getSubcategoryL2() != null) {
+            dto.setSubcategoryL2Id(material.getSubcategoryL2().getItemSubcategoryId());
+            dto.setSubcategoryL2Name(material.getSubcategoryL2().getItemSubcategoryName());
+        }
+        if (material.getSubcategoryL3() != null) {
+            dto.setSubcategoryL3Id(material.getSubcategoryL3().getItemSubcategoryId());
+            dto.setSubcategoryL3Name(material.getSubcategoryL3().getItemSubcategoryName());
         }
         if (material.getItemCategory() != null) {
             dto.setItemCategoryId(material.getItemCategory().getItemCategoryId());

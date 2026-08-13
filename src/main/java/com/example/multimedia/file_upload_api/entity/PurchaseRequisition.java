@@ -35,7 +35,7 @@ public class PurchaseRequisition {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private PurchaseRequisitionStatus status = PurchaseRequisitionStatus.DRAFT;
+    private PurchaseRequisitionStatus status = PurchaseRequisitionStatus.CREATED;
 
     @Column(precision = 15, scale = 2)
     private BigDecimal totalAmount;
@@ -46,6 +46,14 @@ public class PurchaseRequisition {
 
     @UpdateTimestamp
     private Timestamp updatedAt;
+
+    /**
+     * The workflow engine request ID (from FastAPI WorkFlow DB) for this PR's approval.
+     * Set after the PR is submitted to the workflow engine.
+     * Nullable — not set until PR is submitted for approval.
+     */
+    @Column(name = "workflow_request_id")
+    private Long workflowRequestId;
 
     @OneToMany(mappedBy = "purchaseRequisition", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PurchaseRequisitionItem> items = new ArrayList<>();
@@ -136,5 +144,13 @@ public class PurchaseRequisition {
 
     public void setItems(List<PurchaseRequisitionItem> items) {
         this.items = items;
+    }
+
+    public Long getWorkflowRequestId() {
+        return workflowRequestId;
+    }
+
+    public void setWorkflowRequestId(Long workflowRequestId) {
+        this.workflowRequestId = workflowRequestId;
     }
 }

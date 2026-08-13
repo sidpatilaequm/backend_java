@@ -23,6 +23,15 @@ public class MaterialDTO {
     private Long subcategoryId;
     private String subcategoryName;
     
+    private Long subcategoryL1Id;
+    private String subcategoryL1Name;
+    
+    private Long subcategoryL2Id;
+    private String subcategoryL2Name;
+    
+    private Long subcategoryL3Id;
+    private String subcategoryL3Name;
+    
     // Category information
     private Long itemCategoryId;
     private String itemCategoryCode;

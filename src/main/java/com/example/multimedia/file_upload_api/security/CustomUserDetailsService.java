@@ -38,7 +38,11 @@ public class CustomUserDetailsService implements UserDetailsService {
         Optional<UserDetail> userOpt = userDetailRepository.findByEmail(email);
         if (userOpt.isPresent()) {
             UserDetail user = userOpt.get();
-            return new User(user.getEmail(), user.getPassword(), new ArrayList<>());
+            java.util.List<org.springframework.security.core.authority.SimpleGrantedAuthority> authorities = new java.util.ArrayList<>();
+            if (user.getUserType() != null) {
+                authorities.add(new org.springframework.security.core.authority.SimpleGrantedAuthority(user.getUserType().name()));
+            }
+            return new User(user.getEmail(), user.getPassword(), authorities);
         }
 
         throw new UsernameNotFoundException("User not found with email: " + email);

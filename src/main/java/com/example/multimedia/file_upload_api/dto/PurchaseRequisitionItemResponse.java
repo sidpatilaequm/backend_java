@@ -10,6 +10,9 @@ public class PurchaseRequisitionItemResponse {
     private String uom;
     private BigDecimal estimatedPrice;
     private BigDecimal totalPrice;
+    private String materialDescription;
+    private String hsnSac;
+    private java.time.LocalDate requiredDate;
 
     public Long getId() {
         return id;
@@ -65,5 +68,48 @@ public class PurchaseRequisitionItemResponse {
 
     public void setTotalPrice(BigDecimal totalPrice) {
         this.totalPrice = totalPrice;
+    }
+
+    public String getMaterialDescription() {
+        return materialDescription;
+    }
+
+    public void setMaterialDescription(String materialDescription) {
+        this.materialDescription = materialDescription;
+    }
+
+    public String getHsnSac() {
+        return hsnSac;
+    }
+
+    public void setHsnSac(String hsnSac) {
+        this.hsnSac = hsnSac;
+    }
+
+    public java.time.LocalDate getRequiredDate() {
+        return requiredDate;
+    }
+
+    public void setRequiredDate(java.time.LocalDate requiredDate) {
+        this.requiredDate = requiredDate;
+    }
+
+    private java.util.List<Long> vendorIds;
+    private java.util.List<String> vendorBpNos;
+
+    public java.util.List<Long> getVendorIds() {
+        return vendorIds;
+    }
+
+    public void setVendorIds(java.util.List<Long> vendorIds) {
+        this.vendorIds = vendorIds;
+    }
+
+    public java.util.List<String> getVendorBpNos() {
+        return vendorBpNos;
+    }
+
+    public void setVendorBpNos(java.util.List<String> vendorBpNos) {
+        this.vendorBpNos = vendorBpNos;
     }
 }

@@ -11,10 +11,13 @@ import java.util.List;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.validation.constraints.NotBlank;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 @Entity
 @Table(name = "company_details")
 @Getter
 @Setter
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class CompanyDetails {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -91,6 +94,12 @@ public class CompanyDetails {
 
     @OneToOne(mappedBy = "company", cascade = CascadeType.ALL)
     private CertificateOfIncorporation certificateOfIncorporation;
+
+    @OneToOne(mappedBy = "company", cascade = CascadeType.ALL)
+    private MsmeDetails msmeDetails;
+
+    @OneToOne(mappedBy = "company", cascade = CascadeType.ALL)
+    private ItrDetails itrDetails;
 
     @OneToOne(mappedBy = "company", cascade = CascadeType.ALL)
     private PurchasingData purchasingData;

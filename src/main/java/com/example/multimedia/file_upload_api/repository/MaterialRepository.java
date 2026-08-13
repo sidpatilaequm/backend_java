@@ -26,6 +26,31 @@ public interface MaterialRepository extends JpaRepository<Material, Long> {
     List<Material> findBySuperAdmin_SuperAdminIdAndBlocked(Long superAdminId, Boolean blocked);
     List<Material> findBySuperAdmin_SuperAdminIdAndLocation_LocationId(Long superAdminId, Long locationId);
     
+    // Vendor specific
+    List<Material> findByVendorId(Long vendorId);
+    
+    @org.springframework.data.jpa.repository.Query("SELECT m FROM Material m WHERE m.superAdmin.superAdminId = :superAdminId " +
+            "AND (:locationId IS NULL OR m.location.locationId = :locationId) " +
+            "AND (:categoryId IS NULL OR m.itemCategory.itemCategoryId = :categoryId) " +
+            "AND (:l1Id IS NULL OR m.subcategoryL1.itemSubcategoryId = :l1Id) " +
+            "AND (:l2Id IS NULL OR m.subcategoryL2.itemSubcategoryId = :l2Id) " +
+            "AND (:l3Id IS NULL OR m.subcategoryL3.itemSubcategoryId = :l3Id)")
+    List<Material> filterMaterials(
+            @org.springframework.data.repository.query.Param("superAdminId") Long superAdminId,
+            @org.springframework.data.repository.query.Param("locationId") Long locationId,
+            @org.springframework.data.repository.query.Param("categoryId") Long categoryId,
+            @org.springframework.data.repository.query.Param("l1Id") Long l1Id,
+            @org.springframework.data.repository.query.Param("l2Id") Long l2Id,
+            @org.springframework.data.repository.query.Param("l3Id") Long l3Id
+    );
+
+    // Deletion check methods
+    boolean existsByItemCategory_ItemCategoryId(Long categoryId);
+    boolean existsBySubcategoryL1_ItemSubcategoryId(Long subcategoryId);
+    boolean existsBySubcategoryL2_ItemSubcategoryId(Long subcategoryId);
+    boolean existsBySubcategoryL3_ItemSubcategoryId(Long subcategoryId);
+    boolean existsBySubcategory_ItemSubcategoryId(Long subcategoryId);
+    
     // Find material by ID and super admin ID (to avoid lazy loading issues)
     Optional<Material> findByMaterialIdAndSuperAdmin_SuperAdminId(Long materialId, Long superAdminId);
 } 

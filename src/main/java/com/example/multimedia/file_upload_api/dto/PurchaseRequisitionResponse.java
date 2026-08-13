@@ -11,7 +11,7 @@ public class PurchaseRequisitionResponse {
     private String prNumber;
     private Long locationId;
     private String locationName;
-    private Long requestedBy;
+    private String requestedBy;
     private LocalDate requiredDate;
     private String remarks;
     private PurchaseRequisitionStatus status;
@@ -19,7 +19,10 @@ public class PurchaseRequisitionResponse {
     private Timestamp createdAt;
     private Timestamp updatedAt;
     private Integer itemCount;
+    private String paymentTerms;
+    private String incoterms;
     private List<PurchaseRequisitionItemResponse> items;
+    private String vendorStatus;
 
     public Long getId() {
         return id;
@@ -53,11 +56,11 @@ public class PurchaseRequisitionResponse {
         this.locationName = locationName;
     }
 
-    public Long getRequestedBy() {
+    public String getRequestedBy() {
         return requestedBy;
     }
 
-    public void setRequestedBy(Long requestedBy) {
+    public void setRequestedBy(String requestedBy) {
         this.requestedBy = requestedBy;
     }
 
@@ -123,5 +126,29 @@ public class PurchaseRequisitionResponse {
 
     public void setItems(List<PurchaseRequisitionItemResponse> items) {
         this.items = items;
+    }
+
+    public String getPaymentTerms() {
+        return paymentTerms;
+    }
+
+    public void setPaymentTerms(String paymentTerms) {
+        this.paymentTerms = paymentTerms;
+    }
+
+    public String getIncoterms() {
+        return incoterms;
+    }
+
+    public void setIncoterms(String incoterms) {
+        this.incoterms = incoterms;
+    }
+
+    public String getVendorStatus() {
+        return vendorStatus;
+    }
+
+    public void setVendorStatus(String vendorStatus) {
+        this.vendorStatus = vendorStatus;
     }
 }

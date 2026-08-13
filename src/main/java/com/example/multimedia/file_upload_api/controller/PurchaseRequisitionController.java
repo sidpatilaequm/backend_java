@@ -22,10 +22,27 @@ public class PurchaseRequisitionController {
     private PurchaseRequisitionService prService;
 
     @PostMapping
-    public ResponseEntity<PurchaseRequisitionResponse> createPurchaseRequisition(
+    public ResponseEntity<?> createPurchaseRequisition(
             @RequestBody PurchaseRequisitionRequest request) {
         PurchaseRequisitionResponse response = prService.createPurchaseRequisition(request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        java.util.Map<String, Object> responseMap = new java.util.LinkedHashMap<>();
+        responseMap.put("success", true);
+        responseMap.put("message", "Purchase Requisition created successfully");
+        responseMap.put("prId", response.getId());
+        responseMap.put("prNumber", response.getPrNumber());
+        responseMap.put("id", response.getId());
+        responseMap.put("locationId", response.getLocationId());
+        responseMap.put("locationName", response.getLocationName());
+        responseMap.put("requestedBy", response.getRequestedBy());
+        responseMap.put("requiredDate", response.getRequiredDate());
+        responseMap.put("remarks", response.getRemarks());
+        responseMap.put("status", response.getStatus());
+        responseMap.put("totalAmount", response.getTotalAmount());
+        responseMap.put("createdAt", response.getCreatedAt());
+        responseMap.put("updatedAt", response.getUpdatedAt());
+        responseMap.put("itemCount", response.getItemCount());
+        responseMap.put("items", response.getItems());
+        return new ResponseEntity<>(responseMap, HttpStatus.CREATED);
     }
 
     @GetMapping
@@ -64,6 +81,19 @@ public class PurchaseRequisitionController {
             @RequestBody PurchaseRequisitionStatusRequest statusRequest) {
         prService.changePurchaseRequisitionStatus(id, statusRequest);
         return ResponseEntity.ok().build();
+    }
+
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<Void> updatePurchaseRequisitionStatus(@PathVariable Long id,
+            @RequestBody PurchaseRequisitionStatusRequest statusRequest) {
+        prService.changePurchaseRequisitionStatus(id, statusRequest);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/pr-number/{prNumber}")
+    public ResponseEntity<PurchaseRequisitionResponse> getPurchaseRequisitionByPrNumber(@PathVariable String prNumber) {
+        PurchaseRequisitionResponse response = prService.getPurchaseRequisitionByPrNumber(prNumber);
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{id}")

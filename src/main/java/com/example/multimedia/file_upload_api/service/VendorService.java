@@ -37,6 +37,9 @@ public class VendorService {
     @Autowired
     private CurrentUserService currentUserService;
 
+    @Autowired
+    private VendorMasterRepository vendorMasterRepository;
+
     @Transactional
     public ServiceResponse getAllVendors() {
         ServiceResponse response = new ServiceResponse();
@@ -45,23 +48,33 @@ public class VendorService {
             // Get current admin ID for filtering
             Long currentAdminId = currentUserService.getCurrentSuperAdminId();
 
-            // Get all company details for vendors belonging to current admin
-            List<CompanyDetails> vendorCompanies = companyDetailsRepository.findBySuperAdmin_SuperAdminIdAndAuthKey(currentAdminId, "vendor");
-            System.out.println("Found vendor companies: " + vendorCompanies.size());
+            // Get all VendorMaster records
+            List<VendorMaster> vendorMasters = vendorMasterRepository.findAll();
+            System.out.println("Found vendor masters: " + vendorMasters.size());
 
             // Prepare response data
             List<Map<String, Object>> vendorList = new ArrayList<>();
-            for (CompanyDetails company : vendorCompanies) {
-                UserDetail user = company.getUser();
-                
-                // Only include active vendors
-                if (user == null || !user.getIsActive()) {
+            for (VendorMaster vm : vendorMasters) {
+                if (vm.getEmail() == null || vm.getEmail().isEmpty()) {
                     continue;
                 }
-                
+
+                // Find UserDetail linked to this VendorMaster via email
+                Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vm.getEmail());
+                if (userOpt.isEmpty()) {
+                    continue; // Skip if no user linked
+                }
+
+                UserDetail user = userOpt.get();
+
+                // Ensure this user belongs to the current super admin
+                if (user.getSuperAdmin() == null || !user.getSuperAdmin().getSuperAdminId().equals(currentAdminId)) {
+                    continue;
+                }
+
                 Map<String, Object> vendorData = new HashMap<>();
 
-                // Basic user info
+                // User details
                 vendorData.put("userId", user.getUserId());
                 vendorData.put("email", user.getEmail());
                 vendorData.put("firstName", user.getFirstName());
@@ -69,60 +82,38 @@ public class VendorService {
                 vendorData.put("phoneNumber", user.getPhoneNumber());
                 vendorData.put("isActive", user.getIsActive());
 
-                // Company info
-                vendorData.put("companyId", company.getCompanyId());
-                vendorData.put("companyName", company.getCompanyName());
-                vendorData.put("gstinNumber", company.getGstinNumber());
-                vendorData.put("legalTradeName", company.getLegalTradeName());
-                vendorData.put("registeredAddress", company.getRegisteredAddress());
-                vendorData.put("panNumber", company.getPanNumber());
-
-                // Bank Details
-                ChequeDetails chequeDetails = company.getChequeDetails();
-                if (chequeDetails != null) {
-                    Map<String, String> bankDetails = new HashMap<>();
-                    bankDetails.put("accountNumber", chequeDetails.getAccountNumber());
-                    bankDetails.put("bankName", chequeDetails.getBank());
-                    bankDetails.put("branchName", chequeDetails.getBranch());
-                    bankDetails.put("ifscCode", chequeDetails.getIfsc());
-                    bankDetails.put("chequeCode", chequeDetails.getCode());
-                    vendorData.put("bankDetails", bankDetails);
+                if (user.getCompany() != null) {
+                    vendorData.put("companyId", user.getCompany().getCompanyId());
                 }
 
-                // COI Details
-                CertificateOfIncorporation coi = company.getCertificateOfIncorporation();
-                if (coi != null) {
-                    Map<String, String> coiDetails = new HashMap<>();
-                    coiDetails.put("cinNumber", coi.getCinNumber());
-                    coiDetails.put("createdDate", coi.getCreatedDate() != null ? coi.getCreatedDate().toString() : null);
-                    vendorData.put("coiDetails", coiDetails);
-                }
-
-                // File names
-                Map<String, String> fileNames = new HashMap<>();
-                fileNames.put("gstFileName", company.getGstFileName());
-                fileNames.put("panFileName", company.getPanFileName());
-                fileNames.put("chequeFileName", company.getChequeFileName());
-                fileNames.put("coiFileName", company.getCoiFileName());
-                vendorData.put("fileNames", fileNames);
+                // Vendor Master details
+                vendorData.put("vendorId", vm.getVendorId());
+                vendorData.put("bpNo", vm.getBpNo());
+                vendorData.put("companyName", vm.getName()); // mapping name to companyName to keep API compatible
+                vendorData.put("name", vm.getName());
+                vendorData.put("gstNumber", vm.getGstNumber());
+                vendorData.put("cityName", vm.getCityName());
+                vendorData.put("streetAndHouseNumber", vm.getStreetAndHouseNumber());
+                vendorData.put("streetName1", vm.getStreetName1());
+                vendorData.put("postalCode", vm.getPostalCode());
+                vendorData.put("countryCode", vm.getCountryCode());
+                vendorData.put("bankAccountNumber", vm.getBankAccountNumber());
 
                 vendorList.add(vendorData);
             }
 
             response.addData("vendors", vendorList);
             return serviceControllerUtils.prepareMobileResponseSuccessStatus(
-                response,
-                AppConstants.SUCCESSCODE,
-                "Vendors retrieved successfully"
-            );
+                    response,
+                    AppConstants.SUCCESSCODE,
+                    "Vendors retrieved successfully");
 
         } catch (Exception e) {
             e.printStackTrace(); // Add stack trace for debugging
             return serviceControllerUtils.prepareMobileResponseErrorStatus(
-                response,
-                AppConstants.ERRORCODE,
-                "Failed to retrieve vendors: " + e.getMessage()
-            );
+                    response,
+                    AppConstants.ERRORCODE,
+                    "Failed to retrieve vendors: " + e.getMessage());
         }
     }
 
@@ -152,7 +143,8 @@ public class VendorService {
                     .orElseThrow(() -> new RuntimeException("Company details not found"));
 
             // Update company details
-            if (dto.getAuthKey() != null) company.setAuthKey(dto.getAuthKey());
+            if (dto.getAuthKey() != null)
+                company.setAuthKey(dto.getAuthKey());
 
             // Save updated company details
             company = companyDetailsRepository.save(company);
@@ -164,17 +156,15 @@ public class VendorService {
 
             response.addData("vendor", vendorData);
             return serviceControllerUtils.prepareMobileResponseSuccessStatus(
-                response,
-                AppConstants.SUCCESSCODE,
-                "Vendor details updated successfully"
-            );
+                    response,
+                    AppConstants.SUCCESSCODE,
+                    "Vendor details updated successfully");
 
         } catch (Exception e) {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(
-                response,
-                AppConstants.ERRORCODE,
-                "Failed to update vendor details: " + e.getMessage()
-            );
+                    response,
+                    AppConstants.ERRORCODE,
+                    "Failed to update vendor details: " + e.getMessage());
         }
     }
 
@@ -184,7 +174,8 @@ public class VendorService {
                 .orElseThrow(() -> new RuntimeException("Vendor authorization not found"));
 
         // Get all user authentications with vendor role
-        List<UserAuthentication> vendorAuthentications = userAuthenticationRepository.findByAuthKey(vendorAuth.getAuthKey());
+        List<UserAuthentication> vendorAuthentications = userAuthenticationRepository
+                .findByAuthKey(vendorAuth.getAuthKey());
 
         // Get all user IDs with vendor role
         List<Long> vendorUserIds = vendorAuthentications.stream()
@@ -194,4 +185,4 @@ public class VendorService {
         // Get all company details for these users
         return companyDetailsRepository.findByUserUserIdIn(vendorUserIds);
     }
-} 
+}

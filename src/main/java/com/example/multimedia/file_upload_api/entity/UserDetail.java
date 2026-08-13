@@ -1,5 +1,8 @@
 package com.example.multimedia.file_upload_api.entity;
 
+import com.example.multimedia.file_upload_api.entity.Department;
+import com.example.multimedia.file_upload_api.entity.Employee;
+import com.example.multimedia.file_upload_api.enums.UserType;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -33,6 +36,34 @@ public class UserDetail {
     private String phoneNumber;
     private String signupDate;
     private Boolean isActive = true;
+    private String designation;
+    private String onboardingStatus;
+    private String onboardingToken;
+    private LocalDateTime tokenExpiry;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "user_type")
+    private UserType userType;
+
+    @ManyToOne
+    @JoinColumn(name = "company_id")
+    private CompanyDetails company;
+
+    /**
+     * Links this login account to the corresponding employee record.
+     * Nullable — admins and vendors have no employee record.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "employee_code", referencedColumnName = "employee_code")
+    private Employee employee;
+
+    /**
+     * Which department this user (employee) belongs to.
+     * Nullable — not all user types have a department.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "dept_code", referencedColumnName = "dept_code")
+    private Department department;
 
     @CreationTimestamp
     @Column(name = "created_date", updatable = false)
@@ -135,4 +166,69 @@ public class UserDetail {
     public void setModifiedDate(LocalDateTime modifiedDate) {
         this.modifiedDate = modifiedDate;
     }
-} 
+
+    public UserType getUserType() {
+        return userType;
+    }
+
+    public void setUserType(UserType userType) {
+        this.userType = userType;
+    }
+
+    public CompanyDetails getCompany() {
+        return company;
+    }
+
+    public void setCompany(CompanyDetails company) {
+        this.company = company;
+    }
+
+    public Employee getEmployee() {
+        return employee;
+    }
+
+    public void setEmployee(Employee employee) {
+        this.employee = employee;
+    }
+
+    public Department getDepartment() {
+        return department;
+    }
+
+    public void setDepartment(Department department) {
+        this.department = department;
+    }
+
+    public String getDesignation() {
+        return designation;
+    }
+
+    public void setDesignation(String designation) {
+        this.designation = designation;
+    }
+
+    public String getOnboardingStatus() {
+        return onboardingStatus;
+    }
+
+    public void setOnboardingStatus(String onboardingStatus) {
+        this.onboardingStatus = onboardingStatus;
+    }
+
+    public String getOnboardingToken() {
+        return onboardingToken;
+    }
+
+    public void setOnboardingToken(String onboardingToken) {
+        this.onboardingToken = onboardingToken;
+    }
+
+    public LocalDateTime getTokenExpiry() {
+        return tokenExpiry;
+    }
+
+    public void setTokenExpiry(LocalDateTime tokenExpiry) {
+        this.tokenExpiry = tokenExpiry;
+    }
+}
+ 

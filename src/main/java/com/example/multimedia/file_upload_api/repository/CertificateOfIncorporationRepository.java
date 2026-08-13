@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface CertificateOfIncorporationRepository extends JpaRepository<CertificateOfIncorporation, Long> {
     CertificateOfIncorporation findByCinNumber(String cinNumber);
+    CertificateOfIncorporation findByCompanyCompanyId(Long companyId);
 } 

@@ -8,7 +8,7 @@ public class PurchaseRequisitionRequest {
     private Long locationId;
     private LocalDate requiredDate;
     private String remarks;
-    private PurchaseRequisitionStatus status = PurchaseRequisitionStatus.DRAFT;
+    private PurchaseRequisitionStatus status = PurchaseRequisitionStatus.CREATED;
     private List<PurchaseRequisitionItemRequest> items;
 
     public Long getLocationId() {

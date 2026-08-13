@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ChequeDetailsRepository extends JpaRepository<ChequeDetails, Long> {
     ChequeDetails findByAccountNumber(String accountNumber);
+    java.util.Optional<ChequeDetails> findByCompanyCompanyId(Long companyId);
 }

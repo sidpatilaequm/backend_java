@@ -1,6 +1,7 @@
 package com.example.multimedia.file_upload_api.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public class PurchaseRequisitionItemRequest {
     private Long materialId;
@@ -8,6 +9,25 @@ public class PurchaseRequisitionItemRequest {
     private BigDecimal quantity;
     private String uom;
     private BigDecimal estimatedPrice;
+    
+    private List<Long> vendorIds;
+    private List<String> vendorBpNos;
+
+    public List<Long> getVendorIds() {
+        return vendorIds;
+    }
+
+    public void setVendorIds(List<Long> vendorIds) {
+        this.vendorIds = vendorIds;
+    }
+
+    public List<String> getVendorBpNos() {
+        return vendorBpNos;
+    }
+
+    public void setVendorBpNos(List<String> vendorBpNos) {
+        this.vendorBpNos = vendorBpNos;
+    }
 
     public Long getMaterialId() {
         return materialId;

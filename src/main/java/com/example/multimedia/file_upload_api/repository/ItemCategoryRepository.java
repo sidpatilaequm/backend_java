@@ -13,4 +13,6 @@ public interface ItemCategoryRepository extends JpaRepository<ItemCategory, Long
     Optional<ItemCategory> findByCodeIgnoreCase(String code);
     List<ItemCategory> findByIsActive(Boolean isActive);
     boolean existsByCode(String code);
+    List<ItemCategory> findByCompany_CompanyId(Long companyId);
+    boolean existsByCategoryNameAndCompany_CompanyId(String categoryName, Long companyId);
 } 

@@ -1,6 +1,8 @@
 package com.example.multimedia.file_upload_api.service;
 
 import com.example.multimedia.file_upload_api.dto.UserRegistrationAndDataDTO;
+import com.example.multimedia.file_upload_api.dto.RoleUserRegistrationRequest;
+import com.example.multimedia.file_upload_api.enums.UserType;
 import com.example.multimedia.file_upload_api.dto.ServiceResponse;
 import com.example.multimedia.file_upload_api.entity.*;
 import com.example.multimedia.file_upload_api.repository.*;
@@ -18,6 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 
 @Service
 public class UserRegistrationAndDataService {
@@ -39,6 +42,12 @@ public class UserRegistrationAndDataService {
 
     @Autowired
     private CertificateOfIncorporationRepository certificateOfIncorporationRepository;
+
+    @Autowired
+    private MsmeDetailsRepository msmeDetailsRepository;
+
+    @Autowired
+    private ItrDetailsRepository itrDetailsRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -241,6 +250,16 @@ public class UserRegistrationAndDataService {
         // Set auth key
         companyDetails.setAuthKey(dto.getAuthKey());
         
+        // Set company code to avoid validation failure
+        String companyCode = dto.getGstinNumber();
+        if (companyCode == null || companyCode.trim().isEmpty()) {
+            companyCode = dto.getPanNumber();
+        }
+        if (companyCode == null || companyCode.trim().isEmpty()) {
+            companyCode = "COMP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        }
+        companyDetails.setCompanyCode(companyCode);
+        
         return companyDetails;
     }
 
@@ -270,4 +289,253 @@ public class UserRegistrationAndDataService {
         certificateOfIncorporation.setCinNumber(dto.getCinNumber());
         return certificateOfIncorporation;
     }
-} 
+
+    public ServiceResponse getCompleteVendorDetails(Long companyId, Long userId) {
+        ServiceResponse response = new ServiceResponse();
+        try {
+            CompanyDetails company = null;
+            
+            // Resolve company based on role and arguments
+            if (currentUserService.isCurrentUserSuperAdmin()) {
+                if (companyId != null) {
+                    company = companyDetailsRepository.findById(companyId)
+                            .orElseThrow(() -> new RuntimeException("Company not found with ID: " + companyId));
+                } else if (userId != null) {
+                    UserDetail user = userDetailRepository.findById(userId)
+                            .orElseThrow(() -> new RuntimeException("User not found with ID: " + userId));
+                    company = user.getCompany();
+                } else {
+                    return serviceControllerUtils.prepareMobileResponseErrorStatus(
+                            response, AppConstants.ERRORCODE, "companyId or userId parameter is required for admin role.");
+                }
+            } else {
+                // Try regular user context
+                UserDetail user = currentUserService.getCurrentUser();
+                
+                // If it's a vendor admin or super admin with normal user account
+                if (companyId != null && user.getUserType() != null && 
+                        ("ADMIN".equalsIgnoreCase(user.getUserType().name()) || "SUPER_ADMIN".equalsIgnoreCase(user.getUserType().name()))) {
+                    company = companyDetailsRepository.findById(companyId)
+                            .orElseThrow(() -> new RuntimeException("Company not found with ID: " + companyId));
+                } else {
+                    company = user.getCompany();
+                }
+            }
+            
+            if (company == null) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(
+                        response, AppConstants.ERRORCODE, "No company details found.");
+            }
+
+            Map<String, Object> completeDetails = new HashMap<>();
+            
+            // 1. Basic Company Details
+            Map<String, Object> compMap = new HashMap<>();
+            compMap.put("companyId", company.getCompanyId());
+            compMap.put("companyName", company.getCompanyName());
+            compMap.put("companyCode", company.getCompanyCode());
+            compMap.put("status", company.getStatus());
+            compMap.put("gstinNumber", company.getGstinNumber());
+            compMap.put("legalTradeName", company.getLegalTradeName());
+            compMap.put("registeredAddress", company.getRegisteredAddress());
+            compMap.put("panNumber", company.getPanNumber());
+            compMap.put("panTinCst", company.getPanTinCst());
+            compMap.put("dateOfRegistration", company.getDateOfRegistration());
+            compMap.put("typeOfRegistration", company.getTypeOfRegistration());
+            compMap.put("gstFileName", company.getGstFileName());
+            compMap.put("panFileName", company.getPanFileName());
+            compMap.put("chequeFileName", company.getChequeFileName());
+            compMap.put("coiFileName", company.getCoiFileName());
+            completeDetails.put("companyDetails", compMap);
+
+            // 2. GST Details
+            Map<String, Object> gstMap = new HashMap<>();
+            gstMap.put("gstinNumber", company.getGstinNumber());
+            gstMap.put("legalTradeName", company.getLegalTradeName());
+            gstMap.put("companyName", company.getCompanyName());
+            gstMap.put("typeOfRegistration", company.getTypeOfRegistration());
+            gstMap.put("dateOfRegistration", company.getDateOfRegistration());
+            gstMap.put("registeredAddress", company.getRegisteredAddress());
+            completeDetails.put("gst", gstMap);
+
+            // 3. PAN Details
+            PanDetails pan = company.getPanDetails();
+            if (pan != null) {
+                Map<String, Object> panMap = new HashMap<>();
+                panMap.put("panNumber", pan.getPanNumber());
+                panMap.put("name", pan.getName());
+                panMap.put("dateOfBirthIncorporation", pan.getDateOfBirthIncorporation());
+                panMap.put("category", pan.getCategory());
+                panMap.put("fathersName", pan.getFathersName());
+                completeDetails.put("pan", panMap);
+            } else {
+                completeDetails.put("pan", null);
+            }
+
+            // 4. Cheque Details
+            ChequeDetails cheque = company.getChequeDetails();
+            if (cheque != null) {
+                Map<String, Object> chqMap = new HashMap<>();
+                chqMap.put("accountNumber", cheque.getAccountNumber());
+                chqMap.put("ifscCode", cheque.getIfsc());
+                chqMap.put("bankName", cheque.getBank());
+                chqMap.put("branch", cheque.getBranch());
+                chqMap.put("signatory", cheque.getSignatory());
+                chqMap.put("issuedTo", cheque.getIssuedTo());
+                chqMap.put("issued", cheque.getIssued());
+                chqMap.put("code", cheque.getCode());
+                completeDetails.put("cheque", chqMap);
+            } else {
+                completeDetails.put("cheque", null);
+            }
+
+            // 5. COI Details
+            CertificateOfIncorporation coi = company.getCertificateOfIncorporation();
+            if (coi != null) {
+                Map<String, Object> coiMap = new HashMap<>();
+                coiMap.put("cinNumber", coi.getCinNumber());
+                coiMap.put("businessName", coi.getBusinessName());
+                coiMap.put("rocCode", coi.getRocCode());
+                coiMap.put("registrationNumber", coi.getRegistrationNumber());
+                coiMap.put("category", coi.getCategory());
+                coiMap.put("subCategory", coi.getSubCategory());
+                coiMap.put("companyClass", coi.getCompanyClass());
+                coiMap.put("authorizedCapital", coi.getAuthorizedCapital());
+                coiMap.put("paidCapital", coi.getPaidCapital());
+                coiMap.put("incorporatedDate", coi.getIncorporatedDate());
+                coiMap.put("email", coi.getEmail());
+                coiMap.put("listed", coi.getListed());
+                coiMap.put("lastAGMDate", coi.getLastAGMDate());
+                coiMap.put("lastBSDate", coi.getLastBSDate());
+                coiMap.put("active", coi.getActive());
+                coiMap.put("status", coi.getStatus());
+                coiMap.put("addressesJson", coi.getAddressesJson());
+                coiMap.put("directorsJson", coi.getDirectorsJson());
+                coiMap.put("chargesJson", coi.getChargesJson());
+                coiMap.put("efilingsJson", coi.getEfilingsJson());
+                completeDetails.put("coi", coiMap);
+            } else {
+                completeDetails.put("coi", null);
+            }
+
+            // 6. MSME Details
+            MsmeDetails msme = company.getMsmeDetails();
+            if (msme != null) {
+                Map<String, Object> msmeMap = new HashMap<>();
+                msmeMap.put("udyamNumber", msme.getUdyamNumber());
+                msmeMap.put("entityName", msme.getEntityName());
+                msmeMap.put("type", msme.getType());
+                msmeMap.put("majorActivity", msme.getMajorActivity());
+                msmeMap.put("gender", msme.getGender());
+                msmeMap.put("socialCategory", msme.getSocialCategory());
+                msmeMap.put("incorporatedDate", msme.getIncorporatedDate());
+                msmeMap.put("commencedDate", msme.getCommencedDate());
+                msmeMap.put("registeredDate", msme.getRegisteredDate());
+                completeDetails.put("msme", msmeMap);
+            } else {
+                completeDetails.put("msme", null);
+            }
+
+            // 7. ITR Details
+            ItrDetails itr = company.getItrDetails();
+            if (itr != null) {
+                Map<String, Object> itrMap = new HashMap<>();
+                itrMap.put("pan", itr.getPan());
+                itrMap.put("birthOrIncorporatedDate", itr.getBirthOrIncorporatedDate());
+                itrMap.put("name", itr.getName());
+                itrMap.put("fy", itr.getFy());
+                itrMap.put("itrFiled", itr.getItrFiled());
+                itrMap.put("itrType", itr.getItrType());
+                itrMap.put("grossTurnover", itr.getGrossTurnover());
+                itrMap.put("grossTurnoverFormatted", itr.getGrossTurnoverFormatted());
+                itrMap.put("exportTurnover", itr.getExportTurnover());
+                itrMap.put("exportTurnoverFormatted", itr.getExportTurnoverFormatted());
+                itrMap.put("panStatus", itr.getPanStatus());
+                completeDetails.put("itr", itrMap);
+            } else {
+                completeDetails.put("itr", null);
+            }
+
+            response.addData("vendorDetails", completeDetails);
+            return serviceControllerUtils.prepareMobileResponseSuccessStatus(
+                    response, AppConstants.SUCCESSCODE, "Vendor details retrieved successfully");
+        } catch (Exception e) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(
+                    response, AppConstants.ERRORCODE, "Failed to retrieve vendor details: " + e.getMessage());
+        }
+    }
+
+    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRED)
+    public ServiceResponse registerRoleUser(RoleUserRegistrationRequest dto) {
+        ServiceResponse response = new ServiceResponse();
+        try {
+            // Get current super admin from security context
+            SuperAdmin currentSuperAdmin = currentUserService.getCurrentSuperAdmin();
+
+            // Validate email
+            if (dto.getEmail() == null || dto.getEmail().trim().isEmpty()) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(
+                        response, AppConstants.ERRORCODE, "Email is required");
+            }
+
+            Optional<UserDetail> existingUser = userDetailRepository.findByEmail(dto.getEmail());
+            if (existingUser.isPresent()) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(
+                        response, AppConstants.ERRORCODE, "User already registered with this email");
+            }
+
+            // Get Authorization based on authKey
+            Authorization authorization = authorizationRepository.findByAuthKeyIgnoreCase(dto.getAuthKey())
+                    .orElseThrow(() -> new RuntimeException("Invalid authKey. Role not found: " + dto.getAuthKey()));
+
+            // Determine UserType
+            UserType userType;
+            try {
+                userType = UserType.valueOf(dto.getAuthKey().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(
+                        response, AppConstants.ERRORCODE, "Invalid role key: " + dto.getAuthKey());
+            }
+
+            // Create UserDetail
+            UserDetail userDetail = new UserDetail();
+            userDetail.setSuperAdmin(currentSuperAdmin);
+            userDetail.setEmail(dto.getEmail());
+            String rawPassword = com.example.multimedia.file_upload_api.utils.PasswordUtils.generateRandomPassword(dto.getName());
+            userDetail.setPassword(passwordEncoder.encode(rawPassword)); // Set generated password
+            userDetail.setFirstName(dto.getName());
+            userDetail.setLastName("");
+            userDetail.setPhoneNumber(dto.getPhoneNumber());
+            userDetail.setUserType(userType);
+            userDetail.setIsActive(true);
+
+            userDetail = userDetailRepository.save(userDetail);
+
+            // Create UserAuthentication
+            UserAuthentication userAuth = new UserAuthentication();
+            userAuth.setUserId(userDetail.getUserId());
+            userAuth.setAuthKey(String.valueOf(authorization.getAuthId()));
+            userAuth.setIsActive(true);
+            userAuthenticationRepository.save(userAuth);
+
+            // Prepare success response
+            Map<String, Object> userData = new HashMap<>();
+            userData.put("userId", userDetail.getUserId());
+            userData.put("email", userDetail.getEmail());
+            userData.put("password", rawPassword);
+            userData.put("firstName", userDetail.getFirstName());
+            userData.put("phoneNumber", userDetail.getPhoneNumber());
+            userData.put("role", userDetail.getUserType().name());
+            userData.put("superAdminId", currentSuperAdmin.getSuperAdminId());
+
+            response.addData("user", userData);
+            return serviceControllerUtils.prepareMobileResponseSuccessStatus(
+                    response, AppConstants.SUCCESSCODE, "User registered successfully under your admin account");
+
+        } catch (Exception e) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(
+                    response, AppConstants.ERRORCODE, "Registration failed: " + e.getMessage());
+        }
+    }
+}
+ 

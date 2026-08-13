@@ -10,8 +10,10 @@ import java.util.List;
 @Repository
 public interface MaterialImageRepository extends JpaRepository<MaterialImage, Long> {
     List<MaterialImage> findByMaterialOrderBySequenceOrderAsc(Material material);
-    
+
+    List<MaterialImage> findByMaterial_MaterialId(Long materialId);
+
     void deleteByMaterialAndImageId(Material material, Long imageId);
-    
+
     Integer countByMaterial(Material material);
-} 
+}

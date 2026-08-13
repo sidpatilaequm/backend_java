@@ -10,6 +10,9 @@ import java.util.Optional;
 @Repository
 public interface ChannelCategoryRepository extends JpaRepository<ChannelCategory, Long> {
     List<ChannelCategory> findByChannel_ChannelId(Long channelId);
+    List<ChannelCategory> findByChannel_ChannelIdAndParentCategoryIsNull(Long channelId);
+    List<ChannelCategory> findByParentCategory_CategoryId(Long parentId);
+    List<ChannelCategory> findByChannel_ChannelIdAndIsLeafTrue(Long channelId);
     List<ChannelCategory> findByChannel_ChannelIdAndIsActive(Long channelId, Boolean isActive);
     Optional<ChannelCategory> findByCategoryCodeAndChannel_ChannelId(String categoryCode, Long channelId);
     boolean existsByCategoryCodeAndChannel_ChannelId(String categoryCode, Long channelId);

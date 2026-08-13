@@ -1,0 +1,13 @@
+package com.example.multimedia.file_upload_api.repository;
+
+import com.example.multimedia.file_upload_api.entity.MasterPurchaseOrder;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface MasterPurchaseOrderRepository extends JpaRepository<MasterPurchaseOrder, Long> {
+    List<MasterPurchaseOrder> findByUserId(Long userId);
+    List<MasterPurchaseOrder> findByVendor(String vendor);
+}

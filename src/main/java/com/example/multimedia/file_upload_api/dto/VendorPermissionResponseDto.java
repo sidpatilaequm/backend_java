@@ -1,0 +1,18 @@
+package com.example.multimedia.file_upload_api.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+public class VendorPermissionResponseDto {
+    private Long vendorId;
+    private String vendorName;
+    private List<PermissionItemDto> permissions;
+}

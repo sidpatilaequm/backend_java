@@ -45,15 +45,6 @@ public class UserDetailService {
     @Autowired
     private ServiceControllerUtils serviceControllerUtils;
 
-    private String generateRandomPassword() {
-        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        StringBuilder password = new StringBuilder();
-        Random random = new Random();
-        for (int i = 0; i < 8; i++) {
-            password.append(chars.charAt(random.nextInt(chars.length())));
-        }
-        return password.toString();
-    }
 
     public Map<String, Object> registerUser(UserDetailDTO userDetailDTO) {
         // Validate SuperAdmin
@@ -70,6 +61,8 @@ public class UserDetailService {
             throw new RuntimeException("Email and phone number belong to different users.");
         }
 
+        String rawPassword = "********";
+
         // Case 2: Use existing user if found
         if (emailUser.isPresent()) {
             userDetail = emailUser.get();
@@ -80,9 +73,9 @@ public class UserDetailService {
             userDetail = new UserDetail();
             userDetail.setEmail(userDetailDTO.getEmail());
             
-            // Generate random password
-            String randomPassword = generateRandomPassword();
-            userDetail.setPassword(randomPassword); // Store without encryption
+            // Set random password with name included
+            rawPassword = com.example.multimedia.file_upload_api.utils.PasswordUtils.generateRandomPassword(userDetailDTO.getFirstName());
+            userDetail.setPassword(passwordEncoder.encode(rawPassword)); 
             
             userDetail.setSignupDate(LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME));
             userDetail.setIsActive(true);
@@ -115,7 +108,7 @@ public class UserDetailService {
         // Save new role mapping
         UserAuthentication userAuth = new UserAuthentication();
         userAuth.setUserId(userDetail.getUserId());
-        userAuth.setAuthKey(authorization.getAuthKey());
+        userAuth.setAuthKey(String.valueOf(authorization.getAuthId()));
         userAuth.setIsActive(true);
         userAuthenticationRepository.save(userAuth);
 
@@ -129,7 +122,7 @@ public class UserDetailService {
         response.put("isActive", userDetail.getIsActive());
         response.put("authId", authorization.getAuthId());
         response.put("superAdminId", superAdmin.getSuperAdminId());
-        response.put("password", userDetail.getPassword()); // Include the generated password in response
+        response.put("password", rawPassword); // Return the generated password so the user can see it
         response.put("message", "User registered successfully with role: " + authorization.getAuthName());
 
         return response;
@@ -154,7 +147,7 @@ public class UserDetailService {
         }
         
         if (userDetailDTO.getPassword() != null && !userDetailDTO.getPassword().isEmpty()) {
-            existingUser.setPassword(userDetailDTO.getPassword()); // Store without encryption
+            existingUser.setPassword(passwordEncoder.encode(userDetailDTO.getPassword()));
         }
 
         return userDetailRepository.save(existingUser);
@@ -175,7 +168,7 @@ public class UserDetailService {
         }
 
         UserDetail user = userOpt.get();
-        user.setPassword(dto.getNewPassword()); // Store without encryption
+        user.setPassword(passwordEncoder.encode(dto.getNewPassword()));
         userDetailRepository.save(user);
 
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(

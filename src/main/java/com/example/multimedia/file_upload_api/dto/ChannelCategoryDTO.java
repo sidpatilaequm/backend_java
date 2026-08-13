@@ -1,18 +1,21 @@
 package com.example.multimedia.file_upload_api.dto;
 
 import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
+import java.util.List;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 public class ChannelCategoryDTO {
-    
     private Long categoryId;
-    private String categoryName;
     private String categoryCode;
-    private String description;
+    private String categoryName;
+    private Long parentCategoryId;
+    private Integer levelNo;
+    private String fullPath;
+    private String externalCategoryId;
+    private Boolean isLeaf;
+    private Integer sortOrder;
     private Boolean isActive;
-    private Long productCount; // Number of products in this category for this channel
+    private String description;
+    private Long productCount;
+    private List<ChannelCategoryDTO> children;
 }

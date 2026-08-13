@@ -22,4 +22,8 @@ public interface ItemSubcategoryRepository extends JpaRepository<ItemSubcategory
     List<ItemSubcategory> findByCompany_CompanyIdAndItemCategory_ItemCategoryIdAndIsActive(Long companyId, Long itemCategoryId, Boolean isActive);
     Optional<ItemSubcategory> findByItemSubcategoryNameAndItemCategory_ItemCategoryIdAndCompany_CompanyId(String name, Long itemCategoryId, Long companyId);
     Optional<ItemSubcategory> findByItemSubcategoryNameIgnoreCaseAndItemCategory_ItemCategoryIdAndCompany_CompanyId(String name, Long itemCategoryId, Long companyId);
-} 
+    List<ItemSubcategory> findByItemCategory_ItemCategoryIdAndParentSubcategoryIsNull(Long categoryId);
+    List<ItemSubcategory> findByParentSubcategory_ItemSubcategoryId(Long parentId);
+    long countByItemCategory_ItemCategoryId(Long categoryId);
+}
+ 

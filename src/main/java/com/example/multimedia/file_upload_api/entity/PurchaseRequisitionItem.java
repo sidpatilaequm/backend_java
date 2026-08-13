@@ -2,6 +2,8 @@ package com.example.multimedia.file_upload_api.entity;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "purchase_requisition_items")
@@ -30,6 +32,28 @@ public class PurchaseRequisitionItem {
 
     @Column(precision = 15, scale = 2)
     private BigDecimal totalPrice;
+
+    @Column(nullable = false)
+    private String status = "CREATED";
+
+    @OneToMany(mappedBy = "purchaseRequisitionItem", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PurchaseRequisitionItemVendor> itemVendors = new ArrayList<>();
+
+    public List<PurchaseRequisitionItemVendor> getItemVendors() {
+        return itemVendors;
+    }
+
+    public void setItemVendors(List<PurchaseRequisitionItemVendor> itemVendors) {
+        this.itemVendors = itemVendors;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
 
     public Long getId() {
         return id;

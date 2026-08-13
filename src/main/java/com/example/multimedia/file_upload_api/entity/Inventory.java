@@ -11,13 +11,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "inventory", 
-       uniqueConstraints = {
-           @UniqueConstraint(
-               name = "uk_inventory_material_variant_location_admin",
-               columnNames = {"material_id", "variant_id", "location_id", "super_admin_id"}
-           )
-       })
+@Table(name = "inventory", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_inventory_material_variant_location_admin", columnNames = { "material_id",
+                "variant_id", "location_id", "super_admin_id" })
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -49,6 +46,12 @@ public class Inventory {
 
     @Column(name = "price", precision = 18, scale = 2, nullable = true)
     private BigDecimal price;
+
+    @Column(name = "available_qty")
+    private Double availableQty;
+
+    @Column(name = "reserved_qty")
+    private Double reservedQty;
 
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;

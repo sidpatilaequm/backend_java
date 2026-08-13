@@ -35,11 +35,13 @@ public class FileUploadController {
 
     @PostMapping("/{documentType}")
     public ResponseEntity<FileUpload> uploadFile(
-            @RequestParam("file") MultipartFile file,
             @PathVariable String documentType,
-            @RequestParam Long userId) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("userId") Long userId,
+            @RequestParam(value = "vendorName", required = false) String vendorName,
+            @RequestParam(value = "monthYear", required = false) String monthYear) {
         try {
-            FileUpload uploadedFile = fileUploadService.uploadFile(file, documentType, userId);
+            FileUpload uploadedFile = fileUploadService.uploadFile(file, documentType, userId, vendorName, monthYear);
             return ResponseEntity.ok(uploadedFile);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
