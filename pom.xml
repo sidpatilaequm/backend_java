@@ -23,9 +23,7 @@
 	</properties>
 
 	<dependencies>
-		<!-- Spring Boot Web Startec1_0.item_category_id,ic1_0.code,ic1_0.created_date,ic1_0.description,ic1_0.is_active,ic1_0.modified_date from item_category ic1_0 where ic1_0.item_category_id=?
-Hibernate: select ic1_0.item_category_id,ic1_0.code,ic1_0.created_date,ic1_0.description,ic1_0.is_active,ic1_0.modified_date from item_category ic1_0 where ic1_0.item_category_id=?
-r (For REST APIs) -->
+		<!-- Spring Boot Web Starter (For REST APIs) -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
