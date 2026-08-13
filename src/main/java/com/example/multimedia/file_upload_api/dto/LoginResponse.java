@@ -14,6 +14,7 @@ public class LoginResponse {
     private String authName;
     private Object permissions; // Hierarchical tree of permissions
     private Boolean isDocumentsPresent;
+    private String redirectUrl;
 
     public LoginResponse(String token, String email, Long userId, String firstname, String lastname, String phoneNumber) {
         this.token = token;

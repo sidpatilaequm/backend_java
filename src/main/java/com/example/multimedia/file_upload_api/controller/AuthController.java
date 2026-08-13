@@ -80,45 +80,81 @@ public class AuthController {
             String jwt = jwtUtil.generateToken(userDetails);
 
             UserDetail user = userDetailRepository.findByEmail(userDetails.getUsername())
-                    .orElseThrow(() -> new RuntimeException("User not found"));
+                    .orElse(null);
 
-            UserAuthentication userAuth = userAuthenticationRepository.findByUserId(user.getUserId())
-                    .orElseThrow(() -> new RuntimeException("User authentication not found"));
+            LoginResponse response;
 
-            LoginResponse response = new LoginResponse(
-                jwt,
-                user.getEmail(),
-                user.getUserId(),
-                user.getFirstName(),
-                user.getLastName(),
-                user.getPhoneNumber()
-            );
-            
-            // Get authorization details from repository using the ID stored in authKey column
-            int authId = Integer.parseInt(userAuth.getAuthKey());
-            Authorization auth = authorizationRepository.findById(authId)
-                    .orElseThrow(() -> new RuntimeException("Authorization not found for ID: " + authId));
-            
-            response.setAuthId(auth.getAuthId());
-            response.setAuthName(auth.getAuthName());
-            response.setIsDocumentsPresent(checkDocumentsPresent(user.getCompany(), user.getEmail()));
+            if (user != null) {
+                UserAuthentication userAuth = userAuthenticationRepository.findByUserId(user.getUserId())
+                        .orElseThrow(() -> new RuntimeException("User authentication not found"));
 
-            // Fetch permissions based on role type
-            if (user.getUserType() == UserType.VENDOR || user.getUserType() == UserType.SUPER_ADMIN || user.getUserType() == null) {
-                Long permissionLinkId = (user.getCompany() != null) ? user.getCompany().getCompanyId() : userAuth.getUserAuthenticationId();
-                try {
-                    VendorPermissionResponseDto permissions = vendorPermissionService.getPermissionsForLogin(permissionLinkId);
-                    response.setPermissions(permissions);
-                } catch (Exception e) {
-                    // If no company exists with that ID, permissions will remain null
+                response = new LoginResponse(
+                    jwt,
+                    user.getEmail(),
+                    user.getUserId(),
+                    user.getFirstName(),
+                    user.getLastName(),
+                    user.getPhoneNumber()
+                );
+                
+                int authId = Integer.parseInt(userAuth.getAuthKey());
+                Authorization auth = authorizationRepository.findById(authId)
+                        .orElseThrow(() -> new RuntimeException("Authorization not found for ID: " + authId));
+                
+                response.setAuthId(auth.getAuthId());
+                response.setAuthName(auth.getAuthName());
+                response.setIsDocumentsPresent(checkDocumentsPresent(user.getCompany(), user.getEmail()));
+
+                // Fetch permissions based on role type
+                if (user.getUserType() == UserType.VENDOR || user.getUserType() == UserType.SUPER_ADMIN || user.getUserType() == null) {
+                    Long permissionLinkId = (user.getCompany() != null) ? user.getCompany().getCompanyId() : userAuth.getUserAuthenticationId();
+                    try {
+                        VendorPermissionResponseDto permissions = vendorPermissionService.getPermissionsForLogin(permissionLinkId);
+                        response.setPermissions(permissions);
+                    } catch (Exception e) {
+                        // If no company exists with that ID, permissions will remain null
+                    }
+                } else {
+                    try {
+                        List<PermissionItemDto> permissions = rolePermissionService.getRolePermissionsTree(user.getUserType());
+                        response.setPermissions(permissions);
+                    } catch (Exception e) {
+                        // If errors occur, permissions will remain null
+                    }
                 }
             } else {
-                try {
-                    List<PermissionItemDto> permissions = rolePermissionService.getRolePermissionsTree(user.getUserType());
-                    response.setPermissions(permissions);
-                } catch (Exception e) {
-                    // If errors occur, permissions will remain null
+                // It must be a SuperAdmin from the super_admin table
+                response = new LoginResponse(
+                    jwt,
+                    userDetails.getUsername(),
+                    0L, // Default dummy ID for super admin
+                    "Super",
+                    "Admin",
+                    ""
+                );
+                response.setAuthId(1); // Standard Auth ID for admin
+                response.setAuthName("SUPER_ADMIN");
+                response.setIsDocumentsPresent(true);
+            }
+
+            if (loginRequest.getLoginType() != null) {
+                switch (loginRequest.getLoginType().toLowerCase()) {
+                    case "vendor":
+                        response.setRedirectUrl("/vendor/dashboard");
+                        break;
+                    case "employee":
+                        response.setRedirectUrl("/employee/dashboard");
+                        break;
+                    case "super-admin":
+                    case "standard":
+                        response.setRedirectUrl("/admin/dashboard");
+                        break;
+                    default:
+                        response.setRedirectUrl("/dashboard");
+                        break;
                 }
+            } else {
+                response.setRedirectUrl("/dashboard");
             }
 
             return ResponseEntity.ok(response);
