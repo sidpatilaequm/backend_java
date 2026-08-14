@@ -6,5 +6,9 @@ public enum UserType {
     ADMINISTRATOR,
     PROCUREMENT_MANAGER,
     EMPLOYEE,
-    PURCHASE_DEPT
+    PURCHASE_DEPT,
+    APPROVER,
+    submitter,
+    approver,
+    admin
 }

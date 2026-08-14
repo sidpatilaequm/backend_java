@@ -12,6 +12,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.example.multimedia.file_upload_api.dto.UserCreationRequestDTO;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -24,6 +26,39 @@ public class UserDetailController {
     @Autowired
     private ServiceControllerUtils scutils;
 
+
+    @GetMapping("/list")
+    public ResponseEntity<ServiceResponse> listUsers() {
+        ServiceResponse response = new ServiceResponse();
+        try {
+            List<Map<String, Object>> users = userDetailService.getUsersForCurrentAdmin();
+            response = scutils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Users fetched successfully.");
+            response.addData("users", users);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            java.io.StringWriter sw = new java.io.StringWriter();
+            e.printStackTrace(new java.io.PrintWriter(sw));
+            response = scutils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Error: " + e.getMessage() + "\n" + sw.toString());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+    @PostMapping("/create")
+    public ResponseEntity<ServiceResponse> createEmployeeUser(@RequestBody UserCreationRequestDTO dto) {
+        ServiceResponse response = new ServiceResponse();
+        try {
+            Map<String, Object> result = userDetailService.createEmployeeUser(dto);
+            response = scutils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "User created successfully.");
+            response.addData("user", result);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response = scutils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Creation failed: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
     @PostMapping("/register")
     public ResponseEntity<ServiceResponse> registerUser(@RequestBody UserDetailDTO userDetailDTO) {
         ServiceResponse response = new ServiceResponse();
@@ -34,10 +69,11 @@ public class UserDetailController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             response = scutils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration failed: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.status(500).body(response);
         }
     }
-    @GetMapping("/{userId}")
+    @GetMapping("/{userId:\\d+}")
     public ResponseEntity<ServiceResponse> getUserById(@PathVariable Long userId) {
         ServiceResponse response = new ServiceResponse();
         try {
@@ -51,7 +87,7 @@ public class UserDetailController {
         }
     }
 
-    @PutMapping("/{userId}")
+    @PutMapping("/{userId:\\d+}")
     public ResponseEntity<ServiceResponse> updateUser(@PathVariable Long userId, @RequestBody UserDetailDTO userDetailDTO) {
         ServiceResponse response = new ServiceResponse();
         try {
@@ -65,7 +101,7 @@ public class UserDetailController {
         }
     }
 
-    @DeleteMapping("/{userId}")
+    @DeleteMapping("/{userId:\\d+}")
     public ResponseEntity<ServiceResponse> deactivateUser(@PathVariable Long userId) {
         ServiceResponse response = new ServiceResponse();
         try {
