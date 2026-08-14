@@ -150,7 +150,11 @@ public class FolderItService {
         }
     }
 
-    public void uploadFileToFolderIt(MultipartFile file, String documentType, String vendorName, String monthYear) throws IOException {
+    /**
+     * @return the uploaded file's FolderIt UID (from the "complete" action's response),
+     *         so callers can persist a reference and resolve a download link later.
+     */
+    public String uploadFileToFolderIt(MultipartFile file, String documentType, String vendorName, String monthYear) throws IOException {
         String token = getAccessToken();
         String folderUid = determineFolderUid(documentType);
         
@@ -270,10 +274,17 @@ public class FolderItService {
                 .build();
                 
         try (Response response = httpClient.newCall(completeReq).execute()) {
+            String resStr = response.body().string();
             if (!response.isSuccessful()) {
-                throw new IOException("Complete action failed: " + response.body().string());
+                throw new IOException("Complete action failed: " + resStr);
             }
             logger.info("File uploaded successfully to FolderIt: {}", file.getOriginalFilename());
+            JSONObject resJson = new JSONObject(resStr);
+            if (resJson.has("uid")) return resJson.getString("uid");
+            if (resJson.has("fileUid")) return resJson.getString("fileUid");
+            if (resJson.has("id")) return resJson.getString("id");
+            if (resJson.has("recordUid")) return resJson.getString("recordUid");
+            return key; // fall back to the upload key if no explicit id field comes back
         }
     }
 }
