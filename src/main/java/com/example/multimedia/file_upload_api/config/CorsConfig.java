@@ -12,7 +12,8 @@ public class CorsConfig implements WebMvcConfigurer {
         registry.addMapping("/**")
                 .allowedOrigins("http://13.201.75.122:5173", "http://localhost:5173", "http://localhost:3000",
                         "http://ec2-13-232-238-193.ap-south-1.compute.amazonaws.com:5173", "http://13.232.238.193:5173",
-                        "http://ec2-13-232-238-193.ap-south-1.compute.amazonaws.com", "http://13.232.238.193")
+                        "http://ec2-13-232-238-193.ap-south-1.compute.amazonaws.com", "http://13.232.238.193",
+                        "https://nexdsupportal.in", "http://nexdsupportal.in")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
                 .allowedHeaders("*")
                 .allowCredentials(true);
