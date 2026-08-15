@@ -7,9 +7,19 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+
 @Slf4j
 @ControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<UploadResponse> handleNoResourceFoundException(NoResourceFoundException ex) {
+        log.warn("Resource not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(UploadResponse.builder()
+                .status("FAILED: Resource not found")
+                .build());
+    }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<UploadResponse> handleIllegalArgumentException(IllegalArgumentException ex) {

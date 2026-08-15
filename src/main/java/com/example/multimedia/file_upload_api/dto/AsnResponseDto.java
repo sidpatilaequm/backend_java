@@ -12,15 +12,15 @@ public class AsnResponseDto {
     private String poNumber;
     private String vendorBpno;
     private String invoiceNumber;
-    private String irn;
+    private LocalDate invoiceDate;
     private String ewayBill;
     private LocalDate ewbValidTo;
     private String vehicleNumber;
     private String transporterCode;
-    private String lrNumber;
     private LocalDate dispatchDate;
     private LocalDate expectedDelivery;
     private String packaging;
+    private Integer noOfPackages;
     private String status;
     private String taxInvoiceUrl;
     private String ewayBillUrl;

@@ -168,6 +168,18 @@ public class VendorService {
         }
     }
 
+    public java.util.Map<String, Object> getVendorById(Long id) {
+        VendorMaster vm = vendorMasterRepository.findById(id).orElse(null);
+        if (vm == null) return null;
+        java.util.Map<String, Object> data = new java.util.HashMap<>();
+        data.put("vendorId", vm.getVendorId());
+        data.put("bp_no", vm.getBpNo());
+        data.put("bpNo", vm.getBpNo());
+        data.put("name", vm.getName());
+        data.put("companyName", vm.getName());
+        return data;
+    }
+
     public List<CompanyDetails> getVendors(Long userId) {
         // Get the vendor authorization
         Authorization vendorAuth = authorizationRepository.findByAuthKey("vendor")

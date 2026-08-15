@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/vendors")
-@CrossOrigin(origins = "*")
 public class VendorController {
 
     @Autowired
@@ -19,6 +18,11 @@ public class VendorController {
     public ResponseEntity<ServiceResponse> getAllVendors() {
         ServiceResponse response = vendorService.getAllVendors();
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{userId}")
+    public ResponseEntity<?> getVendorById(@PathVariable Long userId) {
+        return ResponseEntity.ok(vendorService.getVendorById(userId));
     }
 
     @PutMapping("/{userId}")

@@ -120,15 +120,16 @@ public class AsnServiceImpl implements AsnService {
         asn.setPurchaseOrder(po);
         asn.setVendorBpno(vendor.getCompanyCode());
         asn.setInvoiceNumber(asnRequestDto.getShipmentDetails().getInvoiceNumber());
-        asn.setIrn(asnRequestDto.getShipmentDetails().getIrn());
+        asn.setInvoiceDate(asnRequestDto.getShipmentDetails().getInvoiceDate());
         asn.setEwayBill(asnRequestDto.getShipmentDetails().getEwayBill());
         asn.setEwbValidTo(asnRequestDto.getShipmentDetails().getEwbValidTo());
         asn.setVehicleNumber(asnRequestDto.getShipmentDetails().getVehicleNumber());
         asn.setTransporterCode(asnRequestDto.getShipmentDetails().getTransporterCode());
-        asn.setLrNumber(asnRequestDto.getShipmentDetails().getLrNumber());
+
         asn.setDispatchDate(asnRequestDto.getShipmentDetails().getDispatchDate());
         asn.setExpectedDelivery(asnRequestDto.getShipmentDetails().getExpectedDelivery());
         asn.setPackaging(asnRequestDto.getShipmentDetails().getPackaging());
+        asn.setNoOfPackages(asnRequestDto.getShipmentDetails().getNoOfPackages());
 
         if (needsApproval) {
             asn.setStatus("BUYER_APPROVAL_PENDING");
@@ -244,6 +245,27 @@ public class AsnServiceImpl implements AsnService {
         return response;
     }
 
+    @Override
+    public ServiceResponse getAsnById(String asnNumber) {
+        ServiceResponse response = new ServiceResponse();
+        try {
+            Long id = Long.parseLong(asnNumber.replace("ASN-", ""));
+            Asn asn = asnRepository.findById(id).orElse(null);
+            if (asn != null) {
+                response.addData("asn", mapToDto(asn));
+                response.setStatus("SUCCESS");
+                response.setStatusMsg("Fetched ASN successfully");
+            } else {
+                response.setStatus("ERROR");
+                response.setStatusMsg("ASN not found");
+            }
+        } catch (Exception e) {
+            response.setStatus("ERROR");
+            response.setStatusMsg("Invalid ASN ID format");
+        }
+        return response;
+    }
+
     private com.example.multimedia.file_upload_api.dto.AsnResponseDto mapToDto(Asn asn) {
         com.example.multimedia.file_upload_api.dto.AsnResponseDto dto = new com.example.multimedia.file_upload_api.dto.AsnResponseDto();
         dto.setId(asn.getId());
@@ -254,15 +276,16 @@ public class AsnServiceImpl implements AsnService {
             dto.setVendorBpno(asn.getVendorBpno());
         }
         dto.setInvoiceNumber(asn.getInvoiceNumber());
-        dto.setIrn(asn.getIrn());
+        dto.setInvoiceDate(asn.getInvoiceDate());
         dto.setEwayBill(asn.getEwayBill());
         dto.setEwbValidTo(asn.getEwbValidTo());
         dto.setVehicleNumber(asn.getVehicleNumber());
         dto.setTransporterCode(asn.getTransporterCode());
-        dto.setLrNumber(asn.getLrNumber());
+
         dto.setDispatchDate(asn.getDispatchDate());
         dto.setExpectedDelivery(asn.getExpectedDelivery());
         dto.setPackaging(asn.getPackaging());
+        dto.setNoOfPackages(asn.getNoOfPackages());
         dto.setStatus(asn.getStatus());
         dto.setTaxInvoiceUrl(asn.getTaxInvoiceUrl());
         dto.setEwayBillUrl(asn.getEwayBillUrl());
@@ -359,6 +382,18 @@ public class AsnServiceImpl implements AsnService {
         if (asn.getPackingListUrl() != null) {
             com.example.multimedia.file_upload_api.dto.AsnHistoryResponseDto.DocumentDto doc = new com.example.multimedia.file_upload_api.dto.AsnHistoryResponseDto.DocumentDto();
             doc.setName("Packing List"); doc.setUrl(asn.getPackingListUrl()); docs.add(doc);
+        }
+        if (asn.getPdirUrl() != null) {
+            com.example.multimedia.file_upload_api.dto.AsnHistoryResponseDto.DocumentDto doc = new com.example.multimedia.file_upload_api.dto.AsnHistoryResponseDto.DocumentDto();
+            doc.setName("PDIR"); doc.setUrl(asn.getPdirUrl()); docs.add(doc);
+        }
+        if (asn.getDeviationUrl() != null) {
+            com.example.multimedia.file_upload_api.dto.AsnHistoryResponseDto.DocumentDto doc = new com.example.multimedia.file_upload_api.dto.AsnHistoryResponseDto.DocumentDto();
+            doc.setName("Deviation"); doc.setUrl(asn.getDeviationUrl()); docs.add(doc);
+        }
+        if (asn.getOthersUrl() != null) {
+            com.example.multimedia.file_upload_api.dto.AsnHistoryResponseDto.DocumentDto doc = new com.example.multimedia.file_upload_api.dto.AsnHistoryResponseDto.DocumentDto();
+            doc.setName("Others"); doc.setUrl(asn.getOthersUrl()); docs.add(doc);
         }
         dto.setDocuments(docs);
         

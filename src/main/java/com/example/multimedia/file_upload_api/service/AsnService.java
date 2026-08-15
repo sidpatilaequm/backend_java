@@ -16,4 +16,6 @@ public interface AsnService {
     ServiceResponse getAllAsns();
 
     ServiceResponse getAsnsByPoNumber(String poNumber);
+
+    ServiceResponse getAsnById(String asnNumber);
 }

@@ -11,8 +11,8 @@ public class ShipmentDetailsDto {
     @JsonProperty("invoice_number")
     private String invoiceNumber;
 
-    @JsonProperty("irn")
-    private String irn;
+    @JsonProperty("invoice_date")
+    private LocalDate invoiceDate;
 
     @JsonProperty("eway_bill")
     private String ewayBill;
@@ -26,8 +26,6 @@ public class ShipmentDetailsDto {
     @JsonProperty("transporter_code")
     private String transporterCode;
 
-    @JsonProperty("lr_number")
-    private String lrNumber;
 
     @JsonProperty("dispatch_date")
     private LocalDate dispatchDate;
@@ -37,4 +35,7 @@ public class ShipmentDetailsDto {
 
     @JsonProperty("packaging")
     private String packaging;
+
+    @JsonProperty("no_of_packages")
+    private Integer noOfPackages;
 }

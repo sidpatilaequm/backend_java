@@ -29,8 +29,8 @@ public class Asn {
     @Column(name = "invoice_number")
     private String invoiceNumber;
 
-    @Column(name = "irn")
-    private String irn;
+    @Column(name = "invoice_date")
+    private LocalDate invoiceDate;
 
     @Column(name = "eway_bill")
     private String ewayBill;
@@ -44,8 +44,6 @@ public class Asn {
     @Column(name = "transporter_code")
     private String transporterCode;
 
-    @Column(name = "lr_number")
-    private String lrNumber;
 
     @Column(name = "dispatch_date")
     private LocalDate dispatchDate;
@@ -55,6 +53,9 @@ public class Asn {
 
     @Column(name = "packaging")
     private String packaging;
+
+    @Column(name = "no_of_packages")
+    private Integer noOfPackages;
 
     @Column(name = "status")
     private String status = "IN_TRANSIT";

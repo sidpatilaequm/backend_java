@@ -7,7 +7,6 @@ import jakarta.persistence.*;
 public class Activity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long activityId;
 
     @Column(name = "activity_code", length = 50, unique = true)

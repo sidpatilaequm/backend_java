@@ -26,6 +26,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .cors(org.springframework.security.config.Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/users/register", "/api/users/login", "/api/users/generate-hash/**", "/employee/login", "/api/employee/login").permitAll()
@@ -44,9 +45,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/vendor-master/upload", "/api/vendor-master/all").permitAll()
                         .requestMatchers("/api/material-master/upload").permitAll()
                         .requestMatchers("/api/master-purchase-orders/upload").permitAll()
-                        .requestMatchers("/api/vendor/asns/**").permitAll()
-                        .requestMatchers("/api/vendor/purchase-orders/**").permitAll()
-                        .requestMatchers("/api/vendor/gate-entry/**").permitAll()
+                        .requestMatchers("/api/vendor/**").permitAll()
+                        .requestMatchers("/api/vendors/**").permitAll()
                         .requestMatchers("/api/employee/gate-entry/**").permitAll()
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session

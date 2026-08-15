@@ -84,4 +84,21 @@ public class AsnController {
             return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
+
+    @GetMapping("/{asnNumber}")
+    public ResponseEntity<ServiceResponse> getAsnById(@PathVariable String asnNumber) {
+        try {
+            ServiceResponse serviceResponse = asnService.getAsnById(asnNumber);
+            if ("SUCCESS".equalsIgnoreCase(serviceResponse.getStatus()) || "200".equals(serviceResponse.getStatus())) {
+                return ResponseEntity.ok(serviceResponse);
+            } else {
+                return ResponseEntity.status(404).body(serviceResponse);
+            }
+        } catch (Exception e) {
+            ServiceResponse errorResponse = new ServiceResponse();
+            errorResponse.setStatus("ERROR");
+            errorResponse.setStatusMsg("Error fetching ASN details: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(errorResponse);
+        }
+    }
 }
