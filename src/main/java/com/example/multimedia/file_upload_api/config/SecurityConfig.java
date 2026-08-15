@@ -34,6 +34,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/business-card/**").permitAll()
                         .requestMatchers("/api/ocr/**").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
+                        // WorkFlow's outbound webhook — authenticated by its own HMAC signature
+                        // check (SupplierRegistrationController), not JWT.
+                        .requestMatchers("/api/webhooks/**").permitAll()
                         // Department list — public so Create Employee form can load the dropdown without auth
                         .requestMatchers("/api/departments/**").permitAll()
                         .requestMatchers("/api/company-addresses/**").authenticated()

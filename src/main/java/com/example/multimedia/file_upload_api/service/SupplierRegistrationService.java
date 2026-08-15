@@ -311,7 +311,7 @@ public class SupplierRegistrationService {
                     .put("workflow_id", vendorApprovalWorkflowId)
                     .put("request_metadata", metadata);
 
-            String url = UriComponentsBuilder.fromHttpUrl(workflowBaseUrl + "/api/workflows/requests/")
+            String url = UriComponentsBuilder.fromHttpUrl(workflowBaseUrl + "/api/requests/")
                     .queryParam("user_id", intakeUser.getUserId())
                     .toUriString();
             HttpHeaders headers = new HttpHeaders();
@@ -351,6 +351,10 @@ public class SupplierRegistrationService {
         }
 
         if ("request.approved".equals(event)) {
+            if (reg.getUserId() != null) {
+                logger.info("Registration {} already provisioned (userId={}) — ignoring duplicate approval webhook", reg.getId(), reg.getUserId());
+                return;
+            }
             provisionVendorAccount(reg);
         } else if ("request.rejected".equals(event)) {
             reg.setStatus("REJECTED");

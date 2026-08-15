@@ -69,6 +69,9 @@ public class AuthController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.repository.SuperAdminRepository superAdminRepository;
+
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
         try {
@@ -123,11 +126,16 @@ public class AuthController {
                     }
                 }
             } else {
-                // It must be a SuperAdmin from the super_admin table
+                // It must be a SuperAdmin from the super_admin table. Downstream
+                // callers (e.g. vendor_portal's Workflow tab) send this userId
+                // straight through to WorkFlow, which only recognizes
+                // user_details.user_id — so resolve a real shadow user_details
+                // row for this admin instead of a dummy ID that matches nothing.
+                Long shadowUserId = resolveSuperAdminShadowUserId(userDetails.getUsername());
                 response = new LoginResponse(
                     jwt,
                     userDetails.getUsername(),
-                    0L, // Default dummy ID for super admin
+                    shadowUserId,
                     "Super",
                     "Admin",
                     ""
@@ -168,6 +176,36 @@ public class AuthController {
     @GetMapping("/generate-hash/{password}")
     public String generateHash(@PathVariable String password) {
         return new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(password);
+    }
+
+    /**
+     * Super admins live only in the super_admin table, but every cross-system
+     * caller that needs a "real" user id (e.g. WorkFlow, which only recognizes
+     * user_details.user_id) can't resolve one for them. Finds or creates an
+     * idempotent shadow user_details row per super admin, keyed by a
+     * deterministic internal email so it never collides with — or gets
+     * mistaken for — the admin's real login row. No UserAuthentication row is
+     * created for it, so it can never itself be used to log in (same pattern
+     * as the supplier-intake service account).
+     */
+    private Long resolveSuperAdminShadowUserId(String superAdminEmail) {
+        SuperAdmin superAdmin = superAdminRepository.findByEmail(superAdminEmail)
+                .orElseThrow(() -> new RuntimeException("Super admin not found: " + superAdminEmail));
+
+        String shadowEmail = "superadmin-" + superAdmin.getSuperAdminId() + "@internal";
+        return userDetailRepository.findByEmail(shadowEmail)
+                .map(UserDetail::getUserId)
+                .orElseGet(() -> {
+                    UserDetail shadow = new UserDetail();
+                    shadow.setSuperAdmin(superAdmin);
+                    shadow.setEmail(shadowEmail);
+                    shadow.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+                    shadow.setFirstName(superAdmin.getFirstName());
+                    shadow.setLastName(superAdmin.getLastName());
+                    shadow.setUserType(UserType.SUPER_ADMIN);
+                    shadow.setIsActive(true);
+                    return userDetailRepository.save(shadow).getUserId();
+                });
     }
 
     private boolean checkDocumentsPresent(CompanyDetails company, String email) {

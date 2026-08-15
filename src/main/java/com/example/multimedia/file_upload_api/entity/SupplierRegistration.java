@@ -27,7 +27,8 @@ public class SupplierRegistration {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank
+    // Deliberately no @NotBlank — a fresh draft has no vendorName yet, filled in
+    // progressively via saveDraft(). Required-ness is enforced at submit() time instead.
     @Column(name = "vendor_name")
     private String vendorName;
 
