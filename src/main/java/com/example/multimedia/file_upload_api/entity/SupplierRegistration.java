@@ -27,13 +27,21 @@ public class SupplierRegistration {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Deliberately no @NotBlank — a fresh draft has no vendorName yet, filled in
-    // progressively via saveDraft(). Required-ness is enforced at submit() time instead.
+    // Deliberately no @NotBlank — a fresh draft has no vendorName yet. Derived
+    // automatically from the cancelled cheque's account-holder name at submit
+    // time (see SupplierRegistrationService), matching the original Next.js
+    // prototype's design — there is no separate "company name" field the
+    // applicant types; the legal name comes off a verified document instead.
     @Column(name = "vendor_name")
     private String vendorName;
 
     private String address;
 
+    // ── Resolved primary contact — always mirrors whichever of contact 1 /
+    // contact 2 below is marked primary. Every other part of the system
+    // (unique email constraint, resume-code email, WorkFlow submission,
+    // post-approval login) reads these four, not the contact1_*/contact2_*
+    // columns directly.
     @Column(name = "contact_name")
     private String contactName;
 
@@ -45,6 +53,51 @@ public class SupplierRegistration {
     private String email;
 
     private String phone;
+
+    // ── Contact 1 (the original prototype allows up to two contacts) ──────
+    @Column(name = "contact1_name")
+    private String contact1Name;
+
+    @Column(name = "contact1_role")
+    private String contact1Role;
+
+    @Column(name = "contact1_email")
+    private String contact1Email;
+
+    @Column(name = "contact1_phone")
+    private String contact1Phone;
+
+    // ── Contact 2 (optional) ───────────────────────────────────────────────
+    @Column(name = "contact2_name")
+    private String contact2Name;
+
+    @Column(name = "contact2_role")
+    private String contact2Role;
+
+    @Column(name = "contact2_email")
+    private String contact2Email;
+
+    @Column(name = "contact2_phone")
+    private String contact2Phone;
+
+    /** 1 or 2 — which of the above is the primary contact. */
+    @Column(name = "primary_contact")
+    private Integer primaryContact = 1;
+
+    /** Comma-separated list of SUPPLY_CATEGORIES the applicant selected. */
+    @Column(name = "supply_categories", columnDefinition = "TEXT")
+    private String supplyCategories;
+
+    /** One of PLANTS. */
+    private String plant;
+
+    /** One of PAYMENT_TERMS. */
+    @Column(name = "payment_terms")
+    private String paymentTerms;
+
+    /** Code-of-conduct / GCP / no-child-labour declaration checkbox. */
+    @Column(name = "declaration_accepted")
+    private Boolean declarationAccepted = false;
 
     /** DRAFT / REGISTRATION_SUBMITTED / UNDER_VERIFICATION / ACTIVE / REJECTED */
     @Column(nullable = false)

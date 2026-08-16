@@ -59,6 +59,19 @@ public class MicrovistaService {
         return "";
     }
 
+    /**
+     * Microvista sometimes reports isSuccess=true with a null "data" body — e.g. a
+     * syntactically valid but non-existent PAN — rather than isSuccess=false. Returns null
+     * instead of throwing so callers can report a clean "no record found" instead of a raw
+     * JSONException.
+     */
+    private static JSONObject optObj(JSONObject obj, String... keys) {
+        for (String k : keys) {
+            if (obj.has(k) && !obj.isNull(k)) return obj.optJSONObject(k);
+        }
+        return null;
+    }
+
     private static boolean optBool(JSONObject obj, String... keys) {
         for (String k : keys) {
             if (obj.has(k) && !obj.isNull(k)) return obj.optBoolean(k, false);
@@ -123,7 +136,8 @@ public class MicrovistaService {
             if (!optBool(res, "isSuccess", "IsSuccess")) {
                 return VerifyResult.failed(join(opt(res, "message", "Message"), "Could not verify PAN."));
             }
-            JSONObject data = res.getJSONObject("data");
+            JSONObject data = optObj(res, "data", "Data");
+            if (data == null) return VerifyResult.failed("No record found for this PAN.");
             return new VerifyResult(true, join(opt(data, "paN_STATUS"), opt(data, "user_Full_Name")), new ArrayList<>());
         } catch (Exception e) {
             logger.error("PAN verification failed", e);
@@ -186,7 +200,9 @@ public class MicrovistaService {
             if (!optBool(res, "isSuccess", "IsSuccess")) {
                 return VerifyResult.failed(join(opt(res, "message", "Message"), "Could not verify GSTIN."));
             }
-            JSONObject tp = res.getJSONObject("data").getJSONObject("appSCommonSearchTPResponse");
+            JSONObject data = optObj(res, "data", "Data");
+            JSONObject tp = data != null ? optObj(data, "appSCommonSearchTPResponse") : null;
+            if (tp == null) return VerifyResult.failed("No record found for this GSTIN.");
             List<VerifyDetail> details = new ArrayList<>(List.of(
                     new VerifyDetail("Legal name", opt(tp, "lgnm")),
                     new VerifyDetail("Trade name", opt(tp, "tradeNam")),
@@ -211,8 +227,9 @@ public class MicrovistaService {
             if (!optBool(res, "IsSuccess", "isSuccess")) {
                 return VerifyResult.failed(join(opt(res, "Message", "message"), "Could not verify CIN."));
             }
-            JSONObject data = res.getJSONObject("Data");
-            JSONObject c = data.getJSONObject("companyData");
+            JSONObject data = optObj(res, "Data", "data");
+            JSONObject c = data != null ? optObj(data, "companyData") : null;
+            if (c == null) return VerifyResult.failed("No record found for this CIN.");
             List<VerifyDetail> details = new ArrayList<>(List.of(
                     new VerifyDetail("Company name", opt(c, "company")),
                     new VerifyDetail("Date of incorporation", opt(c, "dateOfIncorporation"))
@@ -241,7 +258,10 @@ public class MicrovistaService {
             if (!optBool(res, "isSuccess", "IsSuccess")) {
                 return VerifyResult.failed(join(opt(res, "message", "Message"), "Could not verify Udyam registration."));
             }
-            JSONObject reg = res.getJSONObject("data").getJSONObject("msmeResponse").getJSONObject("reg_details");
+            JSONObject data = optObj(res, "data", "Data");
+            JSONObject msme = data != null ? optObj(data, "msmeResponse") : null;
+            JSONObject reg = msme != null ? optObj(msme, "reg_details") : null;
+            if (reg == null) return VerifyResult.failed("No record found for this Udyam registration number.");
             String enterpriseType = opt(reg, "typeOfEnterprise");
             return new VerifyResult(true,
                     join(opt(reg, "nameOfEnterprise"), enterpriseType.isBlank() ? "" : enterpriseType + " enterprise"),
@@ -262,7 +282,8 @@ public class MicrovistaService {
             if (!optBool(res, "isSuccess", "IsSuccess")) {
                 return VerifyResult.failed(join(opt(res, "message", "Message"), "Could not verify bank account."));
             }
-            JSONObject data = res.getJSONObject("data");
+            JSONObject data = optObj(res, "data", "Data");
+            if (data == null) return VerifyResult.failed("No record found for this bank account.");
             boolean verified = "ACCOUNT_VALID".equals(opt(data, "result_status"));
             return new VerifyResult(verified, join(opt(data, "result_status"), opt(data, "result_name")), new ArrayList<>());
         } catch (Exception e) {

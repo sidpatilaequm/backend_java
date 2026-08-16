@@ -10,10 +10,24 @@ public class SupplierDraftDTO {
 
     private String vendorName;
     private String address;
-    private String contactName;
-    private String designation;
-    private String email;
-    private String phone;
+
+    private String contact1Name;
+    private String contact1Role;
+    private String contact1Email;
+    private String contact1Phone;
+
+    private String contact2Name;
+    private String contact2Role;
+    private String contact2Email;
+    private String contact2Phone;
+
+    private Integer primaryContact;
+
+    /** Comma-separated on the wire, same as how it's stored. */
+    private String supplyCategories;
+    private String plant;
+    private String paymentTerms;
+    private Boolean declarationAccepted;
 
     private String gstNumber;
     private String panNumber;
