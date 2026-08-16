@@ -582,6 +582,7 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
         List<PurchaseRequisitionItemVendor> assignments = vendorRepository.findByVendorIdWithDetails(vendorId);
         return assignments.stream().map(a -> {
             VendorPurchaseRequisitionItemResponse res = new VendorPurchaseRequisitionItemResponse();
+            res.setId(a.getPurchaseRequisitionItem().getPurchaseRequisition().getId());
             res.setAssignmentId(a.getId());
             res.setPrNumber(a.getPurchaseRequisitionItem().getPurchaseRequisition().getPrNumber());
             res.setRequiredDate(a.getPurchaseRequisitionItem().getPurchaseRequisition().getRequiredDate());

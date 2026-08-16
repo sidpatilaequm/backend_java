@@ -5,9 +5,18 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 
 public class VendorPurchaseRequisitionItemResponse {
+    private Long id;
     private Long assignmentId;
     private String prNumber;
     private LocalDate requiredDate;
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
     private String materialSku;
     private BigDecimal quantity;
     private String uom;
