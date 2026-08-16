@@ -1,23 +1,24 @@
 package com.example.multimedia.file_upload_api.service;
 
 import com.example.multimedia.file_upload_api.util.SupplierDocumentConfig;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.rendering.PDFRenderer;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -25,26 +26,27 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Document field extraction via OpenAI vision — Java port of
- * become-a-supplier/lib/ocr.ts. Uses the Responses API (gpt-4o-mini) with
- * structured JSON output. PDFs are rasterized ourselves first (reusing the
- * same PDFBox approach GSTOCRService already uses, at the same 300 DPI) —
- * OpenAI's own PDF handling renders pages internally at too low a
- * resolution for dense print, confirmed against a real scanned cheque by
- * the original Next.js prototype.
+ * Document field extraction — delegates the actual OCR to Image_Describer's
+ * /supplier-doc/extract endpoint (Python/FastAPI) rather than calling OpenAI directly from
+ * Java. Image_Describer already has this exact pattern built and proven (invoice extraction):
+ * try PyMuPDF's real text layer first — most government-issued certificates (COI, PAN, GST)
+ * are digitally generated PDFs, not scans, so their identifiers can be read as exact
+ * characters instead of guessed from a rendered image — and only fall back to GPT vision for
+ * genuinely scanned/image documents. That text-first path is what actually fixes
+ * character-level misreads (e.g. "F" read as "P") that pure vision OCR is prone to on dense
+ * print; this class's own doubleCheck fallback (below) only catches misreads that are
+ * *inconsistent* between two passes, not ones the model gets wrong the same way twice.
  */
 @Service
 public class OpenAiVisionOcrService {
 
     private static final Logger logger = LoggerFactory.getLogger(OpenAiVisionOcrService.class);
-    private static final String RESPONSES_URL = "https://api.openai.com/v1/responses";
-    private static final String MODEL = "gpt-4o-mini";
-
-    @Value("${openai.api.key:}")
-    private String apiKey;
 
     @Value("${use.mock.responses:true}")
     private boolean useMockResponses;
+
+    @Value("${image.describer.base-url:http://localhost:5000}")
+    private String imageDescriberBaseUrl;
 
     private final RestTemplate restTemplate;
 
@@ -62,17 +64,19 @@ public class OpenAiVisionOcrService {
             return new ExtractResult(mockValues(doc), Set.of());
         }
 
-        byte[] imageBytes = toImageBytes(file);
+        byte[] fileBytes = file.getBytes();
+        String fileName = file.getOriginalFilename() != null ? file.getOriginalFilename() : docType;
 
         if (doc.doubleCheck().isEmpty()) {
-            return new ExtractResult(extractOnce(doc, imageBytes), Set.of());
+            return new ExtractResult(extractOnce(doc, fileBytes, fileName), Set.of());
         }
 
-        // Two independent OCR passes for doubleCheck fields (e.g. account number, IFSC) —
-        // those only get auto-filled if both reads agree exactly, since a wrong-but-plausible
-        // digit there is costly. Disagreeing fields are dropped and reported as uncertain.
-        CompletableFuture<Map<String, String>> passA = CompletableFuture.supplyAsync(() -> tryExtract(doc, imageBytes));
-        CompletableFuture<Map<String, String>> passB = CompletableFuture.supplyAsync(() -> tryExtract(doc, imageBytes));
+        // Two independent passes for doubleCheck fields (CIN, PAN, GSTIN, Udyam, account
+        // number, IFSC) — those only get auto-filled if both reads agree exactly, since a
+        // wrong-but-plausible character there is costly. Disagreeing fields are dropped and
+        // reported as uncertain so the applicant re-checks and types them in.
+        CompletableFuture<Map<String, String>> passA = CompletableFuture.supplyAsync(() -> tryExtract(doc, fileBytes, fileName));
+        CompletableFuture<Map<String, String>> passB = CompletableFuture.supplyAsync(() -> tryExtract(doc, fileBytes, fileName));
         Map<String, String> a = passA.join();
         Map<String, String> b = passB.join();
 
@@ -89,92 +93,51 @@ public class OpenAiVisionOcrService {
         return new ExtractResult(values, uncertain);
     }
 
-    private Map<String, String> tryExtract(SupplierDocumentConfig.DocDef doc, byte[] imageBytes) {
+    private Map<String, String> tryExtract(SupplierDocumentConfig.DocDef doc, byte[] fileBytes, String fileName) {
         try {
-            return extractOnce(doc, imageBytes);
+            return extractOnce(doc, fileBytes, fileName);
         } catch (Exception e) {
             logger.error("OCR pass failed for docType={}", doc.id(), e);
             return Map.of();
         }
     }
 
-    private byte[] toImageBytes(MultipartFile file) throws IOException {
-        String fileName = file.getOriginalFilename();
-        if (fileName != null && fileName.toLowerCase().endsWith(".pdf")) {
-            try (PDDocument document = PDDocument.load(file.getInputStream())) {
-                PDFRenderer renderer = new PDFRenderer(document);
-                BufferedImage image = renderer.renderImageWithDPI(0, 300);
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                ImageIO.write(image, "png", baos);
-                return baos.toByteArray();
-            }
-        }
-        return file.getBytes();
-    }
-
-    private Map<String, String> extractOnce(SupplierDocumentConfig.DocDef doc, byte[] imageBytes) {
-        StringBuilder fieldList = new StringBuilder();
+    private Map<String, String> extractOnce(SupplierDocumentConfig.DocDef doc, byte[] fileBytes, String fileName) {
+        JSONArray fieldsJson = new JSONArray();
         for (SupplierDocumentConfig.FieldDef f : doc.fields()) {
-            fieldList.append("- ").append(f.key()).append(": ").append(f.label()).append("\n");
+            fieldsJson.put(new JSONObject().put("key", f.key()).put("label", f.label()));
         }
-        String instructions = "Extract these fields from the document image, exactly as printed — every "
-                + "character matters, especially in long alphanumeric codes like account numbers and IFSC "
-                + "codes. The scan may be rotated; read the text regardless of orientation. If the document "
-                + "has a MICR line (a row of digits at the very bottom between special symbols, used for "
-                + "cheque processing), do not use it as the account number — use the account number printed "
-                + "near a label like \"A/c No\" instead. Return ONLY a JSON object with these exact keys — "
-                + "use an empty string for any field that isn't legible or present:\n" + fieldList;
 
-        String dataUrl = "data:image/png;base64," + Base64.getEncoder().encodeToString(imageBytes);
-
-        JSONObject content1 = new JSONObject().put("type", "input_text").put("text", instructions);
-        JSONObject content2 = new JSONObject().put("type", "input_image").put("image_url", dataUrl).put("detail", "high");
-        JSONObject message = new JSONObject()
-                .put("role", "user")
-                .put("content", new JSONArray().put(content1).put(content2));
-        JSONObject body = new JSONObject()
-                .put("model", MODEL)
-                .put("input", new JSONArray().put(message))
-                .put("text", new JSONObject().put("format", new JSONObject().put("type", "json_object")));
+        ByteArrayResource fileResource = new ByteArrayResource(fileBytes) {
+            @Override
+            public String getFilename() {
+                return fileName;
+            }
+        };
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
-        HttpEntity<String> request = new HttpEntity<>(body.toString(), headers);
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
-        ResponseEntity<String> response = restTemplate.exchange(RESPONSES_URL, HttpMethod.POST, request, String.class);
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", fileResource);
+        body.add("fields", fieldsJson.toString());
+
+        HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
+
+        String url = imageDescriberBaseUrl + "/supplier-doc/extract";
+        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
         if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-            throw new RuntimeException("OpenAI OCR request failed: " + response.getStatusCode());
+            throw new RuntimeException("Supplier doc OCR request failed: " + response.getStatusCode());
         }
+
         JSONObject data = new JSONObject(response.getBody());
-        if (data.has("error") && !data.isNull("error")) {
-            throw new RuntimeException("OpenAI OCR failed: " + data.getJSONObject("error").optString("message"));
-        }
-
-        JSONArray output = data.optJSONArray("output");
-        JSONObject textPart = null;
-        if (output != null) {
-            for (int i = 0; i < output.length(); i++) {
-                JSONObject item = output.getJSONObject(i);
-                if (!"message".equals(item.optString("type"))) continue;
-                JSONArray contentArr = item.optJSONArray("content");
-                if (contentArr == null) continue;
-                for (int j = 0; j < contentArr.length(); j++) {
-                    JSONObject c = contentArr.getJSONObject(j);
-                    if ("output_text".equals(c.optString("type"))) {
-                        textPart = c;
-                        break;
-                    }
-                }
-            }
-        }
-        if (textPart == null) throw new RuntimeException("OpenAI OCR returned no text output");
-
-        JSONObject parsed = new JSONObject(textPart.getString("text"));
+        JSONObject valuesJson = data.optJSONObject("values");
         Map<String, String> values = new HashMap<>();
-        for (SupplierDocumentConfig.FieldDef f : doc.fields()) {
-            if (parsed.has(f.key()) && parsed.get(f.key()) instanceof String) {
-                values.put(f.key(), parsed.getString(f.key()));
+        if (valuesJson != null) {
+            for (SupplierDocumentConfig.FieldDef f : doc.fields()) {
+                if (valuesJson.has(f.key())) {
+                    values.put(f.key(), valuesJson.optString(f.key(), ""));
+                }
             }
         }
         return values;

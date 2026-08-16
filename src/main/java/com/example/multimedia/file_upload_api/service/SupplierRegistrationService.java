@@ -182,10 +182,36 @@ public class SupplierRegistrationService {
 
             reg.setVendorName(dto.getVendorName());
             reg.setAddress(dto.getAddress());
-            reg.setContactName(dto.getContactName());
-            reg.setDesignation(dto.getDesignation());
-            if (dto.getEmail() != null && !dto.getEmail().isBlank()) reg.setEmail(dto.getEmail());
-            reg.setPhone(dto.getPhone());
+
+            reg.setContact1Name(dto.getContact1Name());
+            reg.setContact1Role(dto.getContact1Role());
+            reg.setContact1Email(dto.getContact1Email());
+            reg.setContact1Phone(dto.getContact1Phone());
+            reg.setContact2Name(dto.getContact2Name());
+            reg.setContact2Role(dto.getContact2Role());
+            reg.setContact2Email(dto.getContact2Email());
+            reg.setContact2Phone(dto.getContact2Phone());
+            reg.setPrimaryContact(dto.getPrimaryContact() != null ? dto.getPrimaryContact() : 1);
+            reg.setSupplyCategories(dto.getSupplyCategories());
+            reg.setPlant(dto.getPlant());
+            reg.setPaymentTerms(dto.getPaymentTerms());
+            reg.setDeclarationAccepted(Boolean.TRUE.equals(dto.getDeclarationAccepted()));
+
+            // The resolved-primary mirror (contactName/designation/email/phone) is what the
+            // rest of the system — unique constraint, resume-code email, WorkFlow submission,
+            // post-approval login — reads. Only overwrite the unique `email` column when the
+            // resolved primary contact actually has one, so a still-empty contact card doesn't
+            // wipe out an email already saved on a previous draft save.
+            boolean primaryIsTwo = Integer.valueOf(2).equals(reg.getPrimaryContact());
+            String resolvedName = primaryIsTwo ? dto.getContact2Name() : dto.getContact1Name();
+            String resolvedRole = primaryIsTwo ? dto.getContact2Role() : dto.getContact1Role();
+            String resolvedEmail = primaryIsTwo ? dto.getContact2Email() : dto.getContact1Email();
+            String resolvedPhone = primaryIsTwo ? dto.getContact2Phone() : dto.getContact1Phone();
+            reg.setContactName(resolvedName);
+            reg.setDesignation(resolvedRole);
+            reg.setPhone(resolvedPhone);
+            if (resolvedEmail != null && !resolvedEmail.isBlank()) reg.setEmail(resolvedEmail);
+
             reg.setGstNumber(dto.getGstNumber());
             reg.setPanNumber(dto.getPanNumber());
             reg.setMsmeNumber(dto.getMsmeNumber());
@@ -201,12 +227,22 @@ public class SupplierRegistrationService {
             reg.setAs9100dCertifyingBody(dto.getAs9100dCertifyingBody());
             reg.setAs9100dExpiry(dto.getAs9100dExpiry());
 
-            if (reg.getResumeCode() == null) {
+            boolean isFirstSave = reg.getResumeCode() == null;
+            if (isFirstSave) {
                 reg.setResumeCode(generateResumeCode());
             }
             reg = registrationRepository.save(reg);
 
-            sendResumeCodeEmail(reg);
+            // Only email the code the first time it's generated — saveDraft() also runs
+            // silently on every debounced autosave (every few seconds while the applicant
+            // is actively editing) and once more right before submit() actually submits, so
+            // emailing unconditionally here would mean a fresh "resume code" email landing
+            // repeatedly during normal use, including right after the applicant has already
+            // submitted — which reads as "come back and finish this" when there's nothing
+            // left to finish.
+            if (isFirstSave) {
+                sendResumeCodeEmail(reg);
+            }
 
             Map<String, Object> data = new HashMap<>();
             data.put("registrationId", reg.getId());
@@ -217,6 +253,10 @@ public class SupplierRegistrationService {
             logger.error("Save draft failed", e);
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Failed to save draft: " + e.getMessage());
         }
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 
     private String generateResumeCode() {
@@ -285,10 +325,35 @@ public class SupplierRegistrationService {
                         .map(doc -> doc.getFolderItFileUid() != null).orElse(false);
                 if (!present) missing.add(d.name());
             }
+
+            if (isBlank(reg.getContact1Name())) missing.add("contact 1 name");
+            if (isBlank(reg.getContact1Role())) missing.add("contact 1 designation");
+            if (isBlank(reg.getContact1Email())) missing.add("contact 1 email");
+            if (isBlank(reg.getContact1Phone())) missing.add("contact 1 phone");
+            // A second contact is optional overall, but once any part of it is filled in,
+            // all of it is required — mirrors the original prototype's readiness check.
+            boolean hasSecondContact = !isBlank(reg.getContact2Name()) || !isBlank(reg.getContact2Email())
+                    || !isBlank(reg.getContact2Role()) || !isBlank(reg.getContact2Phone());
+            if (hasSecondContact) {
+                if (isBlank(reg.getContact2Name())) missing.add("contact 2 name");
+                if (isBlank(reg.getContact2Role())) missing.add("contact 2 designation");
+                if (isBlank(reg.getContact2Email())) missing.add("contact 2 email");
+                if (isBlank(reg.getContact2Phone())) missing.add("contact 2 phone");
+            }
+            if (isBlank(reg.getSupplyCategories())) missing.add("at least one supply category");
+            if (isBlank(reg.getPlant())) missing.add("plant you can serve");
+            if (isBlank(reg.getPaymentTerms())) missing.add("payment terms sought");
+            if (!Boolean.TRUE.equals(reg.getDeclarationAccepted())) missing.add("the declaration");
             if (reg.getEmail() == null || reg.getEmail().contains("@placeholder.local")) missing.add(0, "a real contact email");
             if (!missing.isEmpty()) {
                 return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
                         "Missing required: " + String.join(", ", missing));
+            }
+
+            // Legal name comes off the cancelled cheque's verified account-holder name, same as
+            // the original prototype — there's no separate "company name" field to type.
+            if (isBlank(reg.getVendorName()) && !isBlank(reg.getBeneficiaryName())) {
+                reg.setVendorName(reg.getBeneficiaryName());
             }
 
             UserDetail intakeUser = userDetailRepository.findByEmail(SupplierIntakeSeeder.INTAKE_EMAIL)
@@ -301,7 +366,12 @@ public class SupplierRegistrationService {
                     .put("email", reg.getEmail())
                     .put("phone", reg.getPhone())
                     .put("gstNumber", reg.getGstNumber())
-                    .put("panNumber", reg.getPanNumber());
+                    .put("panNumber", reg.getPanNumber())
+                    .put("contact2Name", reg.getContact2Name())
+                    .put("contact2Email", reg.getContact2Email())
+                    .put("supplyCategories", reg.getSupplyCategories())
+                    .put("plant", reg.getPlant())
+                    .put("paymentTerms", reg.getPaymentTerms());
 
             JSONObject payload = new JSONObject()
                     .put("title", "Supplier registration — " + reg.getVendorName())
