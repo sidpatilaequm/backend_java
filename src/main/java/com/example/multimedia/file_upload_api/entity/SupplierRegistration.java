@@ -156,6 +156,24 @@ public class SupplierRegistration {
     @Column(name = "machinery_json", columnDefinition = "LONGTEXT")
     private String machineryJson;
 
+    /**
+     * FK into Form Studio's own {@code responses} table (same shared database — see
+     * entity/questionnaire/) once the applicant's answers to the admin-defined
+     * questionnaire have been recorded at submit time. Null until then, and for
+     * registrations submitted before the questionnaire feature existed.
+     */
+    @Column(name = "form_studio_response_id")
+    private Integer formStudioResponseId;
+
+    /**
+     * Raw JSON array of {questionId, textValue?, optionIds?} answers to the active dynamic
+     * questionnaire, staged here across draft saves the same way directorsJson/machineryJson
+     * are — validated and copied into Form Studio's own responses/answers/answer_options tables
+     * (QuestionnaireService) at submit time, at which point formStudioResponseId above gets set.
+     */
+    @Column(name = "dynamic_answers_json", columnDefinition = "LONGTEXT")
+    private String dynamicAnswersJson;
+
     /** Code-of-conduct / GCP / no-child-labour declaration checkbox. */
     @Column(name = "declaration_accepted")
     private Boolean declarationAccepted = false;

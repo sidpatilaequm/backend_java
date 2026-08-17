@@ -2,6 +2,7 @@ package com.example.multimedia.file_upload_api.controller;
 
 import com.example.multimedia.file_upload_api.dto.ServiceResponse;
 import com.example.multimedia.file_upload_api.dto.SupplierDraftDTO;
+import com.example.multimedia.file_upload_api.service.QuestionnaireService;
 import com.example.multimedia.file_upload_api.service.SupplierRegistrationService;
 import com.example.multimedia.file_upload_api.utils.AppConstants;
 import org.json.JSONObject;
@@ -23,12 +24,28 @@ public class SupplierRegistrationController {
     private static final Logger logger = LoggerFactory.getLogger(SupplierRegistrationController.class);
 
     private final SupplierRegistrationService service;
+    private final QuestionnaireService questionnaireService;
 
     @Value("${workflow.webhook.secret:}")
     private String webhookSecret;
 
-    public SupplierRegistrationController(SupplierRegistrationService service) {
+    public SupplierRegistrationController(SupplierRegistrationService service, QuestionnaireService questionnaireService) {
         this.service = service;
+        this.questionnaireService = questionnaireService;
+    }
+
+    /**
+     * The admin-defined questionnaire (if any process is published + marked active for this
+     * integration) for the "What no document tells us" section — public/unauthenticated like the
+     * rest of the applicant-facing endpoints. Reads the shared DB tables directly (QuestionnaireService),
+     * not Form Studio's API, so this doesn't depend on Form Studio being up.
+     */
+    @GetMapping("/api/public/supplier-registration/questionnaire")
+    public ResponseEntity<String> getQuestionnaire() {
+        JSONObject questionnaire = questionnaireService.getActiveQuestionnaire();
+        return ResponseEntity.ok()
+                .header("Content-Type", "application/json")
+                .body((questionnaire != null ? questionnaire : new JSONObject()).toString());
     }
 
     @PostMapping("/api/public/supplier-registration/documents/{docType}")

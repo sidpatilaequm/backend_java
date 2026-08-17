@@ -15,6 +15,13 @@ public class RestTemplateConfig {
     // request's Authorization header with "Basic " + the Attestr token, silently breaking every
     // other caller (e.g. OpenAI's Bearer auth got replaced with Basic auth, causing 401s) while
     // being redundant for Attestr calls, which already set that same header themselves.
+    //
+    // Deliberately still the plain default factory (JDK HttpURLConnection), not
+    // HttpComponentsClientHttpRequestFactory — Spring Boot 3's version of that class requires
+    // Apache HttpClient 5.x specifically, and only the legacy 4.5.13 is on this project's
+    // classpath, so constructing it throws NoClassDefFoundError at startup. The one caller that
+    // needs PATCH (QuestionnaireProxyController) uses its own small JDK HttpClient instead of
+    // this shared bean, rather than upgrading everyone's transport for one route.
     @Bean
     public RestTemplate restTemplate() {
         RestTemplate restTemplate = new RestTemplate();

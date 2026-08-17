@@ -43,6 +43,8 @@ public class SupplierDraftDTO {
     /** JSON array on the wire, stored as-is. */
     private String directorsJson;
     private String machineryJson;
+    /** {questionId, textValue?, optionIds?}[] — validated/persisted into Form Studio's tables at submit. */
+    private String dynamicAnswersJson;
     private Boolean declarationAccepted;
 
     private String gstNumber;

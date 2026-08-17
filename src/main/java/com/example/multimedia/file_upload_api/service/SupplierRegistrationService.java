@@ -50,6 +50,7 @@ public class SupplierRegistrationService {
     private final JavaMailSender mailSender;
     private final RestTemplate restTemplate;
     private final ServiceControllerUtils serviceControllerUtils;
+    private final QuestionnaireService questionnaireService;
 
     @Value("${workflow.api.base-url:http://localhost:8000}")
     private String workflowBaseUrl;
@@ -73,7 +74,8 @@ public class SupplierRegistrationService {
                                         PasswordEncoder passwordEncoder,
                                         JavaMailSender mailSender,
                                         RestTemplate restTemplate,
-                                        ServiceControllerUtils serviceControllerUtils) {
+                                        ServiceControllerUtils serviceControllerUtils,
+                                        QuestionnaireService questionnaireService) {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
         this.folderItService = folderItService;
@@ -88,6 +90,7 @@ public class SupplierRegistrationService {
         this.mailSender = mailSender;
         this.restTemplate = restTemplate;
         this.serviceControllerUtils = serviceControllerUtils;
+        this.questionnaireService = questionnaireService;
     }
 
     // ── Document upload + OCR + FolderIt storage ────────────────────────────
@@ -219,6 +222,7 @@ public class SupplierRegistrationService {
             reg.setEquipmentFacilities(dto.getEquipmentFacilities());
             reg.setDirectorsJson(dto.getDirectorsJson());
             reg.setMachineryJson(dto.getMachineryJson());
+            reg.setDynamicAnswersJson(dto.getDynamicAnswersJson());
             reg.setDeclarationAccepted(Boolean.TRUE.equals(dto.getDeclarationAccepted()));
 
             // The resolved-primary mirror (contactName/designation/email/phone) is what the
@@ -383,6 +387,7 @@ public class SupplierRegistrationService {
             docsOut.add(docOut);
         }
         data.put("documents", docsOut);
+        data.put("dynamicAnswers", questionnaireService.getAnswersForReview(reg.getFormStudioResponseId()).toList());
         response.addData("result", data);
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Registration loaded");
     }
@@ -430,10 +435,6 @@ public class SupplierRegistrationService {
                 if (isBlank(reg.getContact2Email())) missing.add("contact 2 email");
                 if (isBlank(reg.getContact2Phone())) missing.add("contact 2 phone");
             }
-            if (isBlank(reg.getBusinessTypes())) missing.add("business type (manufacturer / service / trader)");
-            if (isBlank(reg.getBusinessScope())) missing.add("business detail scope");
-            if (isBlank(reg.getCompanyType())) missing.add("type of company");
-            if (isBlank(reg.getTelephone())) missing.add("telephone number");
             if (!Boolean.TRUE.equals(reg.getDeclarationAccepted())) missing.add("the declaration");
             if (reg.getEmail() == null || reg.getEmail().contains("@placeholder.local")) missing.add(0, "a real contact email");
             if (!missing.isEmpty()) {
@@ -445,6 +446,19 @@ public class SupplierRegistrationService {
             // the original prototype — there's no separate "company name" field to type.
             if (isBlank(reg.getVendorName()) && !isBlank(reg.getBeneficiaryName())) {
                 reg.setVendorName(reg.getBeneficiaryName());
+            }
+
+            // Admin-defined questionnaire (if any is published + active) — validated and copied
+            // into Form Studio's own responses/answers/answer_options tables here, not called
+            // through Form Studio's API, so submission never depends on it being up. No-op if
+            // no questionnaire is currently active.
+            try {
+                Integer responseId = questionnaireService.validateAndPersistAnswers(
+                        reg.getDynamicAnswersJson(), reg.getContactName(), reg.getEmail());
+                if (responseId != null) reg.setFormStudioResponseId(responseId);
+            } catch (QuestionnaireService.ValidationException e) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
+                        "Missing required: " + e.getMessage());
             }
 
             UserDetail intakeUser = userDetailRepository.findByEmail(SupplierIntakeSeeder.INTAKE_EMAIL)
@@ -459,9 +473,7 @@ public class SupplierRegistrationService {
                     .put("gstNumber", reg.getGstNumber())
                     .put("panNumber", reg.getPanNumber())
                     .put("contact2Name", reg.getContact2Name())
-                    .put("contact2Email", reg.getContact2Email())
-                    .put("businessTypes", reg.getBusinessTypes())
-                    .put("companyType", reg.getCompanyType());
+                    .put("contact2Email", reg.getContact2Email());
 
             JSONObject payload = new JSONObject()
                     .put("title", "Supplier registration — " + reg.getVendorName())
