@@ -24,9 +24,25 @@ public class SupplierDraftDTO {
     private Integer primaryContact;
 
     /** Comma-separated on the wire, same as how it's stored. */
-    private String supplyCategories;
-    private String plant;
-    private String paymentTerms;
+    private String businessTypes;
+    private String businessScope;
+    private String companyType;
+    private String telephone;
+    private String fax;
+    private String weeklyOff;
+    private String annualTurnover;
+    private String turnoverYear;
+    private String regulatoryActs;
+    private String manpowerOffice;
+    private String manpowerSupervisor;
+    private String manpowerWorkmen;
+    private String shiftsPerDay;
+    private String spareCapacity;
+    private String floorSpace;
+    private String equipmentFacilities;
+    /** JSON array on the wire, stored as-is. */
+    private String directorsJson;
+    private String machineryJson;
     private Boolean declarationAccepted;
 
     private String gstNumber;

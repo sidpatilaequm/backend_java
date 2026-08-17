@@ -157,12 +157,12 @@ public class FolderItService {
     public String uploadFileToFolderIt(MultipartFile file, String documentType, String vendorName, String monthYear) throws IOException {
         String token = getAccessToken();
         String folderUid = determineFolderUid(documentType);
-        
+
         // Apply dynamic structure for quotation and ASN
         if (documentType != null && (documentType.equalsIgnoreCase("quotation") || documentType.toUpperCase().startsWith("ASN"))) {
             if (vendorName != null && !vendorName.trim().isEmpty()) {
                 folderUid = getOrCreateFolder(token, folderUid, vendorName.trim());
-                
+
                 String targetMonthYear = monthYear;
                 if (targetMonthYear == null || targetMonthYear.trim().isEmpty()) {
                     // Generate current month year, e.g., "Mar 2026"
@@ -170,11 +170,101 @@ public class FolderItService {
                     DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH);
                     targetMonthYear = now.format(formatter);
                 }
-                
+
                 folderUid = getOrCreateFolder(token, folderUid, targetMonthYear.trim());
             }
         }
-        
+
+        return uploadFileToFolder(file, folderUid, token);
+    }
+
+    /**
+     * Finds or creates a folder for one applicant's documents directly under the shared
+     * "vendor" root, named as given (e.g. a registration-id placeholder before approval,
+     * "{vendorCode} - {vendorName}" after). Callers persist the returned uid and pass it to
+     * {@link #uploadFileToFolder} for every subsequent document on the same application, and
+     * to {@link #renameFolder} once a better name becomes available.
+     */
+    public String getOrCreateVendorFolder(String name) throws IOException {
+        String token = getAccessToken();
+        return getOrCreateFolder(token, UID_VENDOR, name);
+    }
+
+    /** Renames an existing folder — used to relabel a placeholder "REG-{id}" name with the real "{vendorCode} - {vendorName}" once approval assigns a vendor code. */
+    public void renameFolder(String folderUid, String newName) throws IOException {
+        String token = getAccessToken();
+        renameResource(token, "folders", folderUid, newName);
+    }
+
+    /**
+     * Fetches a fresh presigned S3 URL for viewing/downloading an uploaded file. FolderIt's
+     * link expires in ~60 seconds, so this must be called on demand right before the caller
+     * needs it (e.g. when an approver opens a request) — never stored ahead of time.
+     */
+    public String getDownloadUrl(String fileUid) throws IOException {
+        String token = getAccessToken();
+        Request req = new Request.Builder()
+                .url("https://api.folderit.com/v2/accounts/" + ACCOUNT_UID + "/files/" + fileUid + "/download")
+                .addHeader("Authorization", "Bearer " + token)
+                .build();
+        // FolderIt's /download response carries its own {"url": ...} JSON body but is ALSO a
+        // redirect (3xx + Location: the S3 link). The shared httpClient follows redirects by
+        // default, so it was swallowing FolderIt's JSON and returning S3's raw response instead
+        // — hence the "must begin with '{'" parse failure. Use a non-redirecting client here so
+        // we always see FolderIt's own response.
+        OkHttpClient noRedirectClient = httpClient.newBuilder().followRedirects(false).followSslRedirects(false).build();
+        try (Response response = noRedirectClient.newCall(req).execute()) {
+            String location = response.header("Location");
+            if (location != null && !location.isBlank()) {
+                return location;
+            }
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to get download URL for " + fileUid + ": " + response.body().string());
+            }
+            JSONObject json = new JSONObject(response.body().string());
+            return json.getString("url");
+        }
+    }
+
+    public record DownloadedFile(byte[] bytes, String contentType) {}
+
+    /**
+     * Fetches the file's actual bytes (via the presigned URL from {@link #getDownloadUrl}) so the
+     * caller can re-serve them with its own Content-Disposition — FolderIt's own presigned link
+     * bakes in "attachment", which forces a download instead of an inline preview.
+     */
+    public DownloadedFile downloadFileBytes(String fileUid) throws IOException {
+        String url = getDownloadUrl(fileUid);
+        Request req = new Request.Builder().url(url).build();
+        try (Response response = httpClient.newCall(req).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to download file " + fileUid);
+            }
+            String contentType = response.header("Content-Type", "application/octet-stream");
+            return new DownloadedFile(response.body().bytes(), contentType);
+        }
+    }
+
+    private void renameResource(String token, String resourceType, String uid, String newName) throws IOException {
+        JSONObject payload = new JSONObject().put("name", newName);
+        Request req = new Request.Builder()
+                .url("https://api.folderit.com/v2/accounts/" + ACCOUNT_UID + "/" + resourceType + "/" + uid)
+                .addHeader("Authorization", "Bearer " + token)
+                .put(RequestBody.create(payload.toString(), MediaType.parse("application/json")))
+                .build();
+        try (Response response = httpClient.newCall(req).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Rename " + resourceType + " " + uid + " failed: " + response.body().string());
+            }
+        }
+    }
+
+    /** Uploads directly into a known folder — skips the documentType/vendorName folder-resolution logic above. */
+    public String uploadFileToFolder(MultipartFile file, String folderUid) throws IOException {
+        return uploadFileToFolder(file, folderUid, getAccessToken());
+    }
+
+    private String uploadFileToFolder(MultipartFile file, String folderUid, String token) throws IOException {
         String authHeader = "Bearer " + token;
         String baseUrl = "https://api.folderit.com/v2/accounts/" + ACCOUNT_UID + "/files/upload";
         

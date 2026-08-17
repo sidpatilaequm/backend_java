@@ -72,6 +72,39 @@ public class SupplierRegistrationController {
     }
 
     /**
+     * Deliberately NOT under /api/public/** — this is the approver-facing view (documents +
+     * every extracted/verified field) for a submitted application, reached from the Workflow
+     * tab's request-details modal via the registrationId carried in request_metadata. Requires
+     * the normal employee/admin JWT auth, unlike the applicant-facing endpoints above.
+     */
+    @GetMapping("/api/supplier-registration/{registrationId}")
+    public ResponseEntity<ServiceResponse> getForReview(@PathVariable Long registrationId) {
+        ServiceResponse response = service.getRegistrationForReview(registrationId);
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.status(404).body(response);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Streams a document's bytes through our own server with an inline Content-Disposition, so
+     * clicking "View" in the reviewer UI renders the PDF/image instead of forcing a download —
+     * FolderIt's own presigned link bakes in "attachment". Also outside /api/public/**.
+     */
+    @GetMapping("/api/supplier-registration/document/{docId}/preview")
+    public ResponseEntity<byte[]> previewDocument(@PathVariable Long docId) {
+        try {
+            com.example.multimedia.file_upload_api.service.FolderItService.DownloadedFile file =
+                    service.getDocumentPreviewFile(docId);
+            return ResponseEntity.ok()
+                    .header("Content-Type", file.contentType())
+                    .header("Content-Disposition", "inline")
+                    .body(file.bytes());
+        } catch (Exception e) {
+            logger.warn("Could not fetch preview for document {}", docId, e);
+            return ResponseEntity.status(404).build();
+        }
+    }
+
+    /**
      * WorkFlow's fire_webhook() (webhook_utils.py) calls this on request.approved /
      * request.rejected for the "Vendor Approval" workflow. Verifies the
      * X-Signature-256 header the same way WorkFlow signs it (HMAC-SHA256 over the

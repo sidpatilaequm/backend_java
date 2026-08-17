@@ -37,6 +37,15 @@ public class SupplierRegistration {
 
     private String address;
 
+    /**
+     * FolderIt folder holding every document for this application — created on
+     * first upload, named "{vendorCode} - {vendorName}" once approval assigns a
+     * vendor code (see SupplierRegistrationService.provisionVendorAccount), or a
+     * registration-id-based placeholder before that.
+     */
+    @Column(name = "folderit_folder_uid")
+    private String folderitFolderUid;
+
     // ── Resolved primary contact — always mirrors whichever of contact 1 /
     // contact 2 below is marked primary. Every other part of the system
     // (unique email constraint, resume-code email, WorkFlow submission,
@@ -84,16 +93,68 @@ public class SupplierRegistration {
     @Column(name = "primary_contact")
     private Integer primaryContact = 1;
 
-    /** Comma-separated list of SUPPLY_CATEGORIES the applicant selected. */
-    @Column(name = "supply_categories", columnDefinition = "TEXT")
-    private String supplyCategories;
+    // ── Business profile — mirrors AA-PUR-F-03 "Supplier Evaluation and
+    // Registration Form" (Manufacturer/Service/Trader, company type, contact
+    // numbers, directors, production facilities) rather than the earlier
+    // ad-hoc supply-category/plant/payment-terms fields it replaced.
 
-    /** One of PLANTS. */
-    private String plant;
+    /** Comma-separated: Manufacturer / Service / Trader. */
+    @Column(name = "business_types", columnDefinition = "TEXT")
+    private String businessTypes;
 
-    /** One of PAYMENT_TERMS. */
-    @Column(name = "payment_terms")
-    private String paymentTerms;
+    /** Free-text detail scope for the ticked business type(s). */
+    @Column(name = "business_scope", columnDefinition = "TEXT")
+    private String businessScope;
+
+    /** Proprietary / Partnership / Private Limited / Public Limited. */
+    @Column(name = "company_type")
+    private String companyType;
+
+    private String telephone;
+
+    private String fax;
+
+    @Column(name = "weekly_off")
+    private String weeklyOff;
+
+    @Column(name = "annual_turnover")
+    private String annualTurnover;
+
+    @Column(name = "turnover_year")
+    private String turnoverYear;
+
+    @Column(name = "regulatory_acts", columnDefinition = "TEXT")
+    private String regulatoryActs;
+
+    @Column(name = "manpower_office")
+    private String manpowerOffice;
+
+    @Column(name = "manpower_supervisor")
+    private String manpowerSupervisor;
+
+    @Column(name = "manpower_workmen")
+    private String manpowerWorkmen;
+
+    @Column(name = "shifts_per_day")
+    private String shiftsPerDay;
+
+    @Column(name = "spare_capacity")
+    private String spareCapacity;
+
+    @Column(name = "floor_space")
+    private String floorSpace;
+
+    /** Comma-separated list of ticked equipment/facility options. */
+    @Column(name = "equipment_facilities", columnDefinition = "TEXT")
+    private String equipmentFacilities;
+
+    /** JSON array of {name, qualification, experience, commencementDate, capitalEmployed}. */
+    @Column(name = "directors_json", columnDefinition = "LONGTEXT")
+    private String directorsJson;
+
+    /** JSON array of {description, capacity, makeName, makeYear, numbers, remarks}. */
+    @Column(name = "machinery_json", columnDefinition = "LONGTEXT")
+    private String machineryJson;
 
     /** Code-of-conduct / GCP / no-child-labour declaration checkbox. */
     @Column(name = "declaration_accepted")

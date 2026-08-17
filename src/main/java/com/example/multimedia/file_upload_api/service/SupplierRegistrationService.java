@@ -101,8 +101,17 @@ public class SupplierRegistrationService {
                     : newDraft();
             if (registration.getId() == null) registration = registrationRepository.save(registration);
 
+            // One FolderIt folder per application, created on first upload and reused for
+            // every document after — named "{vendorCode} - {vendorName}" once approval
+            // assigns a vendor code (see provisionVendorAccount), a registration-id
+            // placeholder before that since neither is known yet at draft time.
+            if (registration.getFolderitFolderUid() == null) {
+                registration.setFolderitFolderUid(folderItService.getOrCreateVendorFolder("REG-" + registration.getId()));
+                registration = registrationRepository.save(registration);
+            }
+
             OpenAiVisionOcrService.ExtractResult extracted = ocrService.extractFields(docType, file);
-            String folderItUid = folderItService.uploadFileToFolderIt(file, "vendor", registration.getVendorName(), null);
+            String folderItUid = folderItService.uploadFileToFolder(file, registration.getFolderitFolderUid());
 
             SupplierRegistrationDocument doc = documentRepository
                     .findByRegistrationIdAndDocType(registration.getId(), docType)
@@ -192,9 +201,24 @@ public class SupplierRegistrationService {
             reg.setContact2Email(dto.getContact2Email());
             reg.setContact2Phone(dto.getContact2Phone());
             reg.setPrimaryContact(dto.getPrimaryContact() != null ? dto.getPrimaryContact() : 1);
-            reg.setSupplyCategories(dto.getSupplyCategories());
-            reg.setPlant(dto.getPlant());
-            reg.setPaymentTerms(dto.getPaymentTerms());
+            reg.setBusinessTypes(dto.getBusinessTypes());
+            reg.setBusinessScope(dto.getBusinessScope());
+            reg.setCompanyType(dto.getCompanyType());
+            reg.setTelephone(dto.getTelephone());
+            reg.setFax(dto.getFax());
+            reg.setWeeklyOff(dto.getWeeklyOff());
+            reg.setAnnualTurnover(dto.getAnnualTurnover());
+            reg.setTurnoverYear(dto.getTurnoverYear());
+            reg.setRegulatoryActs(dto.getRegulatoryActs());
+            reg.setManpowerOffice(dto.getManpowerOffice());
+            reg.setManpowerSupervisor(dto.getManpowerSupervisor());
+            reg.setManpowerWorkmen(dto.getManpowerWorkmen());
+            reg.setShiftsPerDay(dto.getShiftsPerDay());
+            reg.setSpareCapacity(dto.getSpareCapacity());
+            reg.setFloorSpace(dto.getFloorSpace());
+            reg.setEquipmentFacilities(dto.getEquipmentFacilities());
+            reg.setDirectorsJson(dto.getDirectorsJson());
+            reg.setMachineryJson(dto.getMachineryJson());
             reg.setDeclarationAccepted(Boolean.TRUE.equals(dto.getDeclarationAccepted()));
 
             // The resolved-primary mirror (contactName/designation/email/phone) is what the
@@ -309,6 +333,72 @@ public class SupplierRegistrationService {
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Draft loaded");
     }
 
+    /**
+     * Authenticated view for whoever is reviewing a submitted application (an approver
+     * acting on the WorkFlow request) — same shape as getDraftByCode, but looked up by
+     * registration id directly (reviewers don't have the applicant's resume code) and with
+     * a fresh, short-lived download link per document so the actual certificate/cheque/etc.
+     * can be opened, plus each document's verification details.
+     */
+    public ServiceResponse getRegistrationForReview(Long registrationId) {
+        ServiceResponse response = new ServiceResponse();
+        SupplierRegistration reg = registrationRepository.findById(registrationId).orElse(null);
+        if (reg == null) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
+        }
+        List<SupplierRegistrationDocument> docs = documentRepository.findByRegistrationId(reg.getId());
+        Map<String, Object> data = new HashMap<>();
+        data.put("registration", reg);
+        List<Map<String, Object>> docsOut = new ArrayList<>();
+        for (SupplierRegistrationDocument d : docs) {
+            SupplierDocumentConfig.DocDef def = SupplierDocumentConfig.byId(d.getDocType());
+            JSONObject values = new JSONObject(Optional.ofNullable(d.getOcrExtractedFieldsJson()).orElse("{}"));
+            Map<String, Object> docOut = new HashMap<>();
+            docOut.put("id", d.getId());
+            docOut.put("docType", d.getDocType());
+            docOut.put("docName", def.name());
+            docOut.put("fileName", d.getFileName());
+            docOut.put("uploadedAt", d.getCreatedDate());
+            // Labeled per SupplierDocumentConfig's field defs (same labels the supplier's
+            // own upload screen uses) instead of dumping raw OCR keys at the reviewer.
+            List<Map<String, Object>> fieldsOut = new ArrayList<>();
+            for (SupplierDocumentConfig.FieldDef fd : def.fields()) {
+                Map<String, Object> f = new HashMap<>();
+                f.put("key", fd.key());
+                f.put("label", fd.label());
+                f.put("value", values.optString(fd.key(), ""));
+                fieldsOut.add(f);
+            }
+            docOut.put("fields", fieldsOut);
+            docOut.put("verifyStatus", d.getVerifyStatus());
+            docOut.put("verifyKind", def.verifyKind());
+            if (d.getVerifyDetailsJson() != null) {
+                JSONObject vd = new JSONObject(d.getVerifyDetailsJson());
+                docOut.put("verifyMessage", vd.optString("message", null));
+                docOut.put("verifyDetails", vd.optJSONArray("details") != null ? vd.getJSONArray("details").toList() : List.of());
+            }
+            if (d.getFolderItFileUid() != null) {
+                docOut.put("previewUrl", "/api/supplier-registration/document/" + d.getId() + "/preview");
+            }
+            docsOut.add(docOut);
+        }
+        data.put("documents", docsOut);
+        response.addData("result", data);
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Registration loaded");
+    }
+
+    // Streams the document bytes through our own server (rather than redirecting to FolderIt's
+    // presigned URL directly) so the reviewer's browser gets an inline-viewable response instead
+    // of FolderIt's forced-download disposition, and so this stays behind our own JWT auth.
+    public FolderItService.DownloadedFile getDocumentPreviewFile(Long docId) throws java.io.IOException {
+        SupplierRegistrationDocument doc = documentRepository.findById(docId)
+                .orElseThrow(() -> new RuntimeException("Document not found"));
+        if (doc.getFolderItFileUid() == null) {
+            throw new RuntimeException("No file uploaded for this document");
+        }
+        return folderItService.downloadFileBytes(doc.getFolderItFileUid());
+    }
+
     // ── Submit into WorkFlow's "Vendor Approval" workflow ────────────────
 
     @Transactional(rollbackFor = Exception.class)
@@ -340,9 +430,10 @@ public class SupplierRegistrationService {
                 if (isBlank(reg.getContact2Email())) missing.add("contact 2 email");
                 if (isBlank(reg.getContact2Phone())) missing.add("contact 2 phone");
             }
-            if (isBlank(reg.getSupplyCategories())) missing.add("at least one supply category");
-            if (isBlank(reg.getPlant())) missing.add("plant you can serve");
-            if (isBlank(reg.getPaymentTerms())) missing.add("payment terms sought");
+            if (isBlank(reg.getBusinessTypes())) missing.add("business type (manufacturer / service / trader)");
+            if (isBlank(reg.getBusinessScope())) missing.add("business detail scope");
+            if (isBlank(reg.getCompanyType())) missing.add("type of company");
+            if (isBlank(reg.getTelephone())) missing.add("telephone number");
             if (!Boolean.TRUE.equals(reg.getDeclarationAccepted())) missing.add("the declaration");
             if (reg.getEmail() == null || reg.getEmail().contains("@placeholder.local")) missing.add(0, "a real contact email");
             if (!missing.isEmpty()) {
@@ -369,9 +460,8 @@ public class SupplierRegistrationService {
                     .put("panNumber", reg.getPanNumber())
                     .put("contact2Name", reg.getContact2Name())
                     .put("contact2Email", reg.getContact2Email())
-                    .put("supplyCategories", reg.getSupplyCategories())
-                    .put("plant", reg.getPlant())
-                    .put("paymentTerms", reg.getPaymentTerms());
+                    .put("businessTypes", reg.getBusinessTypes())
+                    .put("companyType", reg.getCompanyType());
 
             JSONObject payload = new JSONObject()
                     .put("title", "Supplier registration — " + reg.getVendorName())
@@ -429,6 +519,15 @@ public class SupplierRegistrationService {
         } else if ("request.rejected".equals(event)) {
             reg.setStatus("REJECTED");
             registrationRepository.save(reg);
+        } else if ("request.escalated".equals(event)) {
+            // The workflow needs manual attention (SLA breach under an escalate rejection
+            // policy) rather than a clean approve/reject — reflect that instead of leaving
+            // the registration stuck looking "still submitted" with no path forward.
+            reg.setStatus("ESCALATED");
+            registrationRepository.save(reg);
+        } else if ("request.cancelled".equals(event)) {
+            reg.setStatus("CANCELLED");
+            registrationRepository.save(reg);
         }
     }
 
@@ -480,6 +579,16 @@ public class SupplierRegistrationService {
         reg.setCompanyId(company.getCompanyId());
         reg.setApprovedDate(LocalDateTime.now());
         registrationRepository.save(reg);
+
+        if (reg.getFolderitFolderUid() != null) {
+            try {
+                folderItService.renameFolder(reg.getFolderitFolderUid(), vendorCode + " - " + reg.getVendorName());
+            } catch (Exception e) {
+                // Cosmetic — the documents are already safely stored under the placeholder
+                // name, so a rename hiccup shouldn't block the vendor actually being approved.
+                logger.warn("Could not rename FolderIt folder {} for registration {}", reg.getFolderitFolderUid(), reg.getId(), e);
+            }
+        }
 
         sendCredentialsEmail(reg, rawPassword);
     }
