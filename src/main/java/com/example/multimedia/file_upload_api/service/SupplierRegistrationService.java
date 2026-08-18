@@ -18,8 +18,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,7 +45,6 @@ public class SupplierRegistrationService {
     private final SuperAdminRepository superAdminRepository;
     private final AuthorizationRepository authorizationRepository;
     private final PasswordEncoder passwordEncoder;
-    private final JavaMailSender mailSender;
     private final RestTemplate restTemplate;
     private final ServiceControllerUtils serviceControllerUtils;
     private final QuestionnaireService questionnaireService;
@@ -58,8 +55,8 @@ public class SupplierRegistrationService {
     @Value("${workflow.vendor-approval.id:8}")
     private Long vendorApprovalWorkflowId;
 
-    @Value("${mail.from:}")
-    private String mailFrom;
+    @Value("${workflow.email-templates.service-token:}")
+    private String workflowServiceToken;
 
     public SupplierRegistrationService(SupplierRegistrationRepository registrationRepository,
                                         SupplierRegistrationDocumentRepository documentRepository,
@@ -72,7 +69,6 @@ public class SupplierRegistrationService {
                                         SuperAdminRepository superAdminRepository,
                                         AuthorizationRepository authorizationRepository,
                                         PasswordEncoder passwordEncoder,
-                                        JavaMailSender mailSender,
                                         RestTemplate restTemplate,
                                         ServiceControllerUtils serviceControllerUtils,
                                         QuestionnaireService questionnaireService) {
@@ -87,7 +83,6 @@ public class SupplierRegistrationService {
         this.superAdminRepository = superAdminRepository;
         this.authorizationRepository = authorizationRepository;
         this.passwordEncoder = passwordEncoder;
-        this.mailSender = mailSender;
         this.restTemplate = restTemplate;
         this.serviceControllerUtils = serviceControllerUtils;
         this.questionnaireService = questionnaireService;
@@ -223,6 +218,7 @@ public class SupplierRegistrationService {
             reg.setDirectorsJson(dto.getDirectorsJson());
             reg.setMachineryJson(dto.getMachineryJson());
             reg.setDynamicAnswersJson(dto.getDynamicAnswersJson());
+            reg.setDynamicQuestionnaireProcessId(dto.getDynamicQuestionnaireProcessId());
             reg.setDeclarationAccepted(Boolean.TRUE.equals(dto.getDeclarationAccepted()));
 
             // The resolved-primary mirror (contactName/designation/email/phone) is what the
@@ -295,22 +291,71 @@ public class SupplierRegistrationService {
         return code;
     }
 
-    private void sendResumeCodeEmail(SupplierRegistration reg) {
-        if (mailFrom == null || mailFrom.isBlank() || reg.getEmail() == null || reg.getEmail().contains("@placeholder.local")) {
-            logger.warn("Skipping resume-code email — mail not configured or no real email yet");
+    /**
+     * Everything still needed before this draft could actually be submitted — same checks
+     * submit() itself gates on (required documents, contact fields, declaration), plus whichever
+     * mandatory questions from the active questionnaire (if any) are still unanswered. Used only
+     * for the resume-code email's checklist; submit() has its own independent, authoritative
+     * version of this that actually blocks submission.
+     */
+    private List<String> buildMissingChecklist(SupplierRegistration reg) {
+        List<String> missing = new ArrayList<>();
+        for (SupplierDocumentConfig.DocDef d : SupplierDocumentConfig.DOCS) {
+            if (!d.required()) continue;
+            boolean present = documentRepository.findByRegistrationIdAndDocType(reg.getId(), d.id())
+                    .map(doc -> doc.getFolderItFileUid() != null).orElse(false);
+            if (!present) missing.add(d.name());
+        }
+        if (isBlank(reg.getContact1Name())) missing.add("Contact name");
+        if (isBlank(reg.getContact1Role())) missing.add("Contact designation");
+        if (isBlank(reg.getContact1Phone())) missing.add("Contact phone number");
+        if (!Boolean.TRUE.equals(reg.getDeclarationAccepted())) missing.add("The declaration checkbox");
+        missing.addAll(questionnaireService.findUnansweredMandatoryPrompts(
+                reg.getDynamicAnswersJson(), reg.getDynamicQuestionnaireProcessId()));
+        return missing;
+    }
+
+    /**
+     * Renders and sends one of the 3 live-triggered admin-editable templates
+     * (email_templates table, WorkFlow-side) instead of building the email
+     * ourselves — see WorkFlow's services/email_templates.py. Guarded by a
+     * shared-secret header rather than any user session, since this is a
+     * server-to-server call with no logged-in WorkFlow user on this side.
+     */
+    private void triggerWorkflowEmail(String mailKey, String toEmail, Map<String, Object> variables) {
+        if (workflowServiceToken == null || workflowServiceToken.isBlank()) {
+            logger.warn("Skipping {} email — workflow.email-templates.service-token not configured", mailKey);
+            return;
+        }
+        if (toEmail == null || toEmail.isBlank() || toEmail.contains("@placeholder.local")) {
+            logger.warn("Skipping {} email — no real recipient email yet", mailKey);
             return;
         }
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(mailFrom);
-            message.setTo(reg.getEmail());
-            message.setSubject("Your supplier registration draft code");
-            message.setText("Your draft has been saved.\n\nResume code: " + reg.getResumeCode()
-                    + "\n\nEnter this code on the Become a Supplier page to pick up where you left off.");
-            mailSender.send(message);
+            JSONObject payload = new JSONObject()
+                    .put("to_email", toEmail)
+                    .put("variables", new JSONObject(variables));
+            String url = workflowBaseUrl + "/api/email-templates/trigger/" + mailKey;
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("X-Service-Token", workflowServiceToken);
+            HttpEntity<String> request = new HttpEntity<>(payload.toString(), headers);
+            restTemplate.postForObject(url, request, String.class);
         } catch (Exception e) {
-            logger.error("Failed to send resume-code email to {}", reg.getEmail(), e);
+            logger.error("Failed to trigger {} email for {}", mailKey, toEmail, e);
         }
+    }
+
+    private void sendResumeCodeEmail(SupplierRegistration reg) {
+        List<String> missing = buildMissingChecklist(reg);
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("contact_name", reg.getContactName());
+        variables.put("vendor_name", reg.getVendorName());
+        variables.put("resume_code", reg.getResumeCode());
+        variables.put("missing_items", missing.isEmpty()
+                ? "Nothing else — you're ready to submit."
+                : String.join(", ", missing));
+        triggerWorkflowEmail("VO.2", reg.getEmail(), variables);
     }
 
     public ServiceResponse getDraftByCode(String code) {
@@ -606,23 +651,12 @@ public class SupplierRegistrationService {
     }
 
     private void sendCredentialsEmail(SupplierRegistration reg, String rawPassword) {
-        if (mailFrom == null || mailFrom.isBlank()) {
-            logger.warn("Skipping credentials email — mail not configured");
-            return;
-        }
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(mailFrom);
-            message.setTo(reg.getEmail());
-            message.setSubject("You're approved — your vendor login");
-            message.setText("Congratulations — your supplier registration has been approved.\n\n"
-                    + "Vendor code: " + reg.getVendorCode()
-                    + "\nLogin email: " + reg.getEmail()
-                    + "\nPassword: " + rawPassword
-                    + "\n\nPlease log in and change your password.");
-            mailSender.send(message);
-        } catch (Exception e) {
-            logger.error("Failed to send credentials email to {}", reg.getEmail(), e);
-        }
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("contact_name", reg.getContactName());
+        variables.put("vendor_name", reg.getVendorName());
+        variables.put("vendor_code", reg.getVendorCode());
+        variables.put("login_email", reg.getEmail());
+        variables.put("password", rawPassword);
+        triggerWorkflowEmail("VO.6", reg.getEmail(), variables);
     }
 }
