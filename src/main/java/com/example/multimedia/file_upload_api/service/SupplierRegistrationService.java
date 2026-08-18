@@ -283,6 +283,16 @@ public class SupplierRegistrationService {
         return s == null || s.isBlank();
     }
 
+    /**
+     * A null value silently drops the key when building a JSONObject (from a Map, via .put()),
+     * so a blank vendor/contact name would otherwise leave a raw {{merge_tag}} unresolved in the
+     * rendered email instead of falling back to nothing to substitute. Used for anything handed
+     * to WorkFlow — draft-save/approval trigger variables here, and submit()'s request_metadata.
+     */
+    private static String orDefault(String value, String fallback) {
+        return isBlank(value) ? fallback : value;
+    }
+
     private String generateResumeCode() {
         String code;
         do {
@@ -349,8 +359,8 @@ public class SupplierRegistrationService {
     private void sendResumeCodeEmail(SupplierRegistration reg) {
         List<String> missing = buildMissingChecklist(reg);
         Map<String, Object> variables = new HashMap<>();
-        variables.put("contact_name", reg.getContactName());
-        variables.put("vendor_name", reg.getVendorName());
+        variables.put("contact_name", orDefault(reg.getContactName(), "there"));
+        variables.put("vendor_name", orDefault(reg.getVendorName(), "your company"));
         variables.put("resume_code", reg.getResumeCode());
         variables.put("missing_items", missing.isEmpty()
                 ? "Nothing else — you're ready to submit."
@@ -511,8 +521,8 @@ public class SupplierRegistrationService {
 
             JSONObject metadata = new JSONObject()
                     .put("registrationId", reg.getId())
-                    .put("vendorName", reg.getVendorName())
-                    .put("contactName", reg.getContactName())
+                    .put("vendorName", orDefault(reg.getVendorName(), "your company"))
+                    .put("contactName", orDefault(reg.getContactName(), "there"))
                     .put("email", reg.getEmail())
                     .put("phone", reg.getPhone())
                     .put("gstNumber", reg.getGstNumber())
@@ -652,8 +662,8 @@ public class SupplierRegistrationService {
 
     private void sendCredentialsEmail(SupplierRegistration reg, String rawPassword) {
         Map<String, Object> variables = new HashMap<>();
-        variables.put("contact_name", reg.getContactName());
-        variables.put("vendor_name", reg.getVendorName());
+        variables.put("contact_name", orDefault(reg.getContactName(), "there"));
+        variables.put("vendor_name", orDefault(reg.getVendorName(), "your company"));
         variables.put("vendor_code", reg.getVendorCode());
         variables.put("login_email", reg.getEmail());
         variables.put("password", rawPassword);
