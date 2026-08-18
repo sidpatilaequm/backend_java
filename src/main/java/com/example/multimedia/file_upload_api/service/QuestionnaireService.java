@@ -69,16 +69,27 @@ public class QuestionnaireService {
     }
 
     /**
-     * Prompts of mandatory questions with no answer yet, against the specific questionnaire a
-     * draft was answered against — for the draft-save "here's what's left" checklist email, not
-     * a submit-time gate (see validateAndPersistAnswers for that). A plain presence check, not a
-     * full re-validation (bounds/option-membership don't matter for "what's still blank").
+     * total: every question in the questionnaire. unanswered: how many have no answer yet
+     * (mandatory or not). unansweredRequired: the subset of those that are actually mandatory.
+     * incompleteSectionNames: names of sections with at least one unanswered question, in
+     * section order — for the draft-saved email's "Still to complete" row, so an applicant sees
+     * which parts of the form to revisit without reading a full list of question prompts.
      */
-    public List<String> findUnansweredMandatoryPrompts(String answersJson, Integer processId) {
-        if (processId == null) return List.of();
+    public record QuestionnaireProgress(int total, int unanswered, int unansweredRequired, List<String> incompleteSectionNames) {}
+
+    /**
+     * Progress against the active questionnaire — for the draft-saved email's "Answered X of Y" /
+     * "Required left" / "Still to complete" rows, not a submit-time gate (see
+     * validateAndPersistAnswers for that). A plain presence check, not a full re-validation
+     * (bounds/option-membership don't matter for "is it blank").
+     */
+    public QuestionnaireProgress countQuestionnaireProgress(String answersJson, Integer processId) {
+        if (processId == null) return new QuestionnaireProgress(0, 0, 0, List.of());
         List<QSSection> sections = sectionRepository.findByProcessIdOrderByPosition(processId);
         List<Integer> sectionIds = sections.stream().map(QSSection::getId).collect(Collectors.toList());
         List<QSQuestion> questions = sectionIds.isEmpty() ? List.of() : questionRepository.findBySectionIdInOrderByPosition(sectionIds);
+        Map<Integer, String> sectionNameById = sections.stream()
+                .collect(Collectors.toMap(QSSection::getId, QSSection::getTitle));
 
         JSONArray answersArr = new JSONArray(Optional.ofNullable(answersJson).filter(s -> !s.isBlank()).orElse("[]"));
         Map<Integer, JSONObject> byQuestionId = new HashMap<>();
@@ -87,9 +98,10 @@ public class QuestionnaireService {
             byQuestionId.put(a.getInt("questionId"), a);
         }
 
-        List<String> missing = new ArrayList<>();
+        int unanswered = 0;
+        int unansweredRequired = 0;
+        LinkedHashSet<String> incompleteSections = new LinkedHashSet<>();
         for (QSQuestion q : questions) {
-            if (!Boolean.TRUE.equals(q.getIsMandatory())) continue;
             JSONObject answer = byQuestionId.get(q.getId());
             boolean answered;
             if ("short_text".equals(q.getQuestionType()) || "counter".equals(q.getQuestionType())) {
@@ -97,9 +109,14 @@ public class QuestionnaireService {
             } else {
                 answered = answer != null && answer.optJSONArray("optionIds") != null && answer.getJSONArray("optionIds").length() > 0;
             }
-            if (!answered) missing.add(q.getPrompt());
+            if (!answered) {
+                unanswered++;
+                if (Boolean.TRUE.equals(q.getIsMandatory())) unansweredRequired++;
+                String sectionName = sectionNameById.get(q.getSectionId());
+                if (sectionName != null) incompleteSections.add(sectionName);
+            }
         }
-        return missing;
+        return new QuestionnaireProgress(questions.size(), unanswered, unansweredRequired, new ArrayList<>(incompleteSections));
     }
 
     public static class ValidationException extends RuntimeException {

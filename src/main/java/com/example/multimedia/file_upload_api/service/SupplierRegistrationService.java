@@ -302,27 +302,56 @@ public class SupplierRegistrationService {
     }
 
     /**
-     * Everything still needed before this draft could actually be submitted — same checks
-     * submit() itself gates on (required documents, contact fields, declaration), plus whichever
-     * mandatory questions from the active questionnaire (if any) are still unanswered. Used only
-     * for the resume-code email's checklist; submit() has its own independent, authoritative
-     * version of this that actually blocks submission.
+     * total/answered across everything a draft needs before it could be submitted (required
+     * documents, contact fields, declaration, and every questionnaire question); requiredLeft is
+     * the subset of what's missing that actually blocks submission (docs/contact/declaration are
+     * always required; questionnaire questions only count here if marked mandatory);
+     * incompleteCategories names which parts still need attention — "Documents"/"Contact
+     * details"/"Declaration" plus the questionnaire's own section names — for the draft-saved
+     * email's "Answered X of Y" / "Required left" / "Still to complete" rows. Used only for that
+     * email; submit() has its own independent, authoritative gate that actually blocks submission.
      */
-    private List<String> buildMissingChecklist(SupplierRegistration reg) {
-        List<String> missing = new ArrayList<>();
+    private record ChecklistProgress(int total, int answered, int requiredLeft, List<String> incompleteCategories) {}
+
+    private ChecklistProgress buildChecklistProgress(SupplierRegistration reg) {
+        int total = 0;
+        int answered = 0;
+        int requiredLeft = 0;
+        List<String> incompleteCategories = new ArrayList<>();
+
+        int docsMissing = 0;
         for (SupplierDocumentConfig.DocDef d : SupplierDocumentConfig.DOCS) {
             if (!d.required()) continue;
+            total++;
             boolean present = documentRepository.findByRegistrationIdAndDocType(reg.getId(), d.id())
                     .map(doc -> doc.getFolderItFileUid() != null).orElse(false);
-            if (!present) missing.add(d.name());
+            if (present) answered++; else docsMissing++;
         }
-        if (isBlank(reg.getContact1Name())) missing.add("Contact name");
-        if (isBlank(reg.getContact1Role())) missing.add("Contact designation");
-        if (isBlank(reg.getContact1Phone())) missing.add("Contact phone number");
-        if (!Boolean.TRUE.equals(reg.getDeclarationAccepted())) missing.add("The declaration checkbox");
-        missing.addAll(questionnaireService.findUnansweredMandatoryPrompts(
-                reg.getDynamicAnswersJson(), reg.getDynamicQuestionnaireProcessId()));
-        return missing;
+        if (docsMissing > 0) { requiredLeft += docsMissing; incompleteCategories.add("Documents"); }
+
+        int contactMissing = 0;
+        for (String field : new String[]{reg.getContact1Name(), reg.getContact1Role(), reg.getContact1Phone()}) {
+            total++;
+            if (isBlank(field)) contactMissing++; else answered++;
+        }
+        if (contactMissing > 0) { requiredLeft += contactMissing; incompleteCategories.add("Contact details"); }
+
+        total++;
+        if (Boolean.TRUE.equals(reg.getDeclarationAccepted())) {
+            answered++;
+        } else {
+            requiredLeft++;
+            incompleteCategories.add("Declaration");
+        }
+
+        QuestionnaireService.QuestionnaireProgress qp = questionnaireService.countQuestionnaireProgress(
+                reg.getDynamicAnswersJson(), reg.getDynamicQuestionnaireProcessId());
+        total += qp.total();
+        answered += qp.total() - qp.unanswered();
+        requiredLeft += qp.unansweredRequired();
+        incompleteCategories.addAll(qp.incompleteSectionNames());
+
+        return new ChecklistProgress(total, answered, requiredLeft, incompleteCategories);
     }
 
     /**
@@ -357,14 +386,16 @@ public class SupplierRegistrationService {
     }
 
     private void sendResumeCodeEmail(SupplierRegistration reg) {
-        List<String> missing = buildMissingChecklist(reg);
+        ChecklistProgress progress = buildChecklistProgress(reg);
         Map<String, Object> variables = new HashMap<>();
         variables.put("contact_name", orDefault(reg.getContactName(), "there"));
         variables.put("vendor_name", orDefault(reg.getVendorName(), "your company"));
         variables.put("resume_code", reg.getResumeCode());
-        variables.put("missing_items", missing.isEmpty()
-                ? "Nothing else — you're ready to submit."
-                : String.join(", ", missing));
+        variables.put("answered_progress", progress.answered() + " of " + progress.total());
+        variables.put("required_left", String.valueOf(progress.requiredLeft()));
+        variables.put("still_to_complete", progress.incompleteCategories().isEmpty()
+                ? "Nothing — you're ready to submit."
+                : String.join(", ", progress.incompleteCategories()));
         triggerWorkflowEmail("VO.2", reg.getEmail(), variables);
     }
 
