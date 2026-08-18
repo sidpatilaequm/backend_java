@@ -21,29 +21,36 @@ public class VendorQuotationController {
     private SecurityContextUtils securityContextUtils;
 
     @PostMapping
-    public ResponseEntity<VendorQuotationResponse> createQuotation(@RequestBody VendorQuotationRequest request) {
-        Long vendorId = securityContextUtils.getCurrentVendorId();
+    public ResponseEntity<VendorQuotationResponse> createQuotation(
+            @RequestBody VendorQuotationRequest request,
+            @RequestParam(name = "vendor_id", required = false) Long vendorIdParam) {
+        Long vendorId = vendorIdParam != null ? vendorIdParam : securityContextUtils.getCurrentVendorId();
         VendorQuotationResponse response = quotationService.createQuotation(request, vendorId);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping
-    public ResponseEntity<List<VendorQuotationResponse>> getAllMyQuotations() {
-        Long vendorId = securityContextUtils.getCurrentVendorId();
+    public ResponseEntity<List<VendorQuotationResponse>> getAllMyQuotations(
+            @RequestParam(name = "vendor_id", required = false) Long vendorIdParam) {
+        Long vendorId = vendorIdParam != null ? vendorIdParam : securityContextUtils.getCurrentVendorId();
         List<VendorQuotationResponse> responses = quotationService.getQuotationsByVendorId(vendorId);
         return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<VendorQuotationResponse> getMyQuotationById(@PathVariable Long id) {
-        Long vendorId = securityContextUtils.getCurrentVendorId();
+    public ResponseEntity<VendorQuotationResponse> getMyQuotationById(
+            @PathVariable Long id,
+            @RequestParam(name = "vendor_id", required = false) Long vendorIdParam) {
+        Long vendorId = vendorIdParam != null ? vendorIdParam : securityContextUtils.getCurrentVendorId();
         VendorQuotationResponse response = quotationService.getQuotationById(id, vendorId);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/number/{quotationNumber}")
-    public ResponseEntity<VendorQuotationResponse> getMyQuotationByNumber(@PathVariable String quotationNumber) {
-        Long vendorId = securityContextUtils.getCurrentVendorId();
+    public ResponseEntity<VendorQuotationResponse> getMyQuotationByNumber(
+            @PathVariable String quotationNumber,
+            @RequestParam(name = "vendor_id", required = false) Long vendorIdParam) {
+        Long vendorId = vendorIdParam != null ? vendorIdParam : securityContextUtils.getCurrentVendorId();
         VendorQuotationResponse response = quotationService.getQuotationByQuotationNumberAndVendorId(quotationNumber, vendorId);
         return ResponseEntity.ok(response);
     }
