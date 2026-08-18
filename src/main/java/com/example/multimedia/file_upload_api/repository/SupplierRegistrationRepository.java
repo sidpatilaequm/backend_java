@@ -13,4 +13,6 @@ public interface SupplierRegistrationRepository extends JpaRepository<SupplierRe
     Optional<SupplierRegistration> findByEmail(String email);
 
     Optional<SupplierRegistration> findByWorkflowRequestId(Long workflowRequestId);
+
+    long countByStatusAndDynamicQuestionnaireProcessId(String status, Integer dynamicQuestionnaireProcessId);
 }

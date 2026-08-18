@@ -7,6 +7,7 @@ import com.example.multimedia.file_upload_api.repository.AuthorizationRepository
 import com.example.multimedia.file_upload_api.repository.SuperAdminRepository;
 import com.example.multimedia.file_upload_api.repository.UserAuthenticationRepository;
 import com.example.multimedia.file_upload_api.repository.UserDetailRepository;
+import com.example.multimedia.file_upload_api.service.QuestionnaireService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +16,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -27,6 +30,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Authenticated, admin-role-gated pass-through to Form Studio (dynamic_questions) for every
@@ -54,19 +59,44 @@ public class QuestionnaireProxyController {
     // own java.net.http.HttpClient (11+) supports every method correctly with zero dependencies.
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
+    private static final Pattern DELETE_PROCESS_PATH = Pattern.compile("^/api/questionnaire/processes/(\\d+)/?$");
+
     private final UserDetailRepository userDetailRepository;
     private final UserAuthenticationRepository userAuthenticationRepository;
     private final AuthorizationRepository authorizationRepository;
     private final SuperAdminRepository superAdminRepository;
+    private final QuestionnaireService questionnaireService;
 
     public QuestionnaireProxyController(UserDetailRepository userDetailRepository,
                                          UserAuthenticationRepository userAuthenticationRepository,
                                          AuthorizationRepository authorizationRepository,
-                                         SuperAdminRepository superAdminRepository) {
+                                         SuperAdminRepository superAdminRepository,
+                                         QuestionnaireService questionnaireService) {
         this.userDetailRepository = userDetailRepository;
         this.userAuthenticationRepository = userAuthenticationRepository;
         this.authorizationRepository = authorizationRepository;
         this.superAdminRepository = superAdminRepository;
+        this.questionnaireService = questionnaireService;
+    }
+
+    /**
+     * How many applicants have a draft in progress against this questionnaire — Form Studio has
+     * no visibility into this at all (a draft only becomes a real response at submit time), so
+     * this is the one thing the admin builder can't get from the proxied Form Studio endpoints
+     * and needs its own route for. A specific @GetMapping takes precedence over the wildcard
+     * proxy below, so this never gets forwarded to Form Studio by mistake.
+     */
+    @GetMapping("/api/questionnaire/{processId}/draft-count")
+    public ResponseEntity<String> draftCount(@PathVariable Integer processId) {
+        if (!isAdmin()) {
+            return ResponseEntity.status(403)
+                    .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                    .body("{\"detail\":\"Admin access required for this account.\"}");
+        }
+        long count = questionnaireService.countDraftsForProcess(processId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                .body("{\"draftCount\":" + count + "}");
     }
 
     @RequestMapping("/api/questionnaire/**")
@@ -82,6 +112,23 @@ public class QuestionnaireProxyController {
 
         String fullPath = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes())
                 .getRequest().getRequestURI();
+
+        // Blocked here, before ever reaching Form Studio — its own delete lock only knows about
+        // *submitted* responses, not in-progress drafts (which never become a Form Studio row
+        // until submit). Deleting the questionnaire out from under someone mid-form would silently
+        // orphan their answers.
+        if ("DELETE".equals(request.getMethod())) {
+            Matcher m = DELETE_PROCESS_PATH.matcher(fullPath);
+            if (m.matches()) {
+                long drafts = questionnaireService.countDraftsForProcess(Integer.parseInt(m.group(1)));
+                if (drafts > 0) {
+                    return ResponseEntity.status(409)
+                            .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                            .body(("{\"detail\":\"" + drafts + " applicant(s) have a draft in progress against this questionnaire, so it can't be deleted.\"}").getBytes());
+                }
+            }
+        }
+
         String query = request.getQueryString();
         String subPath = fullPath.substring("/api/questionnaire".length());
         String url = formStudioBaseUrl + "/api" + subPath + (query != null ? "?" + query : "");

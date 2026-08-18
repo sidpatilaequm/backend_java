@@ -45,6 +45,8 @@ public class SupplierDraftDTO {
     private String machineryJson;
     /** {questionId, textValue?, optionIds?}[] — validated/persisted into Form Studio's tables at submit. */
     private String dynamicAnswersJson;
+    /** Which questionnaire dynamicAnswersJson was answered against — see the entity field's doc. */
+    private Integer dynamicQuestionnaireProcessId;
     private Boolean declarationAccepted;
 
     private String gstNumber;

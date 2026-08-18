@@ -174,6 +174,17 @@ public class SupplierRegistration {
     @Column(name = "dynamic_answers_json", columnDefinition = "LONGTEXT")
     private String dynamicAnswersJson;
 
+    /**
+     * Which Form Studio process dynamicAnswersJson above was answered against — stamped from
+     * whatever questionnaire was active in the applicant's browser at draft-save time. Lets
+     * QuestionnaireService count "how many drafts are in progress against this questionnaire"
+     * (for the admin builder's draft count, and to block deleting a questionnaire that still has
+     * drafts pending against it) — something Form Studio's own response-count-based lock can't
+     * see at all, since a draft only becomes a real `responses` row at submit time.
+     */
+    @Column(name = "dynamic_questionnaire_process_id")
+    private Integer dynamicQuestionnaireProcessId;
+
     /** Code-of-conduct / GCP / no-child-labour declaration checkbox. */
     @Column(name = "declaration_accepted")
     private Boolean declarationAccepted = false;

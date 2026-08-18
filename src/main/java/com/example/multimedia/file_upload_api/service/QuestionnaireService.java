@@ -1,6 +1,7 @@
 package com.example.multimedia.file_upload_api.service;
 
 import com.example.multimedia.file_upload_api.entity.questionnaire.*;
+import com.example.multimedia.file_upload_api.repository.SupplierRegistrationRepository;
 import com.example.multimedia.file_upload_api.repository.questionnaire.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -36,6 +37,7 @@ public class QuestionnaireService {
     private final QSResponseRepository responseRepository;
     private final QSAnswerRepository answerRepository;
     private final QSAnswerOptionRepository answerOptionRepository;
+    private final SupplierRegistrationRepository registrationRepository;
 
     public QuestionnaireService(QSProcessRepository processRepository,
                                  QSSectionRepository sectionRepository,
@@ -43,7 +45,8 @@ public class QuestionnaireService {
                                  QSQuestionOptionRepository optionRepository,
                                  QSResponseRepository responseRepository,
                                  QSAnswerRepository answerRepository,
-                                 QSAnswerOptionRepository answerOptionRepository) {
+                                 QSAnswerOptionRepository answerOptionRepository,
+                                 SupplierRegistrationRepository registrationRepository) {
         this.processRepository = processRepository;
         this.sectionRepository = sectionRepository;
         this.questionRepository = questionRepository;
@@ -51,6 +54,52 @@ public class QuestionnaireService {
         this.responseRepository = responseRepository;
         this.answerRepository = answerRepository;
         this.answerOptionRepository = answerOptionRepository;
+        this.registrationRepository = registrationRepository;
+    }
+
+    /**
+     * How many applicants have a draft in progress against this specific questionnaire — Form
+     * Studio's own response-count-based lock has no visibility into this at all, since a draft
+     * only becomes a real `responses` row at submit time (see validateAndPersistAnswers). Used
+     * both to show "N drafts in progress" in the admin builder and to block deleting a
+     * questionnaire out from under someone who's mid-form.
+     */
+    public long countDraftsForProcess(Integer processId) {
+        return registrationRepository.countByStatusAndDynamicQuestionnaireProcessId("DRAFT", processId);
+    }
+
+    /**
+     * Prompts of mandatory questions with no answer yet, against the specific questionnaire a
+     * draft was answered against — for the draft-save "here's what's left" checklist email, not
+     * a submit-time gate (see validateAndPersistAnswers for that). A plain presence check, not a
+     * full re-validation (bounds/option-membership don't matter for "what's still blank").
+     */
+    public List<String> findUnansweredMandatoryPrompts(String answersJson, Integer processId) {
+        if (processId == null) return List.of();
+        List<QSSection> sections = sectionRepository.findByProcessIdOrderByPosition(processId);
+        List<Integer> sectionIds = sections.stream().map(QSSection::getId).collect(Collectors.toList());
+        List<QSQuestion> questions = sectionIds.isEmpty() ? List.of() : questionRepository.findBySectionIdInOrderByPosition(sectionIds);
+
+        JSONArray answersArr = new JSONArray(Optional.ofNullable(answersJson).filter(s -> !s.isBlank()).orElse("[]"));
+        Map<Integer, JSONObject> byQuestionId = new HashMap<>();
+        for (int i = 0; i < answersArr.length(); i++) {
+            JSONObject a = answersArr.getJSONObject(i);
+            byQuestionId.put(a.getInt("questionId"), a);
+        }
+
+        List<String> missing = new ArrayList<>();
+        for (QSQuestion q : questions) {
+            if (!Boolean.TRUE.equals(q.getIsMandatory())) continue;
+            JSONObject answer = byQuestionId.get(q.getId());
+            boolean answered;
+            if ("short_text".equals(q.getQuestionType()) || "counter".equals(q.getQuestionType())) {
+                answered = answer != null && !answer.optString("textValue", "").isBlank();
+            } else {
+                answered = answer != null && answer.optJSONArray("optionIds") != null && answer.getJSONArray("optionIds").length() > 0;
+            }
+            if (!answered) missing.add(q.getPrompt());
+        }
+        return missing;
     }
 
     public static class ValidationException extends RuntimeException {
