@@ -6,7 +6,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -93,6 +92,9 @@ public class QuestionnaireService {
                 qOut.put("maxLength", q.getMaxLength());
                 qOut.put("minSelections", q.getMinSelections());
                 qOut.put("maxSelections", q.getMaxSelections());
+                qOut.put("isDropdown", Boolean.TRUE.equals(q.getIsDropdown()));
+                qOut.put("minValue", q.getMinValue());
+                qOut.put("maxValue", q.getMaxValue());
                 JSONArray optsOut = new JSONArray();
                 for (QSQuestionOption o : byQuestion.getOrDefault(q.getId(), List.of())) {
                     JSONObject oOut = new JSONObject();
@@ -118,8 +120,15 @@ public class QuestionnaireService {
      * mandatory question was left unanswered or a choice answer doesn't fit its question's rules.
      * No-op (returns null) if there is no active questionnaire — dynamic questions are optional
      * unless an admin has actually published and activated one.
+     *
+     * Deliberately NOT @Transactional here — this is only ever called from submit(), which
+     * already is. A separate @Transactional boundary on this method marks the shared transaction
+     * rollback-only the instant ValidationException is thrown here, even though submit() catches
+     * it and tries to return a clean error response — the eventual commit then fails with a
+     * generic UnexpectedRollbackException instead of surfacing the real validation message.
+     * Safe to skip: every write below happens only after validation fully passes, so there's
+     * never a partial write here that would need its own rollback boundary.
      */
-    @Transactional
     public Integer validateAndPersistAnswers(String answersJson, String respondentName, String respondentEmail) {
         QSProcess process = processRepository.findByExternalKeyAndStatus(supplierRegistrationKey, "published").orElse(null);
         if (process == null) return null;
@@ -150,6 +159,27 @@ public class QuestionnaireService {
                 String text = answer != null ? answer.optString("textValue", "").trim() : "";
                 if (mandatory && text.isEmpty()) {
                     throw new ValidationException("\"" + q.getPrompt() + "\" is required.");
+                }
+                continue;
+            }
+
+            if ("counter".equals(type)) {
+                String text = answer != null ? answer.optString("textValue", "").trim() : "";
+                if (text.isEmpty()) {
+                    if (mandatory) throw new ValidationException("\"" + q.getPrompt() + "\" is required.");
+                    continue;
+                }
+                int value;
+                try {
+                    value = Integer.parseInt(text);
+                } catch (NumberFormatException e) {
+                    throw new ValidationException("\"" + q.getPrompt() + "\" needs a whole number.");
+                }
+                if (q.getMinValue() != null && value < q.getMinValue()) {
+                    throw new ValidationException("\"" + q.getPrompt() + "\" must be at least " + q.getMinValue() + ".");
+                }
+                if (q.getMaxValue() != null && value > q.getMaxValue()) {
+                    throw new ValidationException("\"" + q.getPrompt() + "\" must be at most " + q.getMaxValue() + ".");
                 }
                 continue;
             }
@@ -190,7 +220,8 @@ public class QuestionnaireService {
             JSONObject answer = byQuestionId.get(q.getId());
             if (answer == null) continue;
 
-            if ("short_text".equals(q.getQuestionType())) {
+            String qType = q.getQuestionType();
+            if ("short_text".equals(qType) || "counter".equals(qType)) {
                 String text = answer.optString("textValue", "").trim();
                 if (text.isEmpty()) continue;
                 QSAnswer a = new QSAnswer();

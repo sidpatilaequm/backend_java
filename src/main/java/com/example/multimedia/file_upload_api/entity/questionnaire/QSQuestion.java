@@ -23,7 +23,7 @@ public class QSQuestion {
     @Column(name = "help_text")
     private String helpText;
 
-    /** short_text / single_choice / multi_choice */
+    /** short_text / single_choice / multi_choice / counter */
     @Column(name = "question_type")
     private String questionType;
 
@@ -40,4 +40,15 @@ public class QSQuestion {
 
     @Column(name = "max_selections")
     private Integer maxSelections;
+
+    /** single_choice only — render as a &lt;select&gt; instead of radio buttons. */
+    @Column(name = "is_dropdown")
+    private Boolean isDropdown;
+
+    /** counter only. */
+    @Column(name = "min_value")
+    private Integer minValue;
+
+    @Column(name = "max_value")
+    private Integer maxValue;
 }
