@@ -251,7 +251,6 @@ public class SupplierRegistrationService {
             SupplierRegistration reg = dto.getRegistrationId() != null
                     ? registrationRepository.findById(dto.getRegistrationId()).orElseGet(this::newDraft)
                     : newDraft();
-            boolean hadRealEmailBefore = hasRealEmail(reg);
 
             reg.setVendorName(dto.getVendorName());
             reg.setAddress(dto.getAddress());
@@ -322,17 +321,12 @@ public class SupplierRegistrationService {
             }
             reg = registrationRepository.save(reg);
 
-            // Fires exactly once — the save where a real email first appears on this
-            // registration — not "the first save overall". Those aren't the same thing: an
-            // applicant can save several times (company details, documents) before ever
-            // typing their email, and gating this on isFirstSave alone meant that once that
-            // first, email-less save consumed the "first save", no later save — including the
-            // one that finally adds a real email — would ever trigger it, so the applicant
-            // never got the code at all. Also guards against re-sending on every subsequent
-            // autosave once the email is already real, including right after the applicant
-            // has already submitted — which would read as "come back and finish this" when
-            // there's nothing left to finish.
-            if (hasRealEmail(reg) && !hadRealEmailBefore) {
+            // Fires on every deliberate "Save draft" click (explicitSave, set by the frontend
+            // only for that button — never the silent ~3s background autosave, which would
+            // otherwise mean an email every few seconds while someone's actively typing). Also
+            // requires a real email to send to, since a draft can be explicitly saved before
+            // one exists.
+            if (hasRealEmail(reg) && Boolean.TRUE.equals(dto.getExplicitSave())) {
                 sendResumeCodeEmail(reg);
             }
 
