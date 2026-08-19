@@ -9,6 +9,7 @@ import com.example.multimedia.file_upload_api.repository.SupplierChangeRequestRe
 import com.example.multimedia.file_upload_api.repository.SupplierRegistrationAttachmentRepository;
 import com.example.multimedia.file_upload_api.repository.SupplierRegistrationDocumentRepository;
 import com.example.multimedia.file_upload_api.repository.SupplierRegistrationRepository;
+import com.example.multimedia.file_upload_api.util.SupplierDocumentConfig;
 import com.example.multimedia.file_upload_api.utils.AppConstants;
 import com.example.multimedia.file_upload_api.utils.ServiceControllerUtils;
 import org.json.JSONObject;
@@ -57,6 +58,9 @@ public class VendorChangeRequestService {
 
     @Value("${workflow.vendor-change-request.id:13}")
     private Long changeRequestWorkflowId;
+
+    @Value("${workflow.email-templates.service-token:}")
+    private String workflowServiceToken;
 
     public VendorChangeRequestService(SupplierChangeRequestRepository changeRequestRepository,
                                        SupplierRegistrationRepository registrationRepository,
@@ -172,6 +176,13 @@ public class VendorChangeRequestService {
             cr.setWorkflowRequestId(wfResponse.getLong("id"));
             changeRequestRepository.save(cr);
 
+            Map<String, Object> submittedVars = new HashMap<>();
+            submittedVars.put("contact_name", orDefault(reg.getContactName(), "there"));
+            submittedVars.put("vendor_name", orDefault(reg.getVendorName(), "your company"));
+            submittedVars.put("item_label", itemLabel(cr));
+            submittedVars.put("reason", cr.getReason());
+            triggerWorkflowEmail("VCR.1", reg.getEmail(), submittedVars);
+
             Map<String, Object> data = new HashMap<>();
             data.put("changeRequestId", cr.getId());
             response.addData("result", data);
@@ -196,23 +207,40 @@ public class VendorChangeRequestService {
     public boolean handleWebhookIfChangeRequest(long workflowRequestId, String event) {
         SupplierChangeRequest cr = changeRequestRepository.findByWorkflowRequestId(workflowRequestId).orElse(null);
         if (cr == null) return false;
-        if (!"PENDING".equals(cr.getStatus())) {
-            logger.info("Change request {} already decided ({}) — ignoring duplicate webhook", cr.getId(), cr.getStatus());
+
+        String status;
+        if ("request.approved".equals(event)) status = "APPROVED";
+        else if ("request.rejected".equals(event) || "request.cancelled".equals(event)) status = "REJECTED";
+        else if ("request.escalated".equals(event)) status = "ESCALATED";
+        else return true;
+
+        // WorkFlow's outgoing webhook is known to fire more than once per decision — this claim
+        // is the only thing standing between that and a change applied twice / VCR.2 sent twice.
+        int claimed = changeRequestRepository.markDecided(cr.getId(), status, LocalDateTime.now());
+        if (claimed == 0) {
+            logger.info("Change request {} already decided — ignoring duplicate webhook", cr.getId());
             return true;
         }
 
-        if ("request.approved".equals(event)) {
+        if ("APPROVED".equals(status)) {
             applyApprovedChange(cr);
-            cr.setStatus("APPROVED");
-        } else if ("request.rejected".equals(event) || "request.cancelled".equals(event)) {
-            cr.setStatus("REJECTED");
-        } else if ("request.escalated".equals(event)) {
-            cr.setStatus("ESCALATED");
-        } else {
+        }
+        if ("ESCALATED".equals(status)) {
             return true;
         }
-        cr.setDecidedDate(LocalDateTime.now());
-        changeRequestRepository.save(cr);
+
+        SupplierRegistration reg = cr.getRegistration();
+        String decision = "APPROVED".equals(status) ? "approved" : "rejected";
+        Map<String, Object> decidedVars = new HashMap<>();
+        decidedVars.put("contact_name", orDefault(reg.getContactName(), "there"));
+        decidedVars.put("vendor_name", orDefault(reg.getVendorName(), "your company"));
+        decidedVars.put("item_label", itemLabel(cr));
+        decidedVars.put("decision", decision);
+        decidedVars.put("decision_detail", "approved".equals(decision)
+                ? "The updated document/answer is now on file."
+                : "No changes have been made — the previous document/answer stays on file.");
+        triggerWorkflowEmail("VCR.2", reg.getEmail(), decidedVars);
+
         return true;
     }
 
@@ -239,6 +267,54 @@ public class VendorChangeRequestService {
             case "answer" -> questionnaireService.updateSingleAnswer(
                     reg.getFormStudioResponseId(), Integer.parseInt(cr.getItemKey()), new JSONObject(cr.getNewAnswerJson()));
             default -> logger.warn("Unknown change request item type {} for change request {}", cr.getItemType(), cr.getId());
+        }
+    }
+
+    /** A human-readable name for whichever document/attachment/answer a change request is about,
+     *  for the VCR.1/VCR.2 email copy — not exposed via the API, only used to fill {{item_label}}. */
+    private String itemLabel(SupplierChangeRequest cr) {
+        try {
+            return switch (cr.getItemType()) {
+                case "document" -> SupplierDocumentConfig.byId(cr.getItemKey()).name();
+                case "attachment" -> cr.getNewFileName() != null ? cr.getNewFileName() : "an additional document";
+                case "answer" -> {
+                    String prompt = questionnaireService.getQuestionPrompt(Integer.parseInt(cr.getItemKey()));
+                    yield prompt != null ? prompt : "a questionnaire answer";
+                }
+                default -> "your submission";
+            };
+        } catch (Exception e) {
+            return "your submission";
+        }
+    }
+
+    private static String orDefault(String value, String fallback) {
+        return (value == null || value.isBlank()) ? fallback : value;
+    }
+
+    /** Same Java->WorkFlow trigger convention as SupplierRegistrationService's VO.2/VO.6 —
+     *  never lets an email failure break the change-request flow itself. */
+    private void triggerWorkflowEmail(String mailKey, String toEmail, Map<String, Object> variables) {
+        if (workflowServiceToken == null || workflowServiceToken.isBlank()) {
+            logger.warn("Skipping {} email — workflow.email-templates.service-token not configured", mailKey);
+            return;
+        }
+        if (toEmail == null || toEmail.isBlank() || toEmail.contains("@placeholder.local")) {
+            logger.warn("Skipping {} email — no real recipient email yet", mailKey);
+            return;
+        }
+        try {
+            JSONObject payload = new JSONObject()
+                    .put("to_email", toEmail)
+                    .put("variables", new JSONObject(variables));
+            String url = workflowBaseUrl + "/api/email-templates/trigger/" + mailKey;
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("X-Service-Token", workflowServiceToken);
+            HttpEntity<String> request = new HttpEntity<>(payload.toString(), headers);
+            restTemplate.postForObject(url, request, String.class);
+        } catch (Exception e) {
+            logger.error("Failed to trigger {} email for {}", mailKey, toEmail, e);
         }
     }
 

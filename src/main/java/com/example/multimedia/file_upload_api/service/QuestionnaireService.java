@@ -383,6 +383,11 @@ public class QuestionnaireService {
      * you're changing from" display; not a machine-readable shape (see getAnswersForReview for
      * that, which this partially duplicates in a more compact form on purpose).
      */
+    /** The question's own prompt text — used to name "what changed" in the change-request emails. */
+    public String getQuestionPrompt(Integer questionId) {
+        return questionRepository.findById(questionId).map(QSQuestion::getPrompt).orElse(null);
+    }
+
     public String getAnswerSummary(Integer responseId, Integer questionId) {
         if (responseId == null) return "(not answered)";
         QSQuestion question = questionRepository.findById(questionId).orElse(null);
