@@ -34,6 +34,7 @@ public class QuestionnaireService {
     private final QSSectionRepository sectionRepository;
     private final QSQuestionRepository questionRepository;
     private final QSQuestionOptionRepository optionRepository;
+    private final QSQuestionColumnRepository columnRepository;
     private final QSResponseRepository responseRepository;
     private final QSAnswerRepository answerRepository;
     private final QSAnswerOptionRepository answerOptionRepository;
@@ -43,6 +44,7 @@ public class QuestionnaireService {
                                  QSSectionRepository sectionRepository,
                                  QSQuestionRepository questionRepository,
                                  QSQuestionOptionRepository optionRepository,
+                                 QSQuestionColumnRepository columnRepository,
                                  QSResponseRepository responseRepository,
                                  QSAnswerRepository answerRepository,
                                  QSAnswerOptionRepository answerOptionRepository,
@@ -51,6 +53,7 @@ public class QuestionnaireService {
         this.sectionRepository = sectionRepository;
         this.questionRepository = questionRepository;
         this.optionRepository = optionRepository;
+        this.columnRepository = columnRepository;
         this.responseRepository = responseRepository;
         this.answerRepository = answerRepository;
         this.answerOptionRepository = answerOptionRepository;
@@ -106,6 +109,8 @@ public class QuestionnaireService {
             boolean answered;
             if ("short_text".equals(q.getQuestionType()) || "counter".equals(q.getQuestionType())) {
                 answered = answer != null && !answer.optString("textValue", "").isBlank();
+            } else if ("table".equals(q.getQuestionType())) {
+                answered = answer != null && hasFilledRow(answer.optJSONArray("rows"));
             } else {
                 answered = answer != null && answer.optJSONArray("optionIds") != null && answer.getJSONArray("optionIds").length() > 0;
             }
@@ -138,6 +143,8 @@ public class QuestionnaireService {
         List<Integer> questionIds = questions.stream().map(QSQuestion::getId).collect(Collectors.toList());
         List<QSQuestionOption> options = questionIds.isEmpty() ? List.of() : optionRepository.findByQuestionIdInOrderByPosition(questionIds);
         Map<Integer, List<QSQuestionOption>> byQuestion = options.stream().collect(Collectors.groupingBy(QSQuestionOption::getQuestionId, LinkedHashMap::new, Collectors.toList()));
+        List<QSQuestionColumn> columns = questionIds.isEmpty() ? List.of() : columnRepository.findByQuestionIdInOrderByPosition(questionIds);
+        Map<Integer, List<QSQuestionColumn>> columnsByQuestion = columns.stream().collect(Collectors.groupingBy(QSQuestionColumn::getQuestionId, LinkedHashMap::new, Collectors.toList()));
 
         JSONObject out = new JSONObject();
         out.put("processId", process.getId());
@@ -161,6 +168,8 @@ public class QuestionnaireService {
                 qOut.put("isDropdown", Boolean.TRUE.equals(q.getIsDropdown()));
                 qOut.put("minValue", q.getMinValue());
                 qOut.put("maxValue", q.getMaxValue());
+                qOut.put("minRows", q.getMinRows());
+                qOut.put("maxRows", q.getMaxRows());
                 JSONArray optsOut = new JSONArray();
                 for (QSQuestionOption o : byQuestion.getOrDefault(q.getId(), List.of())) {
                     JSONObject oOut = new JSONObject();
@@ -169,6 +178,16 @@ public class QuestionnaireService {
                     optsOut.put(oOut);
                 }
                 qOut.put("options", optsOut);
+                JSONArray colsOut = new JSONArray();
+                for (QSQuestionColumn c : columnsByQuestion.getOrDefault(q.getId(), List.of())) {
+                    JSONObject cOut = new JSONObject();
+                    cOut.put("columnId", c.getId());
+                    cOut.put("label", c.getLabel());
+                    cOut.put("columnType", c.getColumnType());
+                    cOut.put("isRequired", Boolean.TRUE.equals(c.getIsRequired()));
+                    colsOut.put(cOut);
+                }
+                qOut.put("columns", colsOut);
                 questionsOut.put(qOut);
             }
             sOut.put("questions", questionsOut);
@@ -208,6 +227,9 @@ public class QuestionnaireService {
         List<QSQuestionOption> allOptions = optionRepository.findByQuestionIdInOrderByPosition(questionIds);
         Map<Integer, Set<Integer>> validOptionIdsByQuestion = allOptions.stream()
                 .collect(Collectors.groupingBy(QSQuestionOption::getQuestionId, Collectors.mapping(QSQuestionOption::getId, Collectors.toSet())));
+        List<QSQuestionColumn> allColumns = columnRepository.findByQuestionIdInOrderByPosition(questionIds);
+        Map<Integer, List<QSQuestionColumn>> columnsByQuestion = allColumns.stream()
+                .collect(Collectors.groupingBy(QSQuestionColumn::getQuestionId, LinkedHashMap::new, Collectors.toList()));
 
         JSONArray answersArr = new JSONArray(Optional.ofNullable(answersJson).filter(s -> !s.isBlank()).orElse("[]"));
         Map<Integer, JSONObject> byQuestionId = new HashMap<>();
@@ -246,6 +268,39 @@ public class QuestionnaireService {
                 }
                 if (q.getMaxValue() != null && value > q.getMaxValue()) {
                     throw new ValidationException("\"" + q.getPrompt() + "\" must be at most " + q.getMaxValue() + ".");
+                }
+                continue;
+            }
+
+            if ("table".equals(type)) {
+                List<QSQuestionColumn> cols = columnsByQuestion.getOrDefault(q.getId(), List.of());
+                List<JSONObject> rows = filledRows(answer != null ? answer.optJSONArray("rows") : null);
+
+                if (rows.isEmpty()) {
+                    if (mandatory || q.getMinRows() != null) {
+                        int floor = q.getMinRows() != null ? q.getMinRows() : 1;
+                        throw new ValidationException("\"" + q.getPrompt() + "\" needs at least " + floor + " row" + (floor == 1 ? "" : "s") + ".");
+                    }
+                    continue;
+                }
+                if (q.getMinRows() != null && rows.size() < q.getMinRows()) {
+                    throw new ValidationException("\"" + q.getPrompt() + "\" needs at least " + q.getMinRows() + " rows.");
+                }
+                if (q.getMaxRows() != null && rows.size() > q.getMaxRows()) {
+                    throw new ValidationException("\"" + q.getPrompt() + "\" allows at most " + q.getMaxRows() + " rows.");
+                }
+                for (int r = 0; r < rows.size(); r++) {
+                    JSONObject row = rows.get(r);
+                    for (QSQuestionColumn c : cols) {
+                        String cell = row.optString(String.valueOf(c.getId()), "").trim();
+                        if (Boolean.TRUE.equals(c.getIsRequired()) && cell.isEmpty()) {
+                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + " is missing " + c.getLabel() + ".");
+                        }
+                        if (!cell.isEmpty() && !cellIsValid(c.getColumnType(), cell)) {
+                            String kind = "number".equals(c.getColumnType()) ? "number" : "date";
+                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + ": " + c.getLabel() + " needs a " + kind + ".");
+                        }
+                    }
                 }
                 continue;
             }
@@ -295,6 +350,14 @@ public class QuestionnaireService {
                 a.setQuestionId(q.getId());
                 a.setTextValue(text);
                 answerRepository.save(a);
+            } else if ("table".equals(qType)) {
+                List<JSONObject> rows = filledRows(answer.optJSONArray("rows"));
+                if (rows.isEmpty()) continue;
+                QSAnswer a = new QSAnswer();
+                a.setResponseId(response.getId());
+                a.setQuestionId(q.getId());
+                a.setTableRowsJson(new JSONArray(rows).toString());
+                answerRepository.save(a);
             } else {
                 List<Integer> optionIds = answer.has("optionIds") ? toIntList(answer.getJSONArray("optionIds")) : List.of();
                 if (optionIds.isEmpty()) continue;
@@ -324,6 +387,9 @@ public class QuestionnaireService {
         List<Integer> questionIds = answers.stream().map(QSAnswer::getQuestionId).collect(Collectors.toList());
         Map<Integer, QSQuestion> questionsById = questionRepository.findAllById(questionIds).stream()
                 .collect(Collectors.toMap(QSQuestion::getId, q -> q));
+        List<QSQuestionColumn> reviewColumns = questionIds.isEmpty() ? List.of() : columnRepository.findByQuestionIdInOrderByPosition(questionIds);
+        Map<Integer, List<QSQuestionColumn>> reviewColumnsByQuestion = reviewColumns.stream()
+                .collect(Collectors.groupingBy(QSQuestionColumn::getQuestionId, LinkedHashMap::new, Collectors.toList()));
 
         List<Integer> answerIds = answers.stream().map(QSAnswer::getId).collect(Collectors.toList());
         List<QSAnswerOption> selections = answerOptionRepository.findByAnswerIdIn(answerIds);
@@ -346,6 +412,27 @@ public class QuestionnaireService {
                 labels.put(labelsByOptionId.getOrDefault(optId, "—"));
             }
             out1.put("selectedLabels", labels);
+
+            List<QSQuestionColumn> cols = reviewColumnsByQuestion.getOrDefault(q.getId(), List.of());
+            Map<String, String> columnLabelById = cols.stream()
+                    .collect(Collectors.toMap(c -> String.valueOf(c.getId()), QSQuestionColumn::getLabel));
+            JSONArray rowsOut = new JSONArray();
+            if (a.getTableRowsJson() != null) {
+                JSONArray storedRows = new JSONArray(a.getTableRowsJson());
+                for (int i = 0; i < storedRows.length(); i++) {
+                    JSONObject storedRow = storedRows.getJSONObject(i);
+                    JSONObject rowOut = new JSONObject();
+                    for (String key : storedRow.keySet()) {
+                        rowOut.put(columnLabelById.getOrDefault(key, "(removed)"), storedRow.getString(key));
+                    }
+                    rowsOut.put(rowOut);
+                }
+            }
+            out1.put("rows", rowsOut);
+            JSONArray columnLabelsOut = new JSONArray();
+            for (QSQuestionColumn c : cols) columnLabelsOut.put(c.getLabel());
+            out1.put("columnLabels", columnLabelsOut);
+
             out.put(out1);
         }
         return out;
@@ -355,5 +442,35 @@ public class QuestionnaireService {
         List<Integer> out = new ArrayList<>();
         for (int i = 0; i < arr.length(); i++) out.add(arr.getInt(i));
         return out;
+    }
+
+    /** A table row counts as filled if at least one of its cells is non-blank — an all-blank
+     *  row (e.g. a row the respondent added then left empty) is dropped rather than stored. */
+    private static List<JSONObject> filledRows(JSONArray rowsArr) {
+        List<JSONObject> out = new ArrayList<>();
+        if (rowsArr == null) return out;
+        for (int i = 0; i < rowsArr.length(); i++) {
+            JSONObject row = rowsArr.getJSONObject(i);
+            boolean anyFilled = false;
+            for (String key : row.keySet()) {
+                if (!row.optString(key, "").trim().isEmpty()) { anyFilled = true; break; }
+            }
+            if (anyFilled) out.add(row);
+        }
+        return out;
+    }
+
+    private static boolean hasFilledRow(JSONArray rowsArr) {
+        return !filledRows(rowsArr).isEmpty();
+    }
+
+    private static boolean cellIsValid(String columnType, String value) {
+        if ("number".equals(columnType)) {
+            try { Double.parseDouble(value); return true; } catch (NumberFormatException e) { return false; }
+        }
+        if ("date".equals(columnType)) {
+            try { java.time.LocalDate.parse(value); return true; } catch (java.time.format.DateTimeParseException e) { return false; }
+        }
+        return true;
     }
 }
