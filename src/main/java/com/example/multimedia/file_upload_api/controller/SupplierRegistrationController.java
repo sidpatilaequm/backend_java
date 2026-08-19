@@ -114,6 +114,7 @@ public class SupplierRegistrationController {
             return ResponseEntity.ok()
                     .header("Content-Type", file.contentType())
                     .header("Content-Disposition", "inline")
+                    .header("Cache-Control", "no-store")
                     .body(file.bytes());
         } catch (Exception e) {
             logger.warn("Could not fetch preview for document {}", docId, e);
