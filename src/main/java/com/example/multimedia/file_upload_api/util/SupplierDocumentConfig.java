@@ -21,10 +21,10 @@ public final class SupplierDocumentConfig {
     public static final List<DocDef> DOCS = List.of(
             new DocDef("coi", "Certificate of incorporation", true,
                     List.of(new FieldDef("cin", "CIN or LLPIN")), "cin", List.of("cin")),
-            new DocDef("pan", "PAN card", true,
-                    List.of(new FieldDef("pan", "PAN")), "pan", List.of("pan")),
             new DocDef("gst", "GST registration certificate", true,
                     List.of(new FieldDef("gstin", "GSTIN")), "gstin", List.of("gstin")),
+            new DocDef("pan", "PAN card", true,
+                    List.of(new FieldDef("pan", "PAN")), "pan", List.of("pan")),
             new DocDef("chq", "Cancelled cheque", true,
                     List.of(new FieldDef("benName", "Account name as printed"),
                             new FieldDef("acctNo", "Account number"),
@@ -51,6 +51,19 @@ public final class SupplierDocumentConfig {
         DocDef d = BY_ID.get(docType);
         if (d == null) throw new IllegalArgumentException("Unknown document type: " + docType);
         return d;
+    }
+
+    private static final Map<String, Integer> ORDER_INDEX = java.util.stream.IntStream.range(0, DOCS.size())
+            .boxed().collect(java.util.stream.Collectors.toMap(i -> DOCS.get(i).id(), i -> i));
+
+    /**
+     * DOCS's own position for docType — lets callers display an applicant's already-uploaded
+     * documents in this canonical order (e.g. GST before PAN) instead of whatever order they
+     * happened to upload them in, which is all a plain DB fetch would otherwise preserve.
+     * Unknown types sort last rather than throwing, so a stray/legacy docType never breaks a list.
+     */
+    public static int orderIndex(String docType) {
+        return ORDER_INDEX.getOrDefault(docType, Integer.MAX_VALUE);
     }
 
     private SupplierDocumentConfig() {}

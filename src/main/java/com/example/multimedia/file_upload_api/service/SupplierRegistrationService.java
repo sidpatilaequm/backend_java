@@ -406,6 +406,7 @@ public class SupplierRegistrationService {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "No draft found for that code");
         }
         List<SupplierRegistrationDocument> docs = documentRepository.findByRegistrationId(reg.getId());
+        docs.sort(Comparator.comparingInt(d -> SupplierDocumentConfig.orderIndex(d.getDocType())));
         Map<String, Object> data = new HashMap<>();
         data.put("registration", reg);
         List<Map<String, Object>> docsOut = new ArrayList<>();
@@ -437,6 +438,7 @@ public class SupplierRegistrationService {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
         }
         List<SupplierRegistrationDocument> docs = documentRepository.findByRegistrationId(reg.getId());
+        docs.sort(Comparator.comparingInt(d -> SupplierDocumentConfig.orderIndex(d.getDocType())));
         Map<String, Object> data = new HashMap<>();
         data.put("registration", reg);
         List<Map<String, Object>> docsOut = new ArrayList<>();
