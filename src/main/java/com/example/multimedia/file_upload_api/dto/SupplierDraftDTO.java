@@ -7,6 +7,9 @@ import lombok.Data;
 public class SupplierDraftDTO {
     private Long registrationId;
     private String resumeCode;
+    /** True only for a deliberate "Save draft" click on the frontend — never the silent
+     *  background autosave — so the draft-saved email fires every explicit save. */
+    private Boolean explicitSave;
 
     private String vendorName;
     private String address;

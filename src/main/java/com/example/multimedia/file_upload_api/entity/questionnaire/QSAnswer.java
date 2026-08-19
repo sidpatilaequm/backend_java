@@ -23,4 +23,11 @@ public class QSAnswer {
 
     @Column(name = "text_value", columnDefinition = "TEXT")
     private String textValue;
+
+    /** table-type only — a JSON array of rows, each row a {columnId (as string): cell value}
+     *  object, matching Form Studio's own Answer.table_rows. Read/written as a raw JSON string
+     *  (org.json), same convention this codebase already uses for other JSON-shaped columns
+     *  rather than mapping it to a typed Java structure. */
+    @Column(name = "table_rows", columnDefinition = "JSON")
+    private String tableRowsJson;
 }

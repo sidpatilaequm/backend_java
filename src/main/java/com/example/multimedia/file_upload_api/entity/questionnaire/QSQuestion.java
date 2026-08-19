@@ -23,7 +23,7 @@ public class QSQuestion {
     @Column(name = "help_text")
     private String helpText;
 
-    /** short_text / single_choice / multi_choice / counter */
+    /** short_text / single_choice / multi_choice / counter / table */
     @Column(name = "question_type")
     private String questionType;
 
@@ -51,4 +51,11 @@ public class QSQuestion {
 
     @Column(name = "max_value")
     private Integer maxValue;
+
+    /** table only. */
+    @Column(name = "min_rows")
+    private Integer minRows;
+
+    @Column(name = "max_rows")
+    private Integer maxRows;
 }

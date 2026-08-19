@@ -36,6 +36,7 @@ public class SupplierRegistrationService {
 
     private final SupplierRegistrationRepository registrationRepository;
     private final SupplierRegistrationDocumentRepository documentRepository;
+    private final SupplierRegistrationAttachmentRepository attachmentRepository;
     private final FolderItService folderItService;
     private final OpenAiVisionOcrService ocrService;
     private final MicrovistaService microvistaService;
@@ -60,6 +61,7 @@ public class SupplierRegistrationService {
 
     public SupplierRegistrationService(SupplierRegistrationRepository registrationRepository,
                                         SupplierRegistrationDocumentRepository documentRepository,
+                                        SupplierRegistrationAttachmentRepository attachmentRepository,
                                         FolderItService folderItService,
                                         OpenAiVisionOcrService ocrService,
                                         MicrovistaService microvistaService,
@@ -74,6 +76,7 @@ public class SupplierRegistrationService {
                                         QuestionnaireService questionnaireService) {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
+        this.attachmentRepository = attachmentRepository;
         this.folderItService = folderItService;
         this.ocrService = ocrService;
         this.microvistaService = microvistaService;
@@ -133,6 +136,68 @@ public class SupplierRegistrationService {
             logger.error("Document upload failed for docType={}", docType, e);
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Failed to process document: " + e.getMessage());
         }
+    }
+
+    // ── Extra attachments — no fixed slot, no OCR/verification ──────────────
+
+    /**
+     * Same folder/storage mechanics as uploadDocument, minus the OCR extraction and doc-type
+     * slot — an application can carry any number of these, each its own row (not an upsert by
+     * type like the fixed documents), for anything a supplier wants to attach that doesn't fit
+     * one of the 7 defined document types.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ServiceResponse uploadAttachment(Long registrationId, MultipartFile file) {
+        ServiceResponse response = new ServiceResponse();
+        try {
+            SupplierRegistration registration = registrationId != null
+                    ? registrationRepository.findById(registrationId).orElseGet(this::newDraft)
+                    : newDraft();
+            if (registration.getId() == null) registration = registrationRepository.save(registration);
+
+            if (registration.getFolderitFolderUid() == null) {
+                registration.setFolderitFolderUid(folderItService.getOrCreateVendorFolder("REG-" + registration.getId()));
+                registration = registrationRepository.save(registration);
+            }
+
+            String folderItUid = folderItService.uploadFileToFolder(file, registration.getFolderitFolderUid());
+
+            SupplierRegistrationAttachment attachment = new SupplierRegistrationAttachment();
+            attachment.setRegistration(registration);
+            attachment.setFileName(file.getOriginalFilename());
+            attachment.setFolderItFileUid(folderItUid);
+            attachment = attachmentRepository.save(attachment);
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("registrationId", registration.getId());
+            data.put("attachmentId", attachment.getId());
+            data.put("fileName", attachment.getFileName());
+            response.addData("result", data);
+            return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "File attached");
+        } catch (IOException | RuntimeException e) {
+            logger.error("Attachment upload failed", e);
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Failed to upload file: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Removes the DB reference only — the file itself stays in FolderIt, same as replacing one
+     * of the fixed documents already does (see uploadDocument's upsert-by-type, which likewise
+     * never deletes the FolderIt object it's replacing).
+     */
+    public ServiceResponse removeAttachment(Long attachmentId) {
+        ServiceResponse response = new ServiceResponse();
+        if (!attachmentRepository.existsById(attachmentId)) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Attachment not found");
+        }
+        attachmentRepository.deleteById(attachmentId);
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Attachment removed");
+    }
+
+    public FolderItService.DownloadedFile getAttachmentPreviewFile(Long attachmentId) throws java.io.IOException {
+        SupplierRegistrationAttachment attachment = attachmentRepository.findById(attachmentId)
+                .orElseThrow(() -> new RuntimeException("Attachment not found"));
+        return folderItService.downloadFileBytes(attachment.getFolderItFileUid());
     }
 
     private SupplierRegistration newDraft() {
@@ -251,20 +316,17 @@ public class SupplierRegistrationService {
             reg.setAs9100dCertifyingBody(dto.getAs9100dCertifyingBody());
             reg.setAs9100dExpiry(dto.getAs9100dExpiry());
 
-            boolean isFirstSave = reg.getResumeCode() == null;
-            if (isFirstSave) {
+            if (reg.getResumeCode() == null) {
                 reg.setResumeCode(generateResumeCode());
             }
             reg = registrationRepository.save(reg);
 
-            // Only email the code the first time it's generated — saveDraft() also runs
-            // silently on every debounced autosave (every few seconds while the applicant
-            // is actively editing) and once more right before submit() actually submits, so
-            // emailing unconditionally here would mean a fresh "resume code" email landing
-            // repeatedly during normal use, including right after the applicant has already
-            // submitted — which reads as "come back and finish this" when there's nothing
-            // left to finish.
-            if (isFirstSave) {
+            // Fires on every deliberate "Save draft" click (explicitSave, set by the frontend
+            // only for that button — never the silent ~3s background autosave, which would
+            // otherwise mean an email every few seconds while someone's actively typing). Also
+            // requires a real email to send to, since a draft can be explicitly saved before
+            // one exists.
+            if (hasRealEmail(reg) && Boolean.TRUE.equals(dto.getExplicitSave())) {
                 sendResumeCodeEmail(reg);
             }
 
@@ -281,6 +343,10 @@ public class SupplierRegistrationService {
 
     private static boolean isBlank(String s) {
         return s == null || s.isBlank();
+    }
+
+    private static boolean hasRealEmail(SupplierRegistration reg) {
+        return !isBlank(reg.getEmail()) && !reg.getEmail().contains("@placeholder.local");
     }
 
     /**
@@ -302,27 +368,56 @@ public class SupplierRegistrationService {
     }
 
     /**
-     * Everything still needed before this draft could actually be submitted — same checks
-     * submit() itself gates on (required documents, contact fields, declaration), plus whichever
-     * mandatory questions from the active questionnaire (if any) are still unanswered. Used only
-     * for the resume-code email's checklist; submit() has its own independent, authoritative
-     * version of this that actually blocks submission.
+     * total/answered across everything a draft needs before it could be submitted (required
+     * documents, contact fields, declaration, and every questionnaire question); requiredLeft is
+     * the subset of what's missing that actually blocks submission (docs/contact/declaration are
+     * always required; questionnaire questions only count here if marked mandatory);
+     * incompleteCategories names which parts still need attention — "Documents"/"Contact
+     * details"/"Declaration" plus the questionnaire's own section names — for the draft-saved
+     * email's "Answered X of Y" / "Required left" / "Still to complete" rows. Used only for that
+     * email; submit() has its own independent, authoritative gate that actually blocks submission.
      */
-    private List<String> buildMissingChecklist(SupplierRegistration reg) {
-        List<String> missing = new ArrayList<>();
+    private record ChecklistProgress(int total, int answered, int requiredLeft, List<String> incompleteCategories) {}
+
+    private ChecklistProgress buildChecklistProgress(SupplierRegistration reg) {
+        int total = 0;
+        int answered = 0;
+        int requiredLeft = 0;
+        List<String> incompleteCategories = new ArrayList<>();
+
+        int docsMissing = 0;
         for (SupplierDocumentConfig.DocDef d : SupplierDocumentConfig.DOCS) {
             if (!d.required()) continue;
+            total++;
             boolean present = documentRepository.findByRegistrationIdAndDocType(reg.getId(), d.id())
                     .map(doc -> doc.getFolderItFileUid() != null).orElse(false);
-            if (!present) missing.add(d.name());
+            if (present) answered++; else docsMissing++;
         }
-        if (isBlank(reg.getContact1Name())) missing.add("Contact name");
-        if (isBlank(reg.getContact1Role())) missing.add("Contact designation");
-        if (isBlank(reg.getContact1Phone())) missing.add("Contact phone number");
-        if (!Boolean.TRUE.equals(reg.getDeclarationAccepted())) missing.add("The declaration checkbox");
-        missing.addAll(questionnaireService.findUnansweredMandatoryPrompts(
-                reg.getDynamicAnswersJson(), reg.getDynamicQuestionnaireProcessId()));
-        return missing;
+        if (docsMissing > 0) { requiredLeft += docsMissing; incompleteCategories.add("Documents"); }
+
+        int contactMissing = 0;
+        for (String field : new String[]{reg.getContact1Name(), reg.getContact1Role(), reg.getContact1Phone()}) {
+            total++;
+            if (isBlank(field)) contactMissing++; else answered++;
+        }
+        if (contactMissing > 0) { requiredLeft += contactMissing; incompleteCategories.add("Contact details"); }
+
+        total++;
+        if (Boolean.TRUE.equals(reg.getDeclarationAccepted())) {
+            answered++;
+        } else {
+            requiredLeft++;
+            incompleteCategories.add("Declaration");
+        }
+
+        QuestionnaireService.QuestionnaireProgress qp = questionnaireService.countQuestionnaireProgress(
+                reg.getDynamicAnswersJson(), reg.getDynamicQuestionnaireProcessId());
+        total += qp.total();
+        answered += qp.total() - qp.unanswered();
+        requiredLeft += qp.unansweredRequired();
+        incompleteCategories.addAll(qp.incompleteSectionNames());
+
+        return new ChecklistProgress(total, answered, requiredLeft, incompleteCategories);
     }
 
     /**
@@ -357,14 +452,16 @@ public class SupplierRegistrationService {
     }
 
     private void sendResumeCodeEmail(SupplierRegistration reg) {
-        List<String> missing = buildMissingChecklist(reg);
+        ChecklistProgress progress = buildChecklistProgress(reg);
         Map<String, Object> variables = new HashMap<>();
         variables.put("contact_name", orDefault(reg.getContactName(), "there"));
         variables.put("vendor_name", orDefault(reg.getVendorName(), "your company"));
         variables.put("resume_code", reg.getResumeCode());
-        variables.put("missing_items", missing.isEmpty()
-                ? "Nothing else — you're ready to submit."
-                : String.join(", ", missing));
+        variables.put("answered_progress", progress.answered() + " of " + progress.total());
+        variables.put("required_left", String.valueOf(progress.requiredLeft()));
+        variables.put("still_to_complete", progress.incompleteCategories().isEmpty()
+                ? "Nothing — you're ready to submit."
+                : String.join(", ", progress.incompleteCategories()));
         triggerWorkflowEmail("VO.2", reg.getEmail(), variables);
     }
 
@@ -375,6 +472,7 @@ public class SupplierRegistrationService {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "No draft found for that code");
         }
         List<SupplierRegistrationDocument> docs = documentRepository.findByRegistrationId(reg.getId());
+        docs.sort(Comparator.comparingInt(d -> SupplierDocumentConfig.orderIndex(d.getDocType())));
         Map<String, Object> data = new HashMap<>();
         data.put("registration", reg);
         List<Map<String, Object>> docsOut = new ArrayList<>();
@@ -388,8 +486,26 @@ public class SupplierRegistrationService {
             docsOut.add(docOut);
         }
         data.put("documents", docsOut);
+        // No previewUrl here — matches the existing fixed documents on this same public,
+        // unauthenticated resume path: the preview endpoint requires the employee/admin JWT
+        // (see getRegistrationForReview below), which an anonymous applicant never has.
+        data.put("attachments", buildAttachmentsOut(reg.getId(), false));
         response.addData("result", data);
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Draft loaded");
+    }
+
+    /** {id, fileName, uploadedAt, previewUrl?} per extra file — shared by getDraftByCode/getRegistrationForReview. */
+    private List<Map<String, Object>> buildAttachmentsOut(Long registrationId, boolean includePreviewUrl) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (SupplierRegistrationAttachment a : attachmentRepository.findByRegistrationIdOrderByCreatedDateAsc(registrationId)) {
+            Map<String, Object> attOut = new HashMap<>();
+            attOut.put("id", a.getId());
+            attOut.put("fileName", a.getFileName());
+            attOut.put("uploadedAt", a.getCreatedDate());
+            if (includePreviewUrl) attOut.put("previewUrl", "/api/supplier-registration/attachment/" + a.getId() + "/preview");
+            out.add(attOut);
+        }
+        return out;
     }
 
     /**
@@ -406,6 +522,7 @@ public class SupplierRegistrationService {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
         }
         List<SupplierRegistrationDocument> docs = documentRepository.findByRegistrationId(reg.getId());
+        docs.sort(Comparator.comparingInt(d -> SupplierDocumentConfig.orderIndex(d.getDocType())));
         Map<String, Object> data = new HashMap<>();
         data.put("registration", reg);
         List<Map<String, Object>> docsOut = new ArrayList<>();
@@ -442,6 +559,7 @@ public class SupplierRegistrationService {
             docsOut.add(docOut);
         }
         data.put("documents", docsOut);
+        data.put("attachments", buildAttachmentsOut(reg.getId(), true));
         data.put("dynamicAnswers", questionnaireService.getAnswersForReview(reg.getFormStudioResponseId()).toList());
         response.addData("result", data);
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Registration loaded");
