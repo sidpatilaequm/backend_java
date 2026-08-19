@@ -186,6 +186,7 @@ public class SupplierRegistrationService {
             SupplierRegistration reg = dto.getRegistrationId() != null
                     ? registrationRepository.findById(dto.getRegistrationId()).orElseGet(this::newDraft)
                     : newDraft();
+            boolean hadRealEmailBefore = hasRealEmail(reg);
 
             reg.setVendorName(dto.getVendorName());
             reg.setAddress(dto.getAddress());
@@ -251,20 +252,22 @@ public class SupplierRegistrationService {
             reg.setAs9100dCertifyingBody(dto.getAs9100dCertifyingBody());
             reg.setAs9100dExpiry(dto.getAs9100dExpiry());
 
-            boolean isFirstSave = reg.getResumeCode() == null;
-            if (isFirstSave) {
+            if (reg.getResumeCode() == null) {
                 reg.setResumeCode(generateResumeCode());
             }
             reg = registrationRepository.save(reg);
 
-            // Only email the code the first time it's generated — saveDraft() also runs
-            // silently on every debounced autosave (every few seconds while the applicant
-            // is actively editing) and once more right before submit() actually submits, so
-            // emailing unconditionally here would mean a fresh "resume code" email landing
-            // repeatedly during normal use, including right after the applicant has already
-            // submitted — which reads as "come back and finish this" when there's nothing
-            // left to finish.
-            if (isFirstSave) {
+            // Fires exactly once — the save where a real email first appears on this
+            // registration — not "the first save overall". Those aren't the same thing: an
+            // applicant can save several times (company details, documents) before ever
+            // typing their email, and gating this on isFirstSave alone meant that once that
+            // first, email-less save consumed the "first save", no later save — including the
+            // one that finally adds a real email — would ever trigger it, so the applicant
+            // never got the code at all. Also guards against re-sending on every subsequent
+            // autosave once the email is already real, including right after the applicant
+            // has already submitted — which would read as "come back and finish this" when
+            // there's nothing left to finish.
+            if (hasRealEmail(reg) && !hadRealEmailBefore) {
                 sendResumeCodeEmail(reg);
             }
 
@@ -281,6 +284,10 @@ public class SupplierRegistrationService {
 
     private static boolean isBlank(String s) {
         return s == null || s.isBlank();
+    }
+
+    private static boolean hasRealEmail(SupplierRegistration reg) {
+        return !isBlank(reg.getEmail()) && !reg.getEmail().contains("@placeholder.local");
     }
 
     /**
