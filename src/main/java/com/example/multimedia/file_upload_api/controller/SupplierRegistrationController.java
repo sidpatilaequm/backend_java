@@ -58,6 +58,23 @@ public class SupplierRegistrationController {
         return ResponseEntity.ok(response);
     }
 
+    /** Extra files with no fixed doc type — no OCR, otherwise the same storage flow as uploadDocument. */
+    @PostMapping("/api/public/supplier-registration/attachments")
+    public ResponseEntity<ServiceResponse> uploadAttachment(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "registrationId", required = false) Long registrationId) {
+        ServiceResponse response = service.uploadAttachment(registrationId, file);
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.badRequest().body(response);
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/api/public/supplier-registration/attachments/{attachmentId}")
+    public ResponseEntity<ServiceResponse> removeAttachment(@PathVariable Long attachmentId) {
+        ServiceResponse response = service.removeAttachment(attachmentId);
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.status(404).body(response);
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/api/public/supplier-registration/verify")
     public ResponseEntity<ServiceResponse> verify(
             @RequestParam("registrationId") Long registrationId,
@@ -118,6 +135,23 @@ public class SupplierRegistrationController {
                     .body(file.bytes());
         } catch (Exception e) {
             logger.warn("Could not fetch preview for document {}", docId, e);
+            return ResponseEntity.status(404).build();
+        }
+    }
+
+    /** Same as previewDocument above, for the free-form extra attachments. */
+    @GetMapping("/api/supplier-registration/attachment/{attachmentId}/preview")
+    public ResponseEntity<byte[]> previewAttachment(@PathVariable Long attachmentId) {
+        try {
+            com.example.multimedia.file_upload_api.service.FolderItService.DownloadedFile file =
+                    service.getAttachmentPreviewFile(attachmentId);
+            return ResponseEntity.ok()
+                    .header("Content-Type", file.contentType())
+                    .header("Content-Disposition", "inline")
+                    .header("Cache-Control", "no-store")
+                    .body(file.bytes());
+        } catch (Exception e) {
+            logger.warn("Could not fetch preview for attachment {}", attachmentId, e);
             return ResponseEntity.status(404).build();
         }
     }

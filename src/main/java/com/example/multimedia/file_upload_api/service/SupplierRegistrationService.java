@@ -36,6 +36,7 @@ public class SupplierRegistrationService {
 
     private final SupplierRegistrationRepository registrationRepository;
     private final SupplierRegistrationDocumentRepository documentRepository;
+    private final SupplierRegistrationAttachmentRepository attachmentRepository;
     private final FolderItService folderItService;
     private final OpenAiVisionOcrService ocrService;
     private final MicrovistaService microvistaService;
@@ -60,6 +61,7 @@ public class SupplierRegistrationService {
 
     public SupplierRegistrationService(SupplierRegistrationRepository registrationRepository,
                                         SupplierRegistrationDocumentRepository documentRepository,
+                                        SupplierRegistrationAttachmentRepository attachmentRepository,
                                         FolderItService folderItService,
                                         OpenAiVisionOcrService ocrService,
                                         MicrovistaService microvistaService,
@@ -74,6 +76,7 @@ public class SupplierRegistrationService {
                                         QuestionnaireService questionnaireService) {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
+        this.attachmentRepository = attachmentRepository;
         this.folderItService = folderItService;
         this.ocrService = ocrService;
         this.microvistaService = microvistaService;
@@ -133,6 +136,68 @@ public class SupplierRegistrationService {
             logger.error("Document upload failed for docType={}", docType, e);
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Failed to process document: " + e.getMessage());
         }
+    }
+
+    // ── Extra attachments — no fixed slot, no OCR/verification ──────────────
+
+    /**
+     * Same folder/storage mechanics as uploadDocument, minus the OCR extraction and doc-type
+     * slot — an application can carry any number of these, each its own row (not an upsert by
+     * type like the fixed documents), for anything a supplier wants to attach that doesn't fit
+     * one of the 7 defined document types.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ServiceResponse uploadAttachment(Long registrationId, MultipartFile file) {
+        ServiceResponse response = new ServiceResponse();
+        try {
+            SupplierRegistration registration = registrationId != null
+                    ? registrationRepository.findById(registrationId).orElseGet(this::newDraft)
+                    : newDraft();
+            if (registration.getId() == null) registration = registrationRepository.save(registration);
+
+            if (registration.getFolderitFolderUid() == null) {
+                registration.setFolderitFolderUid(folderItService.getOrCreateVendorFolder("REG-" + registration.getId()));
+                registration = registrationRepository.save(registration);
+            }
+
+            String folderItUid = folderItService.uploadFileToFolder(file, registration.getFolderitFolderUid());
+
+            SupplierRegistrationAttachment attachment = new SupplierRegistrationAttachment();
+            attachment.setRegistration(registration);
+            attachment.setFileName(file.getOriginalFilename());
+            attachment.setFolderItFileUid(folderItUid);
+            attachment = attachmentRepository.save(attachment);
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("registrationId", registration.getId());
+            data.put("attachmentId", attachment.getId());
+            data.put("fileName", attachment.getFileName());
+            response.addData("result", data);
+            return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "File attached");
+        } catch (IOException | RuntimeException e) {
+            logger.error("Attachment upload failed", e);
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Failed to upload file: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Removes the DB reference only — the file itself stays in FolderIt, same as replacing one
+     * of the fixed documents already does (see uploadDocument's upsert-by-type, which likewise
+     * never deletes the FolderIt object it's replacing).
+     */
+    public ServiceResponse removeAttachment(Long attachmentId) {
+        ServiceResponse response = new ServiceResponse();
+        if (!attachmentRepository.existsById(attachmentId)) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Attachment not found");
+        }
+        attachmentRepository.deleteById(attachmentId);
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Attachment removed");
+    }
+
+    public FolderItService.DownloadedFile getAttachmentPreviewFile(Long attachmentId) throws java.io.IOException {
+        SupplierRegistrationAttachment attachment = attachmentRepository.findById(attachmentId)
+                .orElseThrow(() -> new RuntimeException("Attachment not found"));
+        return folderItService.downloadFileBytes(attachment.getFolderItFileUid());
     }
 
     private SupplierRegistration newDraft() {
@@ -427,8 +492,26 @@ public class SupplierRegistrationService {
             docsOut.add(docOut);
         }
         data.put("documents", docsOut);
+        // No previewUrl here — matches the existing fixed documents on this same public,
+        // unauthenticated resume path: the preview endpoint requires the employee/admin JWT
+        // (see getRegistrationForReview below), which an anonymous applicant never has.
+        data.put("attachments", buildAttachmentsOut(reg.getId(), false));
         response.addData("result", data);
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Draft loaded");
+    }
+
+    /** {id, fileName, uploadedAt, previewUrl?} per extra file — shared by getDraftByCode/getRegistrationForReview. */
+    private List<Map<String, Object>> buildAttachmentsOut(Long registrationId, boolean includePreviewUrl) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (SupplierRegistrationAttachment a : attachmentRepository.findByRegistrationIdOrderByCreatedDateAsc(registrationId)) {
+            Map<String, Object> attOut = new HashMap<>();
+            attOut.put("id", a.getId());
+            attOut.put("fileName", a.getFileName());
+            attOut.put("uploadedAt", a.getCreatedDate());
+            if (includePreviewUrl) attOut.put("previewUrl", "/api/supplier-registration/attachment/" + a.getId() + "/preview");
+            out.add(attOut);
+        }
+        return out;
     }
 
     /**
@@ -482,6 +565,7 @@ public class SupplierRegistrationService {
             docsOut.add(docOut);
         }
         data.put("documents", docsOut);
+        data.put("attachments", buildAttachmentsOut(reg.getId(), true));
         data.put("dynamicAnswers", questionnaireService.getAnswersForReview(reg.getFormStudioResponseId()).toList());
         response.addData("result", data);
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Registration loaded");
