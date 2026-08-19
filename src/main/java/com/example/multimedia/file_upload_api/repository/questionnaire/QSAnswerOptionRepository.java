@@ -10,4 +10,6 @@ import java.util.List;
 @Repository
 public interface QSAnswerOptionRepository extends JpaRepository<QSAnswerOption, QSAnswerOptionId> {
     List<QSAnswerOption> findByAnswerIdIn(List<Integer> answerIds);
+    List<QSAnswerOption> findByAnswerId(Integer answerId);
+    void deleteByAnswerId(Integer answerId);
 }

@@ -4,12 +4,15 @@ import com.example.multimedia.file_upload_api.dto.ServiceResponse;
 import com.example.multimedia.file_upload_api.dto.SupplierDraftDTO;
 import com.example.multimedia.file_upload_api.service.QuestionnaireService;
 import com.example.multimedia.file_upload_api.service.SupplierRegistrationService;
+import com.example.multimedia.file_upload_api.service.VendorChangeRequestService;
 import com.example.multimedia.file_upload_api.utils.AppConstants;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -25,13 +28,25 @@ public class SupplierRegistrationController {
 
     private final SupplierRegistrationService service;
     private final QuestionnaireService questionnaireService;
+    private final VendorChangeRequestService vendorChangeRequestService;
 
     @Value("${workflow.webhook.secret:}")
     private String webhookSecret;
 
-    public SupplierRegistrationController(SupplierRegistrationService service, QuestionnaireService questionnaireService) {
+    public SupplierRegistrationController(SupplierRegistrationService service,
+                                           QuestionnaireService questionnaireService,
+                                           VendorChangeRequestService vendorChangeRequestService) {
         this.service = service;
         this.questionnaireService = questionnaireService;
+        this.vendorChangeRequestService = vendorChangeRequestService;
+    }
+
+    private static String currentUserEmail() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return null;
+        }
+        return auth.getName();
     }
 
     /**
@@ -152,6 +167,69 @@ public class SupplierRegistrationController {
                     .body(file.bytes());
         } catch (Exception e) {
             logger.warn("Could not fetch preview for attachment {}", attachmentId, e);
+            return ResponseEntity.status(404).build();
+        }
+    }
+
+    // ── Approved vendor self-service: view own profile, request a change ────
+
+    /**
+     * The logged-in vendor's own registration — documents, attachments, dynamic-questionnaire
+     * answers, and their own change-request history. Resolved from the JWT login email, never a
+     * caller-supplied id, so a vendor can only ever see their own data.
+     */
+    @GetMapping("/api/supplier-registration/my-profile")
+    public ResponseEntity<ServiceResponse> getMyProfile() {
+        String email = currentUserEmail();
+        if (email == null) return ResponseEntity.status(401).build();
+        ServiceResponse response = service.getMyProfile(email);
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.status(404).body(response);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * A vendor requesting a change to one already-approved document, attachment, or questionnaire
+     * answer. itemType is "document" (itemKey = docType e.g. "gst"), "attachment" (itemKey =
+     * attachment id) or "answer" (itemKey = questionId). file is required for document/attachment;
+     * newAnswerJson (same {textValue?/optionIds?/rows?} shape used by the rest of the form) is
+     * required for answer. Goes into the "Vendor Change Request" workflow for the same approval
+     * team as the original application — nothing here is applied until that's approved.
+     */
+    @PostMapping("/api/supplier-registration/change-requests")
+    public ResponseEntity<ServiceResponse> submitChangeRequest(
+            @RequestParam("itemType") String itemType,
+            @RequestParam("itemKey") String itemKey,
+            @RequestParam("reason") String reason,
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "newAnswerJson", required = false) String newAnswerJson) {
+        String email = currentUserEmail();
+        if (email == null) return ResponseEntity.status(401).build();
+        ServiceResponse response = vendorChangeRequestService.submit(email, itemType, itemKey, reason, file, newAnswerJson);
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.badRequest().body(response);
+        return ResponseEntity.ok(response);
+    }
+
+    /** Admin/employee reviewer detail for one change request — old value, reason, proposed new value. */
+    @GetMapping("/api/supplier-registration/change-request/{changeRequestId}")
+    public ResponseEntity<ServiceResponse> getChangeRequestForReview(@PathVariable Long changeRequestId) {
+        ServiceResponse response = vendorChangeRequestService.getForReview(changeRequestId);
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.status(404).body(response);
+        return ResponseEntity.ok(response);
+    }
+
+    /** Same inline-stream preview pattern as previewDocument/previewAttachment, for the proposed new file. */
+    @GetMapping("/api/supplier-registration/change-request/{changeRequestId}/preview")
+    public ResponseEntity<byte[]> previewChangeRequestFile(@PathVariable Long changeRequestId) {
+        try {
+            com.example.multimedia.file_upload_api.service.FolderItService.DownloadedFile file =
+                    vendorChangeRequestService.getProposedFilePreview(changeRequestId);
+            return ResponseEntity.ok()
+                    .header("Content-Type", file.contentType())
+                    .header("Content-Disposition", "inline")
+                    .header("Cache-Control", "no-store")
+                    .body(file.bytes());
+        } catch (Exception e) {
+            logger.warn("Could not fetch preview for change request {}", changeRequestId, e);
             return ResponseEntity.status(404).build();
         }
     }
