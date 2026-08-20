@@ -18,9 +18,12 @@ public class FolderItService {
 
     private static final Logger logger = LoggerFactory.getLogger(FolderItService.class);
 
-    private static final String CLIENT_ID = "fPKfRJTOEyxFrNNH";
-    private static final String CLIENT_SECRET = "I8b5VmhC4Xdtfn-iqksE9r~HPu";
-    private static final String ACCOUNT_UID = "mprUk0ZilV";
+    // Previously hardcoded here; now admin-editable via PlatformCredentialService (System
+    // Settings > FolderIT Integration) — these seed the DB with these exact values the first
+    // time they're read, so nothing changes until someone actually edits them.
+    private static final String DEFAULT_CLIENT_ID = "fPKfRJTOEyxFrNNH";
+    private static final String DEFAULT_CLIENT_SECRET = "I8b5VmhC4Xdtfn-iqksE9r~HPu";
+    private static final String DEFAULT_ACCOUNT_UID = "mprUk0ZilV";
 
     private static final String UID_QUOTATION = "dh4IV0mZFA";
     private static final String UID_VENDOR = "7KsvH0VM1V";
@@ -28,12 +31,21 @@ public class FolderItService {
     private static final String UID_DEFAULT = "xsRm30xQB_";
 
     private final OkHttpClient httpClient = new OkHttpClient();
+    private final PlatformCredentialService credentials;
+
+    public FolderItService(PlatformCredentialService credentials) {
+        this.credentials = credentials;
+    }
+
+    private String clientId() { return credentials.get("folderit.client_id", DEFAULT_CLIENT_ID); }
+    private String clientSecret() { return credentials.get("folderit.client_secret", DEFAULT_CLIENT_SECRET); }
+    private String accountUid() { return credentials.get("folderit.account_uid", DEFAULT_ACCOUNT_UID); }
 
     private String getAccessToken() throws IOException {
         RequestBody formBody = new FormBody.Builder()
                 .add("grant_type", "client_credentials")
-                .add("client_id", CLIENT_ID)
-                .add("client_secret", CLIENT_SECRET)
+                .add("client_id", clientId())
+                .add("client_secret", clientSecret())
                 .build();
 
         Request request = new Request.Builder()
@@ -67,7 +79,7 @@ public class FolderItService {
         String authHeader = "Bearer " + token;
         
         // 1. Search for existing folder
-        String searchUrl = "https://api.folderit.com/v2/accounts/" + ACCOUNT_UID + "/search/folders";
+        String searchUrl = "https://api.folderit.com/v2/accounts/" + accountUid() + "/search/folders";
         
         JSONObject searchPayload = new JSONObject();
         searchPayload.put("parentUid", parentUid);
@@ -101,7 +113,7 @@ public class FolderItService {
         }
         
         // 2. If not found, create it
-        String createUrl = "https://api.folderit.com/v2/accounts/" + ACCOUNT_UID + "/folders";
+        String createUrl = "https://api.folderit.com/v2/accounts/" + accountUid() + "/folders";
         
         JSONObject createPayload = new JSONObject();
         createPayload.put("parentUid", parentUid);
@@ -204,7 +216,7 @@ public class FolderItService {
     public String getDownloadUrl(String fileUid) throws IOException {
         String token = getAccessToken();
         Request req = new Request.Builder()
-                .url("https://api.folderit.com/v2/accounts/" + ACCOUNT_UID + "/files/" + fileUid + "/download")
+                .url("https://api.folderit.com/v2/accounts/" + accountUid() + "/files/" + fileUid + "/download")
                 .addHeader("Authorization", "Bearer " + token)
                 .build();
         // FolderIt's /download response carries its own {"url": ...} JSON body but is ALSO a
@@ -248,7 +260,7 @@ public class FolderItService {
     private void renameResource(String token, String resourceType, String uid, String newName) throws IOException {
         JSONObject payload = new JSONObject().put("name", newName);
         Request req = new Request.Builder()
-                .url("https://api.folderit.com/v2/accounts/" + ACCOUNT_UID + "/" + resourceType + "/" + uid)
+                .url("https://api.folderit.com/v2/accounts/" + accountUid() + "/" + resourceType + "/" + uid)
                 .addHeader("Authorization", "Bearer " + token)
                 .put(RequestBody.create(payload.toString(), MediaType.parse("application/json")))
                 .build();
@@ -266,7 +278,7 @@ public class FolderItService {
 
     private String uploadFileToFolder(MultipartFile file, String folderUid, String token) throws IOException {
         String authHeader = "Bearer " + token;
-        String baseUrl = "https://api.folderit.com/v2/accounts/" + ACCOUNT_UID + "/files/upload";
+        String baseUrl = "https://api.folderit.com/v2/accounts/" + accountUid() + "/files/upload";
         
         // 1. Create Action
         JSONObject createPayload = new JSONObject();
