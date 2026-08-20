@@ -40,6 +40,9 @@ public class VendorService {
     @Autowired
     private VendorMasterRepository vendorMasterRepository;
 
+    @Autowired
+    private SupplierRegistrationRepository supplierRegistrationRepository;
+
     @Transactional
     public ServiceResponse getAllVendors() {
         ServiceResponse response = new ServiceResponse();
@@ -98,6 +101,12 @@ public class VendorService {
                 vendorData.put("postalCode", vm.getPostalCode());
                 vendorData.put("countryCode", vm.getCountryCode());
                 vendorData.put("bankAccountNumber", vm.getBankAccountNumber());
+
+                // Product/Service/Scheduling agreement/Sub-contracting, set by an approver during
+                // Become-a-Supplier review (SupplierRegistration.vendorCategory) — null for vendors
+                // that didn't come through that flow, since findByEmail then finds no match.
+                supplierRegistrationRepository.findByEmail(vm.getEmail())
+                        .ifPresent(reg -> vendorData.put("vendorCategory", reg.getVendorCategory()));
 
                 vendorList.add(vendorData);
             }

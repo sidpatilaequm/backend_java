@@ -532,6 +532,73 @@ public class SupplierRegistrationService {
     }
 
     /**
+     * Admin-facing "Approved Suppliers" list — every registration that made it through the
+     * Become-a-Supplier flow to ACTIVE, with the classification an approver set (see
+     * setVendorCategory) alongside it. Deliberately reads supplier_registration directly rather
+     * than VendorController's /api/vendors/all, which is backed by the unrelated legacy
+     * vendor_master table (confirmed empty of any vendor provisioned through this flow).
+     */
+    public ServiceResponse listApprovedSuppliers() {
+        ServiceResponse response = new ServiceResponse();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (SupplierRegistration reg : registrationRepository.findByStatusOrderByApprovedDateDesc("ACTIVE")) {
+            Map<String, Object> row = new HashMap<>();
+            row.put("id", reg.getId());
+            row.put("vendorName", reg.getVendorName());
+            row.put("vendorCode", reg.getVendorCode());
+            row.put("email", reg.getEmail());
+            row.put("phone", reg.getPhone());
+            row.put("address", reg.getAddress());
+            row.put("gstNumber", reg.getGstNumber());
+            row.put("panNumber", reg.getPanNumber());
+            row.put("companyType", reg.getCompanyType());
+            row.put("businessTypes", reg.getBusinessTypes());
+            row.put("vendorCategory", reg.getVendorCategory());
+            row.put("approvedBy", reg.getApprovedBy());
+            row.put("approvedDate", reg.getApprovedDate());
+            out.add(row);
+        }
+        response.addData("suppliers", out);
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Approved suppliers retrieved");
+    }
+
+    private static final java.util.Set<String> VENDOR_CATEGORIES =
+            java.util.Set.of("PRODUCT", "SERVICE", "SCHEDULING_AGREEMENT", "SUBCONTRACTING");
+
+    /**
+     * The deciding approver's classification pick (Product / Service / Scheduling agreement /
+     * Sub-contracting) — only the first approver to call this actually sets it (see
+     * SupplierRegistrationRepository.claimVendorCategory); returns whichever value actually won,
+     * so a caller whose own pick lost a close race still gets back the truth rather than assuming
+     * their own value stuck.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ServiceResponse setVendorCategory(Long registrationId, String category) {
+        ServiceResponse response = new ServiceResponse();
+        String normalized = category == null ? null : category.trim().toUpperCase();
+        if (normalized == null || !VENDOR_CATEGORIES.contains(normalized)) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
+                    "category must be one of " + VENDOR_CATEGORIES);
+        }
+        SupplierRegistration reg = registrationRepository.findById(registrationId).orElse(null);
+        if (reg == null) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
+        }
+
+        int claimed = registrationRepository.claimVendorCategory(registrationId, normalized);
+        // Re-fetch regardless of who won — a concurrent caller may have already claimed it, and
+        // this caller needs the value that actually stuck either way, not just its own guess.
+        String finalCategory = registrationRepository.findById(registrationId)
+                .map(SupplierRegistration::getVendorCategory).orElse(normalized);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("vendorCategory", finalCategory);
+        data.put("decidedByYou", claimed > 0);
+        response.addData("result", data);
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Classification recorded");
+    }
+
+    /**
      * Same shape as getRegistrationForReview, for the approved vendor themselves rather than an
      * admin/employee reviewer — resolved from their own JWT login email (SupplierRegistration.email
      * is unique and is exactly the address provisionVendorAccount created their login under), not
