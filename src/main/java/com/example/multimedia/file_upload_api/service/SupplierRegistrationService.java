@@ -37,6 +37,7 @@ public class SupplierRegistrationService {
     private final SupplierRegistrationRepository registrationRepository;
     private final SupplierRegistrationDocumentRepository documentRepository;
     private final SupplierRegistrationAttachmentRepository attachmentRepository;
+    private final SupplierChangeRequestRepository changeRequestRepository;
     private final FolderItService folderItService;
     private final OpenAiVisionOcrService ocrService;
     private final MicrovistaService microvistaService;
@@ -49,6 +50,7 @@ public class SupplierRegistrationService {
     private final RestTemplate restTemplate;
     private final ServiceControllerUtils serviceControllerUtils;
     private final QuestionnaireService questionnaireService;
+    private final VendorChangeRequestService vendorChangeRequestService;
 
     @Value("${workflow.api.base-url:http://localhost:8000}")
     private String workflowBaseUrl;
@@ -62,6 +64,7 @@ public class SupplierRegistrationService {
     public SupplierRegistrationService(SupplierRegistrationRepository registrationRepository,
                                         SupplierRegistrationDocumentRepository documentRepository,
                                         SupplierRegistrationAttachmentRepository attachmentRepository,
+                                        SupplierChangeRequestRepository changeRequestRepository,
                                         FolderItService folderItService,
                                         OpenAiVisionOcrService ocrService,
                                         MicrovistaService microvistaService,
@@ -73,10 +76,12 @@ public class SupplierRegistrationService {
                                         PasswordEncoder passwordEncoder,
                                         RestTemplate restTemplate,
                                         ServiceControllerUtils serviceControllerUtils,
-                                        QuestionnaireService questionnaireService) {
+                                        QuestionnaireService questionnaireService,
+                                        VendorChangeRequestService vendorChangeRequestService) {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
         this.attachmentRepository = attachmentRepository;
+        this.changeRequestRepository = changeRequestRepository;
         this.folderItService = folderItService;
         this.ocrService = ocrService;
         this.microvistaService = microvistaService;
@@ -89,6 +94,7 @@ public class SupplierRegistrationService {
         this.restTemplate = restTemplate;
         this.serviceControllerUtils = serviceControllerUtils;
         this.questionnaireService = questionnaireService;
+        this.vendorChangeRequestService = vendorChangeRequestService;
     }
 
     // ── Document upload + OCR + FolderIt storage ────────────────────────────
@@ -521,6 +527,42 @@ public class SupplierRegistrationService {
         if (reg == null) {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
         }
+        response.addData("result", buildRegistrationDetail(reg));
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Registration loaded");
+    }
+
+    /**
+     * Same shape as getRegistrationForReview, for the approved vendor themselves rather than an
+     * admin/employee reviewer — resolved from their own JWT login email (SupplierRegistration.email
+     * is unique and is exactly the address provisionVendorAccount created their login under), not
+     * a caller-supplied id, so a vendor can never end up looking at another vendor's profile.
+     * Also includes their own change requests (see VendorChangeRequestService) so the frontend can
+     * show a "pending" badge next to whichever document/answer already has one outstanding.
+     */
+    public ServiceResponse getMyProfile(String email) {
+        ServiceResponse response = new ServiceResponse();
+        SupplierRegistration reg = registrationRepository.findByEmail(email).orElse(null);
+        if (reg == null) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "No supplier profile found for this account");
+        }
+        Map<String, Object> data = buildRegistrationDetail(reg);
+        List<Map<String, Object>> changeRequestsOut = new ArrayList<>();
+        for (SupplierChangeRequest cr : changeRequestRepository.findByRegistrationIdOrderByCreatedDateDesc(reg.getId())) {
+            Map<String, Object> crOut = new HashMap<>();
+            crOut.put("id", cr.getId());
+            crOut.put("itemType", cr.getItemType());
+            crOut.put("itemKey", cr.getItemKey());
+            crOut.put("reason", cr.getReason());
+            crOut.put("status", cr.getStatus());
+            crOut.put("createdDate", cr.getCreatedDate());
+            changeRequestsOut.add(crOut);
+        }
+        data.put("changeRequests", changeRequestsOut);
+        response.addData("result", data);
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Profile loaded");
+    }
+
+    private Map<String, Object> buildRegistrationDetail(SupplierRegistration reg) {
         List<SupplierRegistrationDocument> docs = documentRepository.findByRegistrationId(reg.getId());
         docs.sort(Comparator.comparingInt(d -> SupplierDocumentConfig.orderIndex(d.getDocType())));
         Map<String, Object> data = new HashMap<>();
@@ -561,8 +603,7 @@ public class SupplierRegistrationService {
         data.put("documents", docsOut);
         data.put("attachments", buildAttachmentsOut(reg.getId(), true));
         data.put("dynamicAnswers", questionnaireService.getAnswersForReview(reg.getFormStudioResponseId()).toList());
-        response.addData("result", data);
-        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Registration loaded");
+        return data;
     }
 
     // Streams the document bytes through our own server (rather than redirecting to FolderIt's
@@ -688,6 +729,11 @@ public class SupplierRegistrationService {
         if (requestObj == null) return;
         long workflowRequestId = requestObj.optLong("id", -1);
         if (workflowRequestId < 0) return;
+
+        // Vendor change requests (workflow id 13) share this same webhook URL/secret as the
+        // original vendor-approval workflow (id 8) — check that table first since its
+        // workflowRequestId lives in a separate row than SupplierRegistration's own.
+        if (vendorChangeRequestService.handleWebhookIfChangeRequest(workflowRequestId, event)) return;
 
         SupplierRegistration reg = registrationRepository.findByWorkflowRequestId(workflowRequestId).orElse(null);
         if (reg == null) {

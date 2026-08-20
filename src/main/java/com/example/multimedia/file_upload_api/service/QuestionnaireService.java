@@ -377,6 +377,143 @@ public class QuestionnaireService {
         return response.getId();
     }
 
+    /**
+     * A short, human-readable rendering of whatever answer(s) currently exist for one question
+     * within one response — "(not answered)" if none. Used for a vendor change request's "what
+     * you're changing from" display; not a machine-readable shape (see getAnswersForReview for
+     * that, which this partially duplicates in a more compact form on purpose).
+     */
+    /** The question's own prompt text — used to name "what changed" in the change-request emails. */
+    public String getQuestionPrompt(Integer questionId) {
+        return questionRepository.findById(questionId).map(QSQuestion::getPrompt).orElse(null);
+    }
+
+    public String getAnswerSummary(Integer responseId, Integer questionId) {
+        if (responseId == null) return "(not answered)";
+        QSQuestion question = questionRepository.findById(questionId).orElse(null);
+        if (question == null) return "(not answered)";
+        QSAnswer answer = answerRepository.findByResponseIdAndQuestionId(responseId, questionId).orElse(null);
+        if (answer == null) return "(not answered)";
+
+        String type = question.getQuestionType();
+        if ("short_text".equals(type) || "counter".equals(type)) {
+            return answer.getTextValue() != null ? answer.getTextValue() : "(not answered)";
+        }
+        if ("table".equals(type)) {
+            if (answer.getTableRowsJson() == null) return "(not answered)";
+            int rows = new JSONArray(answer.getTableRowsJson()).length();
+            return rows + " row" + (rows == 1 ? "" : "s");
+        }
+        List<QSAnswerOption> selections = answerOptionRepository.findByAnswerId(answer.getId());
+        if (selections.isEmpty()) return "(not answered)";
+        List<Integer> optionIds = selections.stream().map(QSAnswerOption::getOptionId).collect(Collectors.toList());
+        List<String> labels = optionRepository.findAllById(optionIds).stream()
+                .map(QSQuestionOption::getLabel).collect(Collectors.toList());
+        return String.join(", ", labels);
+    }
+
+    /**
+     * Validates and applies a single question's new answer within an existing response — the
+     * approved-change-request counterpart to validateAndPersistAnswers, which only ever writes a
+     * brand-new response. {@code newAnswer} is one element of the same {questionId, textValue?,
+     * optionIds?, rows?} shape used everywhere else. Throws ValidationException with the same
+     * per-type rules validateAndPersistAnswers applies (kept in sync by hand — there's no shared
+     * per-question validator between the two since one validates a whole response's shape at
+     * once and the other only ever touches one question).
+     */
+    public void updateSingleAnswer(Integer responseId, Integer questionId, JSONObject newAnswer) {
+        QSQuestion q = questionRepository.findById(questionId)
+                .orElseThrow(() -> new ValidationException("That question no longer exists."));
+        String type = q.getQuestionType();
+        boolean mandatory = Boolean.TRUE.equals(q.getIsMandatory());
+
+        QSAnswer answer = answerRepository.findByResponseIdAndQuestionId(responseId, questionId).orElse(null);
+        if (answer == null) {
+            answer = new QSAnswer();
+            answer.setResponseId(responseId);
+            answer.setQuestionId(questionId);
+        }
+
+        if ("short_text".equals(type) || "counter".equals(type)) {
+            String text = newAnswer.optString("textValue", "").trim();
+            if (text.isEmpty()) {
+                if (mandatory) throw new ValidationException("\"" + q.getPrompt() + "\" is required.");
+            } else if ("counter".equals(type)) {
+                int value;
+                try {
+                    value = Integer.parseInt(text);
+                } catch (NumberFormatException e) {
+                    throw new ValidationException("\"" + q.getPrompt() + "\" needs a whole number.");
+                }
+                if (q.getMinValue() != null && value < q.getMinValue()) throw new ValidationException("\"" + q.getPrompt() + "\" must be at least " + q.getMinValue() + ".");
+                if (q.getMaxValue() != null && value > q.getMaxValue()) throw new ValidationException("\"" + q.getPrompt() + "\" must be at most " + q.getMaxValue() + ".");
+            } else if (q.getMaxLength() != null && text.length() > q.getMaxLength()) {
+                throw new ValidationException("\"" + q.getPrompt() + "\" needs to stay under " + q.getMaxLength() + " characters.");
+            }
+            answer.setTextValue(text.isEmpty() ? null : text);
+            answer.setTableRowsJson(null);
+            answer = answerRepository.save(answer);
+            answerOptionRepository.deleteByAnswerId(answer.getId());
+            return;
+        }
+
+        if ("table".equals(type)) {
+            List<QSQuestionColumn> cols = columnRepository.findByQuestionIdOrderByPosition(questionId);
+            List<JSONObject> rows = filledRows(newAnswer.optJSONArray("rows"));
+            if (rows.isEmpty()) {
+                if (mandatory || q.getMinRows() != null) {
+                    int floor = q.getMinRows() != null ? q.getMinRows() : 1;
+                    throw new ValidationException("\"" + q.getPrompt() + "\" needs at least " + floor + " row" + (floor == 1 ? "" : "s") + ".");
+                }
+            } else {
+                if (q.getMinRows() != null && rows.size() < q.getMinRows()) throw new ValidationException("\"" + q.getPrompt() + "\" needs at least " + q.getMinRows() + " rows.");
+                if (q.getMaxRows() != null && rows.size() > q.getMaxRows()) throw new ValidationException("\"" + q.getPrompt() + "\" allows at most " + q.getMaxRows() + " rows.");
+                for (int r = 0; r < rows.size(); r++) {
+                    JSONObject row = rows.get(r);
+                    for (QSQuestionColumn c : cols) {
+                        String cell = row.optString(String.valueOf(c.getId()), "").trim();
+                        if (Boolean.TRUE.equals(c.getIsRequired()) && cell.isEmpty()) {
+                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + " is missing " + c.getLabel() + ".");
+                        }
+                        if (!cell.isEmpty() && !cellIsValid(c.getColumnType(), cell)) {
+                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + ": " + c.getLabel() + " needs a valid value.");
+                        }
+                    }
+                }
+            }
+            answer.setTextValue(null);
+            answer.setTableRowsJson(rows.isEmpty() ? null : new JSONArray(rows).toString());
+            answer = answerRepository.save(answer);
+            answerOptionRepository.deleteByAnswerId(answer.getId());
+            return;
+        }
+
+        // single_choice / multi_choice
+        List<QSQuestionOption> options = optionRepository.findByQuestionIdInOrderByPosition(List.of(questionId));
+        Set<Integer> validOptionIds = options.stream().map(QSQuestionOption::getId).collect(Collectors.toSet());
+        List<Integer> optionIds = newAnswer.has("optionIds") ? toIntList(newAnswer.getJSONArray("optionIds")) : List.of();
+        if (optionIds.isEmpty()) {
+            if (mandatory) throw new ValidationException("\"" + q.getPrompt() + "\" is required.");
+        } else {
+            if (!validOptionIds.containsAll(optionIds)) throw new ValidationException("\"" + q.getPrompt() + "\" has an option that no longer exists.");
+            if ("single_choice".equals(type) && optionIds.size() != 1) throw new ValidationException("\"" + q.getPrompt() + "\" needs exactly one answer.");
+            if ("multi_choice".equals(type)) {
+                if (q.getMinSelections() != null && optionIds.size() < q.getMinSelections()) throw new ValidationException("\"" + q.getPrompt() + "\" needs at least " + q.getMinSelections() + " selected.");
+                if (q.getMaxSelections() != null && optionIds.size() > q.getMaxSelections()) throw new ValidationException("\"" + q.getPrompt() + "\" allows at most " + q.getMaxSelections() + " selected.");
+            }
+        }
+        answer.setTextValue(null);
+        answer.setTableRowsJson(null);
+        answer = answerRepository.save(answer);
+        answerOptionRepository.deleteByAnswerId(answer.getId());
+        for (Integer optionId : optionIds) {
+            QSAnswerOption ao = new QSAnswerOption();
+            ao.setAnswerId(answer.getId());
+            ao.setOptionId(optionId);
+            answerOptionRepository.save(ao);
+        }
+    }
+
     /** {questionId, prompt, questionType, textValue?, selectedLabels: [...]} per answered question — for the approver review panel. */
     public JSONArray getAnswersForReview(Integer responseId) {
         JSONArray out = new JSONArray();
