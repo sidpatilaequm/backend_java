@@ -209,6 +209,15 @@ public class SupplierRegistrationService {
         return folderItService.downloadFileBytes(attachment.getFolderItFileUid());
     }
 
+    /**
+     * A registration can only be (re)edited/(re)submitted while it's an untouched DRAFT, or
+     * after it's been REJECTED (the one status that's meant to send the applicant back to fix
+     * something). Anything else — REGISTRATION_SUBMITTED, ESCALATED, ACTIVE, CANCELLED — means
+     * it's already in flight or resolved, and the resume-code flow / saveDraft / submit must all
+     * refuse to touch it instead of silently letting an applicant re-edit a live application.
+     */
+    private static final java.util.Set<String> EDITABLE_STATUSES = java.util.Set.of("DRAFT", "REJECTED");
+
     private SupplierRegistration newDraft() {
         SupplierRegistration reg = new SupplierRegistration();
         reg.setStatus("DRAFT");
@@ -260,6 +269,11 @@ public class SupplierRegistrationService {
             SupplierRegistration reg = dto.getRegistrationId() != null
                     ? registrationRepository.findById(dto.getRegistrationId()).orElseGet(this::newDraft)
                     : newDraft();
+
+            if (dto.getRegistrationId() != null && !EDITABLE_STATUSES.contains(reg.getStatus())) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
+                        "This application has already been submitted and can no longer be edited.");
+            }
 
             reg.setVendorName(dto.getVendorName());
             reg.setAddress(dto.getAddress());
@@ -696,6 +710,11 @@ public class SupplierRegistrationService {
         try {
             SupplierRegistration reg = registrationRepository.findById(registrationId)
                     .orElseThrow(() -> new RuntimeException("Registration not found"));
+
+            if (!EDITABLE_STATUSES.contains(reg.getStatus())) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
+                        "This application has already been submitted for approval.");
+            }
 
             List<String> missing = new ArrayList<>();
             for (SupplierDocumentConfig.DocDef d : SupplierDocumentConfig.DOCS) {
