@@ -46,6 +46,7 @@ public class SupplierRegistrationService {
     private final CompanyDetailsRepository companyDetailsRepository;
     private final SuperAdminRepository superAdminRepository;
     private final AuthorizationRepository authorizationRepository;
+    private final VendorMasterRepository vendorMasterRepository;
     private final PasswordEncoder passwordEncoder;
     private final RestTemplate restTemplate;
     private final ServiceControllerUtils serviceControllerUtils;
@@ -73,6 +74,7 @@ public class SupplierRegistrationService {
                                         CompanyDetailsRepository companyDetailsRepository,
                                         SuperAdminRepository superAdminRepository,
                                         AuthorizationRepository authorizationRepository,
+                                        VendorMasterRepository vendorMasterRepository,
                                         PasswordEncoder passwordEncoder,
                                         RestTemplate restTemplate,
                                         ServiceControllerUtils serviceControllerUtils,
@@ -90,6 +92,7 @@ public class SupplierRegistrationService {
         this.companyDetailsRepository = companyDetailsRepository;
         this.superAdminRepository = superAdminRepository;
         this.authorizationRepository = authorizationRepository;
+        this.vendorMasterRepository = vendorMasterRepository;
         this.passwordEncoder = passwordEncoder;
         this.restTemplate = restTemplate;
         this.serviceControllerUtils = serviceControllerUtils;
@@ -870,6 +873,24 @@ public class SupplierRegistrationService {
 
         user.setCompany(company);
         userDetailRepository.save(user);
+
+        // Also register the vendor in vendor_master — the legacy/SAP-style table RFQ vendor
+        // assignment (WorkFlow's /api/vendor/selection-list) and vendor-facing Gate Entry
+        // (GateEntryServiceImpl.getVendorGateStatus, which 500s without a matching row) actually
+        // read from, independently of supplier_registration/CompanyDetails above. Guarded by
+        // email so a redelivered approval webhook can't create a duplicate row.
+        if (!vendorMasterRepository.existsByEmail(reg.getEmail())) {
+            VendorMaster vendorMaster = new VendorMaster();
+            vendorMaster.setBpNo(vendorCode);
+            vendorMaster.setName(reg.getVendorName());
+            vendorMaster.setEmail(reg.getEmail());
+            vendorMaster.setGstNumber(reg.getGstNumber());
+            vendorMaster.setPan(reg.getPanNumber());
+            vendorMaster.setCompanyCode(vendorCode);
+            vendorMaster.setBankAccountNumber(reg.getAccountNumber());
+            vendorMaster.setSuperAdmin(systemAdmin);
+            vendorMasterRepository.save(vendorMaster);
+        }
 
         reg.setStatus("ACTIVE");
         reg.setVendorCode(vendorCode);

@@ -14,4 +14,6 @@ public interface VendorMasterRepository extends JpaRepository<VendorMaster, Long
     boolean existsByBpNo(String bpNo);
     
     java.util.List<VendorMaster> findByEmail(String email);
+
+    boolean existsByEmail(String email);
 }

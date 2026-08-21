@@ -95,6 +95,7 @@ public class VendorService {
                 vendorData.put("companyName", vm.getName()); // mapping name to companyName to keep API compatible
                 vendorData.put("name", vm.getName());
                 vendorData.put("gstNumber", vm.getGstNumber());
+                vendorData.put("pan", vm.getPan());
                 vendorData.put("cityName", vm.getCityName());
                 vendorData.put("streetAndHouseNumber", vm.getStreetAndHouseNumber());
                 vendorData.put("streetName1", vm.getStreetName1());
