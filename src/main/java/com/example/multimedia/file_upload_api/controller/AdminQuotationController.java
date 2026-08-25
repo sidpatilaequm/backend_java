@@ -3,6 +3,7 @@ package com.example.multimedia.file_upload_api.controller;
 import com.example.multimedia.file_upload_api.dto.VendorQuotationResponse;
 import com.example.multimedia.file_upload_api.dto.VendorQuotationComparisonResponse;
 import com.example.multimedia.file_upload_api.service.VendorQuotationService;
+import com.example.multimedia.file_upload_api.service.PortalPurchaseOrderService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,9 @@ public class AdminQuotationController {
 
     @Autowired
     private VendorQuotationService quotationService;
+
+    @Autowired
+    private PortalPurchaseOrderService poService;
 
     @Autowired
     private com.example.multimedia.file_upload_api.util.SecurityContextUtils securityContextUtils;
@@ -93,9 +97,21 @@ public class AdminQuotationController {
             @RequestBody(required = false) Map<String, String> payload) {
         String remarks = payload != null ? payload.get("remarks") : null;
         quotationService.awardQuotation(quotationId, remarks);
+        
+        try {
+            // Automatically create PO
+            poService.createPOFromAwardedQuotation(quotationId, null);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "error", "Quotation was awarded, but PO creation failed: " + e.getMessage()
+            ));
+        }
+        
         return ResponseEntity.ok(Map.of(
                 "success", true,
-                "message", "Quotation awarded successfully",
+                "message", "Quotation awarded successfully and PO created",
                 "quotationId", quotationId,
                 "status", "AWARDED"
         ));

@@ -171,7 +171,24 @@ public class FolderItService {
         String folderUid = determineFolderUid(documentType);
 
         // Apply dynamic structure for quotation and ASN
-        if (documentType != null && (documentType.equalsIgnoreCase("quotation") || documentType.toUpperCase().startsWith("ASN"))) {
+        if (documentType != null && documentType.equalsIgnoreCase("quotation")) {
+            // New Hierarchy: Purchase Orders (yhM_f0kYOd) -> [Month Year] -> SAP Quotation -> Process
+            folderUid = "yhM_f0kYOd"; // Purchase Orders UID
+
+            String targetMonthYear = monthYear;
+            if (targetMonthYear == null || targetMonthYear.trim().isEmpty()) {
+                // Generate current month year, e.g., "Aug 2026"
+                LocalDate now = LocalDate.now();
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH);
+                targetMonthYear = now.format(formatter);
+            }
+
+            folderUid = getOrCreateFolder(token, folderUid, targetMonthYear.trim());
+            folderUid = getOrCreateFolder(token, folderUid, "SAP Quotation");
+            getOrCreateFolder(token, folderUid, "Archive"); // Just create the Archive folder as requested
+            folderUid = getOrCreateFolder(token, folderUid, "Process"); // Set target to Process
+
+        } else if (documentType != null && documentType.toUpperCase().startsWith("ASN")) {
             if (vendorName != null && !vendorName.trim().isEmpty()) {
                 folderUid = getOrCreateFolder(token, folderUid, vendorName.trim());
 

@@ -48,9 +48,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/vendor-master/upload", "/api/vendor-master/all").permitAll()
                         .requestMatchers("/api/material-master/upload").permitAll()
                         .requestMatchers("/api/master-purchase-orders/upload").permitAll()
+                        .requestMatchers("/api/purchase-orders/from-awarded-quotation/**").permitAll()
                         .requestMatchers("/api/vendor/**").permitAll()
                         .requestMatchers("/api/vendors/**").permitAll()
                         .requestMatchers("/api/employee/gate-entry/**").permitAll()
+                        .requestMatchers("/api/employee/material-inward/**").permitAll()
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS));

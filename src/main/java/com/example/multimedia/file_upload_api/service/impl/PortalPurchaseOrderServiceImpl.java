@@ -29,6 +29,12 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
     private PortalPurchaseOrderItemRepository poItemRepository;
 
     @Autowired
+    private com.example.multimedia.file_upload_api.repository.CompanyDetailsRepository companyDetailsRepository;
+
+    @Autowired
+    private com.example.multimedia.file_upload_api.repository.VendorMasterRepository vendorMasterRepository;
+
+    @Autowired
     private VendorQuotationRepository quotationRepository;
 
     @Autowired
@@ -64,9 +70,9 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
         // Validate PO is not already created for this quotation
         Optional<PortalPurchaseOrder> existingPO = poRepository.findByPoNumber("PO-" + quotation.getQuotationNumber());
         // Or check by quotation id directly using custom filter
-        List<PortalPurchaseOrder> checkList = poRepository.findByVendor_CompanyIdOrderByCreatedDateDesc(quotation.getVendor().getCompanyId());
+        List<PortalPurchaseOrder> checkList = poRepository.findByVendor_CompanyIdOrderByIdDesc(quotation.getVendor().getCompanyId());
         for (PortalPurchaseOrder po : checkList) {
-            if (po.getQuotation().getQuotationId().equals(quotationId)) {
+            if (po.getQuotation() != null && po.getQuotation().getQuotationId().equals(quotationId)) {
                 throw new IllegalArgumentException("Purchase Order has already been created for this quotation.");
             }
         }
@@ -82,9 +88,12 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
 
         // Header Freight Calculation
         BigDecimal headerFreight = quotation.getFreightAmount() != null ? quotation.getFreightAmount() : BigDecimal.ZERO;
-        BigDecimal itemFreightTotal = quotation.getItems().stream()
-                .map(i -> i.getFreightAmount() != null ? i.getFreightAmount() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal itemFreightTotal = BigDecimal.ZERO;
+        if (quotation.getItems() != null) {
+            itemFreightTotal = quotation.getItems().stream()
+                    .map(i -> i.getFreightAmount() != null ? i.getFreightAmount() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
         BigDecimal freightTotal = headerFreight.add(itemFreightTotal);
 
         // Create PO Header
@@ -93,7 +102,21 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
         po.setPoDate(LocalDate.now());
         po.setPurchaseRequisition(pr);
         po.setQuotation(quotation);
-        po.setVendor(quotation.getVendor());
+        // Resolve the true vendor by BP No if companyCode is missing
+        CompanyDetails quoteVendor = quotation.getVendor();
+        CompanyDetails finalVendor = quoteVendor;
+        
+        if (quoteVendor.getCompanyCode() == null) {
+            java.util.Optional<com.example.multimedia.file_upload_api.entity.VendorMaster> vmOpt = vendorMasterRepository.findById(quoteVendor.getCompanyId());
+            if (vmOpt.isPresent() && vmOpt.get().getBpNo() != null) {
+                List<CompanyDetails> matches = companyDetailsRepository.findByCompanyCode(vmOpt.get().getBpNo());
+                if (!matches.isEmpty()) {
+                    finalVendor = matches.get(0);
+                }
+            }
+        }
+
+        po.setVendor(finalVendor);
         po.setCurrency(quotation.getCurrency() != null ? quotation.getCurrency() : "INR");
         po.setPaymentTermsId(quotation.getPaymentTermsId());
         po.setDeliveryAddress(request != null ? request.getDeliveryAddress() : null);
@@ -110,25 +133,27 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
         // Create PO Items
         List<PortalPurchaseOrderItem> poItems = new ArrayList<>();
         int lineNum = 10;
-        for (VendorQuotationItem quoteItem : quotation.getItems()) {
-            PortalPurchaseOrderItem poItem = new PortalPurchaseOrderItem();
-            poItem.setPurchaseOrder(po);
-            poItem.setLineNumber(lineNum);
-            poItem.setMaterialNumber(quoteItem.getItemCode());
-            poItem.setMaterialDescription(quoteItem.getDescription());
-            poItem.setQuantity(quoteItem.getQuotedQty());
-            poItem.setUom(quoteItem.getUom());
-            poItem.setUnitPrice(quoteItem.getUnitPrice());
-            poItem.setNetValue(quoteItem.getLineTotal());
-            poItem.setTaxPercent(quoteItem.getGstPercent());
-            poItem.setTaxAmount(quoteItem.getGstAmount());
-            
-            BigDecimal netValue = quoteItem.getLineTotal() != null ? quoteItem.getLineTotal() : BigDecimal.ZERO;
-            BigDecimal taxAmount = quoteItem.getGstAmount() != null ? quoteItem.getGstAmount() : BigDecimal.ZERO;
-            poItem.setTotalValue(netValue.add(taxAmount));
+        if (quotation.getItems() != null) {
+            for (VendorQuotationItem quoteItem : quotation.getItems()) {
+                PortalPurchaseOrderItem poItem = new PortalPurchaseOrderItem();
+                poItem.setPurchaseOrder(po);
+                poItem.setLineNumber(lineNum);
+                poItem.setMaterialNumber(quoteItem.getItemCode());
+                poItem.setMaterialDescription(quoteItem.getDescription());
+                poItem.setQuantity(quoteItem.getQuotedQty() != null ? quoteItem.getQuotedQty() : BigDecimal.ZERO);
+                poItem.setUom(quoteItem.getUom());
+                poItem.setUnitPrice(quoteItem.getUnitPrice() != null ? quoteItem.getUnitPrice() : BigDecimal.ZERO);
+                poItem.setNetValue(quoteItem.getLineTotal() != null ? quoteItem.getLineTotal() : BigDecimal.ZERO);
+                poItem.setTaxPercent(quoteItem.getGstPercent());
+                poItem.setTaxAmount(quoteItem.getGstAmount());
+                
+                BigDecimal netValue = quoteItem.getLineTotal() != null ? quoteItem.getLineTotal() : BigDecimal.ZERO;
+                BigDecimal taxAmount = quoteItem.getGstAmount() != null ? quoteItem.getGstAmount() : BigDecimal.ZERO;
+                poItem.setTotalValue(netValue.add(taxAmount));
 
-            poItems.add(poItem);
-            lineNum += 10;
+                poItems.add(poItem);
+                lineNum += 10;
+            }
         }
         po.setItems(poItems);
 
@@ -146,7 +171,7 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
     public List<PortalPurchaseOrderListResponse> getAllPOsForAdmin(Long adminId) {
         if (currentUserService.isCurrentUserSuperAdmin()) {
             Long superAdminId = currentUserService.getCurrentSuperAdminId();
-            List<PortalPurchaseOrder> pos = poRepository.findByVendor_SuperAdmin_SuperAdminIdOrderByCreatedDateDesc(superAdminId);
+            List<PortalPurchaseOrder> pos = poRepository.findByVendor_SuperAdmin_SuperAdminIdOrderByIdDesc(superAdminId);
             return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
         } else {
             UserDetail user = currentUserService.getCurrentUser();
@@ -233,8 +258,18 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
 
     @Override
     public List<PortalPurchaseOrderListResponse> getPOsForVendor(Long vendorId) {
-        List<PortalPurchaseOrder> pos = poRepository.findByVendor_CompanyIdOrderByCreatedDateDesc(vendorId);
-        return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
+        String bpNo = companyDetailsRepository.findById(vendorId)
+                .map(com.example.multimedia.file_upload_api.entity.CompanyDetails::getCompanyCode)
+                .orElse(null);
+
+        if (bpNo != null) {
+            List<PortalPurchaseOrder> pos = poRepository.findByVendor_CompanyCodeOrderByIdDesc(bpNo);
+            return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
+        } else {
+            // Fallback just in case bpNo is not set
+            List<PortalPurchaseOrder> pos = poRepository.findByVendor_CompanyIdOrderByIdDesc(vendorId);
+            return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
+        }
     }
 
     @Override
@@ -338,5 +373,20 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
 
         res.setCreatedAt(po.getCreatedDate());
         return res;
+    }
+
+    @Override
+    @Transactional
+    public void acknowledgePO(Long poId, Long vendorId) {
+        PortalPurchaseOrder po = poRepository.findById(poId)
+                .orElseThrow(() -> new RuntimeException("Purchase Order not found with ID: " + poId));
+        if (!po.getVendor().getCompanyId().equals(vendorId)) {
+            throw new RuntimeException("Unauthorized: You do not have permission to acknowledge this PO");
+        }
+        if (!"RELEASED".equalsIgnoreCase(po.getStatus()) && !"CREATED".equalsIgnoreCase(po.getStatus())) {
+            throw new RuntimeException("Purchase Order is not in a valid state to be acknowledged");
+        }
+        po.setStatus("ACKNOWLEDGED");
+        poRepository.save(po);
     }
 }

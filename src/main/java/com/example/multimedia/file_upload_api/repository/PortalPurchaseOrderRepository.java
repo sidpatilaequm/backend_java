@@ -10,9 +10,11 @@ import java.util.Optional;
 @Repository
 public interface PortalPurchaseOrderRepository extends JpaRepository<PortalPurchaseOrder, Long> {
 
-    List<PortalPurchaseOrder> findByVendor_SuperAdmin_SuperAdminIdOrderByCreatedDateDesc(Long adminId);
+    List<PortalPurchaseOrder> findByVendor_SuperAdmin_SuperAdminIdOrderByIdDesc(Long adminId);
 
-    List<PortalPurchaseOrder> findByVendor_CompanyIdOrderByCreatedDateDesc(Long vendorId);
+    List<PortalPurchaseOrder> findByVendor_CompanyIdOrderByIdDesc(Long vendorId);
+
+    List<PortalPurchaseOrder> findByVendor_CompanyCodeOrderByIdDesc(String companyCode);
 
     Optional<PortalPurchaseOrder> findByIdAndVendor_CompanyId(Long id, Long vendorId);
     

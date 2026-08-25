@@ -33,4 +33,5 @@ public class AsnResponseDto {
     private boolean isPartial;
     
     private List<AsnItemResponseDto> items;
+    private List<AsnPackageDto> packages;
 }

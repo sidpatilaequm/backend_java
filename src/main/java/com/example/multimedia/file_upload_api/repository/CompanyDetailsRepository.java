@@ -40,4 +40,6 @@ public interface CompanyDetailsRepository extends JpaRepository<CompanyDetails, 
     boolean existsByCompanyCodeAndSuperAdmin_SuperAdminId(String companyCode, Long superAdminId);
 
     Optional<CompanyDetails> findByCompanyCodeAndSuperAdmin_SuperAdminId(String companyCode, Long superAdminId);
+
+    List<CompanyDetails> findByCompanyCode(String companyCode);
 }

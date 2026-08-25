@@ -149,13 +149,7 @@ public class GateEntryServiceImpl implements GateEntryService {
         lDto.setVehicle(asn.getVehicleNumber());
         dto.setLogistics(lDto);
 
-        int totalPackages = 0;
-        try {
-            if (asn.getPackaging() != null && !asn.getPackaging().isEmpty()) {
-                totalPackages = Integer.parseInt(asn.getPackaging());
-            }
-        } catch (NumberFormatException ignored) {}
-        dto.setDeclaredPackages(totalPackages);
+        dto.setDeclaredPackages(asn.getNoOfPackages() != null ? asn.getNoOfPackages() : 0);
 
         List<ArrivalDetailsDto.LineDto> lines = asn.getItems().stream().map(item -> {
             ArrivalDetailsDto.LineDto line = new ArrivalDetailsDto.LineDto();
@@ -168,6 +162,18 @@ public class GateEntryServiceImpl implements GateEntryService {
         dto.setLines(lines);
 
         response.setStatus("success");
+        
+        if (asn.getPackages() != null) {
+            List<ArrivalDetailsDto.PackageDto> packages = asn.getPackages().stream().map(pkg -> {
+                ArrivalDetailsDto.PackageDto pkgDto = new ArrivalDetailsDto.PackageDto();
+                pkgDto.setPackageNumber(pkg.getPackageNumber());
+                pkgDto.setMaterialDetails(pkg.getMaterialDetails());
+                pkgDto.setQuantity(pkg.getQuantity());
+                return pkgDto;
+            }).collect(Collectors.toList());
+            dto.setPackages(packages);
+        }
+
         response.addData("details", dto);
         return response;
     }
@@ -206,12 +212,7 @@ public class GateEntryServiceImpl implements GateEntryService {
             entry.setDocuments("{}");
         }
 
-        int declared = 0;
-        try {
-            if (asn.getPackaging() != null) declared = Integer.parseInt(asn.getPackaging());
-        } catch (NumberFormatException ignored) {}
-        
-        entry.setDeclaredPackages(declared);
+        entry.setDeclaredPackages(asn.getNoOfPackages() != null ? asn.getNoOfPackages() : 0);
         if (processDto.getPackageVerification() != null) {
             entry.setCountedPackages(processDto.getPackageVerification().getCounted());
             entry.setPackageRemark(processDto.getPackageVerification().getRemark());

@@ -19,4 +19,7 @@ public class AsnRequestDto {
 
     @JsonProperty("items")
     private List<AsnItemRequestDto> items;
+
+    @JsonProperty("packages")
+    private List<AsnPackageDto> packages;
 }
