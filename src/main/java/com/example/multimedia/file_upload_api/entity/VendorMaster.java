@@ -38,6 +38,12 @@ public class VendorMaster {
     @Column(name = "gst_number")
     private String gstNumber;
 
+    @Column(name = "pan")
+    private String pan;
+
+    @Column(name = "company_code")
+    private String companyCode;
+
     @Column(name = "city_name")
     private String cityName;
 

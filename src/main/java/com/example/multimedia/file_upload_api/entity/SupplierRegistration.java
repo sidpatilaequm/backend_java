@@ -218,6 +218,15 @@ public class SupplierRegistration {
     @Column(name = "company_id")
     private Long companyId;
 
+    /**
+     * PRODUCT / SERVICE / SCHEDULING_AGREEMENT / SUBCONTRACTING — set by whichever approver
+     * decides it first during review (see VendorClassificationController), never by the vendor.
+     * Under a stage requiring several approvers, the first one to set it wins; later approvers
+     * see it already decided. Null until the deciding approval happens.
+     */
+    @Column(name = "vendor_category")
+    private String vendorCategory;
+
     // ── KYC ──────────────────────────────────────────────────────────────
     @Column(name = "gst_number")
     private String gstNumber;

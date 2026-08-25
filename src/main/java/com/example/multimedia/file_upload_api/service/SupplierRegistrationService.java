@@ -46,6 +46,7 @@ public class SupplierRegistrationService {
     private final CompanyDetailsRepository companyDetailsRepository;
     private final SuperAdminRepository superAdminRepository;
     private final AuthorizationRepository authorizationRepository;
+    private final VendorMasterRepository vendorMasterRepository;
     private final PasswordEncoder passwordEncoder;
     private final RestTemplate restTemplate;
     private final ServiceControllerUtils serviceControllerUtils;
@@ -73,6 +74,7 @@ public class SupplierRegistrationService {
                                         CompanyDetailsRepository companyDetailsRepository,
                                         SuperAdminRepository superAdminRepository,
                                         AuthorizationRepository authorizationRepository,
+                                        VendorMasterRepository vendorMasterRepository,
                                         PasswordEncoder passwordEncoder,
                                         RestTemplate restTemplate,
                                         ServiceControllerUtils serviceControllerUtils,
@@ -90,6 +92,7 @@ public class SupplierRegistrationService {
         this.companyDetailsRepository = companyDetailsRepository;
         this.superAdminRepository = superAdminRepository;
         this.authorizationRepository = authorizationRepository;
+        this.vendorMasterRepository = vendorMasterRepository;
         this.passwordEncoder = passwordEncoder;
         this.restTemplate = restTemplate;
         this.serviceControllerUtils = serviceControllerUtils;
@@ -206,6 +209,15 @@ public class SupplierRegistrationService {
         return folderItService.downloadFileBytes(attachment.getFolderItFileUid());
     }
 
+    /**
+     * A registration can only be (re)edited/(re)submitted while it's an untouched DRAFT, or
+     * after it's been REJECTED (the one status that's meant to send the applicant back to fix
+     * something). Anything else — REGISTRATION_SUBMITTED, ESCALATED, ACTIVE, CANCELLED — means
+     * it's already in flight or resolved, and the resume-code flow / saveDraft / submit must all
+     * refuse to touch it instead of silently letting an applicant re-edit a live application.
+     */
+    private static final java.util.Set<String> EDITABLE_STATUSES = java.util.Set.of("DRAFT", "REJECTED");
+
     private SupplierRegistration newDraft() {
         SupplierRegistration reg = new SupplierRegistration();
         reg.setStatus("DRAFT");
@@ -257,6 +269,11 @@ public class SupplierRegistrationService {
             SupplierRegistration reg = dto.getRegistrationId() != null
                     ? registrationRepository.findById(dto.getRegistrationId()).orElseGet(this::newDraft)
                     : newDraft();
+
+            if (dto.getRegistrationId() != null && !EDITABLE_STATUSES.contains(reg.getStatus())) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
+                        "This application has already been submitted and can no longer be edited.");
+            }
 
             reg.setVendorName(dto.getVendorName());
             reg.setAddress(dto.getAddress());
@@ -532,6 +549,73 @@ public class SupplierRegistrationService {
     }
 
     /**
+     * Admin-facing "Approved Suppliers" list — every registration that made it through the
+     * Become-a-Supplier flow to ACTIVE, with the classification an approver set (see
+     * setVendorCategory) alongside it. Deliberately reads supplier_registration directly rather
+     * than VendorController's /api/vendors/all, which is backed by the unrelated legacy
+     * vendor_master table (confirmed empty of any vendor provisioned through this flow).
+     */
+    public ServiceResponse listApprovedSuppliers() {
+        ServiceResponse response = new ServiceResponse();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (SupplierRegistration reg : registrationRepository.findByStatusOrderByApprovedDateDesc("ACTIVE")) {
+            Map<String, Object> row = new HashMap<>();
+            row.put("id", reg.getId());
+            row.put("vendorName", reg.getVendorName());
+            row.put("vendorCode", reg.getVendorCode());
+            row.put("email", reg.getEmail());
+            row.put("phone", reg.getPhone());
+            row.put("address", reg.getAddress());
+            row.put("gstNumber", reg.getGstNumber());
+            row.put("panNumber", reg.getPanNumber());
+            row.put("companyType", reg.getCompanyType());
+            row.put("businessTypes", reg.getBusinessTypes());
+            row.put("vendorCategory", reg.getVendorCategory());
+            row.put("approvedBy", reg.getApprovedBy());
+            row.put("approvedDate", reg.getApprovedDate());
+            out.add(row);
+        }
+        response.addData("suppliers", out);
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Approved suppliers retrieved");
+    }
+
+    private static final java.util.Set<String> VENDOR_CATEGORIES =
+            java.util.Set.of("PRODUCT", "SERVICE", "SCHEDULING_AGREEMENT", "SUBCONTRACTING");
+
+    /**
+     * The deciding approver's classification pick (Product / Service / Scheduling agreement /
+     * Sub-contracting) — only the first approver to call this actually sets it (see
+     * SupplierRegistrationRepository.claimVendorCategory); returns whichever value actually won,
+     * so a caller whose own pick lost a close race still gets back the truth rather than assuming
+     * their own value stuck.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ServiceResponse setVendorCategory(Long registrationId, String category) {
+        ServiceResponse response = new ServiceResponse();
+        String normalized = category == null ? null : category.trim().toUpperCase();
+        if (normalized == null || !VENDOR_CATEGORIES.contains(normalized)) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
+                    "category must be one of " + VENDOR_CATEGORIES);
+        }
+        SupplierRegistration reg = registrationRepository.findById(registrationId).orElse(null);
+        if (reg == null) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
+        }
+
+        int claimed = registrationRepository.claimVendorCategory(registrationId, normalized);
+        // Re-fetch regardless of who won — a concurrent caller may have already claimed it, and
+        // this caller needs the value that actually stuck either way, not just its own guess.
+        String finalCategory = registrationRepository.findById(registrationId)
+                .map(SupplierRegistration::getVendorCategory).orElse(normalized);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("vendorCategory", finalCategory);
+        data.put("decidedByYou", claimed > 0);
+        response.addData("result", data);
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Classification recorded");
+    }
+
+    /**
      * Same shape as getRegistrationForReview, for the approved vendor themselves rather than an
      * admin/employee reviewer — resolved from their own JWT login email (SupplierRegistration.email
      * is unique and is exactly the address provisionVendorAccount created their login under), not
@@ -626,6 +710,11 @@ public class SupplierRegistrationService {
         try {
             SupplierRegistration reg = registrationRepository.findById(registrationId)
                     .orElseThrow(() -> new RuntimeException("Registration not found"));
+
+            if (!EDITABLE_STATUSES.contains(reg.getStatus())) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
+                        "This application has already been submitted for approval.");
+            }
 
             List<String> missing = new ArrayList<>();
             for (SupplierDocumentConfig.DocDef d : SupplierDocumentConfig.DOCS) {
@@ -803,6 +892,24 @@ public class SupplierRegistrationService {
 
         user.setCompany(company);
         userDetailRepository.save(user);
+
+        // Also register the vendor in vendor_master — the legacy/SAP-style table RFQ vendor
+        // assignment (WorkFlow's /api/vendor/selection-list) and vendor-facing Gate Entry
+        // (GateEntryServiceImpl.getVendorGateStatus, which 500s without a matching row) actually
+        // read from, independently of supplier_registration/CompanyDetails above. Guarded by
+        // email so a redelivered approval webhook can't create a duplicate row.
+        if (!vendorMasterRepository.existsByEmail(reg.getEmail())) {
+            VendorMaster vendorMaster = new VendorMaster();
+            vendorMaster.setBpNo(vendorCode);
+            vendorMaster.setName(reg.getVendorName());
+            vendorMaster.setEmail(reg.getEmail());
+            vendorMaster.setGstNumber(reg.getGstNumber());
+            vendorMaster.setPan(reg.getPanNumber());
+            vendorMaster.setCompanyCode(vendorCode);
+            vendorMaster.setBankAccountNumber(reg.getAccountNumber());
+            vendorMaster.setSuperAdmin(systemAdmin);
+            vendorMasterRepository.save(vendorMaster);
+        }
 
         reg.setStatus("ACTIVE");
         reg.setVendorCode(vendorCode);

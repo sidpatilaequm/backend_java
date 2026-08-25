@@ -34,23 +34,31 @@ public class MicrovistaService {
     private static final String AUTH_URL = "https://kycapi.microvistatech.com/api/Auth/GenerateAuthtoken";
     private static final String API_BASE = "https://kycapi.microvistatech.com";
 
+    // Previously bare @Value env-var fields; now admin-editable via PlatformCredentialService
+    // (System Settings > FolderIT Integration also hosts the Microvista box) — these seed the
+    // DB with whatever was already configured in the environment the first time they're read.
     @Value("${microvista.token.id:}")
-    private String tokenId;
+    private String defaultTokenId;
 
     @Value("${microvista.token.secret:}")
-    private String tokenSecret;
+    private String defaultTokenSecret;
 
     @Value("${microvista.api.version:1}")
     private String apiVersion;
 
     private final RestTemplate restTemplate;
+    private final PlatformCredentialService credentials;
 
     private String cachedToken;
     private long cachedTokenExpiresAt;
 
-    public MicrovistaService(RestTemplate restTemplate) {
+    public MicrovistaService(RestTemplate restTemplate, PlatformCredentialService credentials) {
         this.restTemplate = restTemplate;
+        this.credentials = credentials;
     }
+
+    private String tokenId() { return credentials.get("microvista.token_id", defaultTokenId); }
+    private String tokenSecret() { return credentials.get("microvista.token_secret", defaultTokenSecret); }
 
     private static String opt(JSONObject obj, String... keys) {
         for (String k : keys) {
@@ -88,8 +96,8 @@ public class MicrovistaService {
         if (cachedToken != null && cachedTokenExpiresAt > now) return cachedToken;
 
         String url = UriComponentsBuilder.fromHttpUrl(AUTH_URL)
-                .queryParam("TokenID", tokenId)
-                .queryParam("TokenSecret", tokenSecret)
+                .queryParam("TokenID", tokenId())
+                .queryParam("TokenSecret", tokenSecret())
                 .toUriString();
 
         JSONObject res = new JSONObject(restTemplate.getForObject(url, String.class));
@@ -106,8 +114,8 @@ public class MicrovistaService {
         String token = getAccessToken();
         UriComponentsBuilder builder = UriComponentsBuilder
                 .fromHttpUrl(API_BASE + "/api/v" + apiVersion + path)
-                .queryParam("TokenID", tokenId)
-                .queryParam("TokenSecret", tokenSecret);
+                .queryParam("TokenID", tokenId())
+                .queryParam("TokenSecret", tokenSecret());
         params.forEach(builder::queryParam);
 
         try {

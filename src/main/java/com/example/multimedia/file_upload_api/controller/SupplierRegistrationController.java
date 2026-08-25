@@ -2,6 +2,13 @@ package com.example.multimedia.file_upload_api.controller;
 
 import com.example.multimedia.file_upload_api.dto.ServiceResponse;
 import com.example.multimedia.file_upload_api.dto.SupplierDraftDTO;
+import com.example.multimedia.file_upload_api.entity.Authorization;
+import com.example.multimedia.file_upload_api.entity.UserAuthentication;
+import com.example.multimedia.file_upload_api.entity.UserDetail;
+import com.example.multimedia.file_upload_api.repository.AuthorizationRepository;
+import com.example.multimedia.file_upload_api.repository.SuperAdminRepository;
+import com.example.multimedia.file_upload_api.repository.UserAuthenticationRepository;
+import com.example.multimedia.file_upload_api.repository.UserDetailRepository;
 import com.example.multimedia.file_upload_api.service.QuestionnaireService;
 import com.example.multimedia.file_upload_api.service.SupplierRegistrationService;
 import com.example.multimedia.file_upload_api.service.VendorChangeRequestService;
@@ -29,16 +36,56 @@ public class SupplierRegistrationController {
     private final SupplierRegistrationService service;
     private final QuestionnaireService questionnaireService;
     private final VendorChangeRequestService vendorChangeRequestService;
+    private final SuperAdminRepository superAdminRepository;
+    private final UserDetailRepository userDetailRepository;
+    private final UserAuthenticationRepository userAuthenticationRepository;
+    private final AuthorizationRepository authorizationRepository;
 
     @Value("${workflow.webhook.secret:}")
     private String webhookSecret;
 
     public SupplierRegistrationController(SupplierRegistrationService service,
                                            QuestionnaireService questionnaireService,
-                                           VendorChangeRequestService vendorChangeRequestService) {
+                                           VendorChangeRequestService vendorChangeRequestService,
+                                           SuperAdminRepository superAdminRepository,
+                                           UserDetailRepository userDetailRepository,
+                                           UserAuthenticationRepository userAuthenticationRepository,
+                                           AuthorizationRepository authorizationRepository) {
         this.service = service;
         this.questionnaireService = questionnaireService;
         this.vendorChangeRequestService = vendorChangeRequestService;
+        this.superAdminRepository = superAdminRepository;
+        this.userDetailRepository = userDetailRepository;
+        this.userAuthenticationRepository = userAuthenticationRepository;
+        this.authorizationRepository = authorizationRepository;
+    }
+
+    private boolean isAdmin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return false;
+        }
+        String email = auth.getName();
+
+        if (superAdminRepository.existsByEmail(email)) return true;
+
+        java.util.Optional<UserDetail> userOpt = userDetailRepository.findByEmail(email);
+        if (userOpt.isEmpty()) return false;
+
+        java.util.Optional<UserAuthentication> authOpt = userAuthenticationRepository.findByUserId(userOpt.get().getUserId());
+        if (authOpt.isEmpty()) return false;
+
+        String authKey = authOpt.get().getAuthKey();
+        java.util.Optional<Authorization> authorization;
+        try {
+            authorization = authorizationRepository.findById(Integer.parseInt(authKey));
+        } catch (NumberFormatException e) {
+            authorization = authorizationRepository.findByAuthKeyIgnoreCase(authKey);
+        }
+        if (authorization.isEmpty()) return false;
+
+        String roleName = authorization.get().getAuthName().toUpperCase();
+        return !roleName.equals("VENDOR") && !roleName.equals("EMPLOYEE") && !roleName.equals("PURCHASE_DEPT");
     }
 
     private static String currentUserEmail() {
@@ -130,6 +177,30 @@ public class SupplierRegistrationController {
     public ResponseEntity<ServiceResponse> getForReview(@PathVariable Long registrationId) {
         ServiceResponse response = service.getRegistrationForReview(registrationId);
         if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.status(404).body(response);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Admin-facing list of every Become-a-Supplier registration that reached ACTIVE, with its
+     * classification — backs a dedicated "Approved Suppliers" screen (VendorController's
+     * /api/vendors/all is a different, legacy list unrelated to this flow).
+     */
+    @GetMapping("/api/supplier-registration/approved-suppliers")
+    public ResponseEntity<ServiceResponse> listApprovedSuppliers() {
+        if (!isAdmin()) return ResponseEntity.status(403).body(null);
+        return ResponseEntity.ok(service.listApprovedSuppliers());
+    }
+
+    /**
+     * The deciding approver's Product/Service/Scheduling agreement/Sub-contracting pick — call
+     * this right before the actual WorkFlow approval action. Only the first approver to call it
+     * actually sets the value (see SupplierRegistrationService.setVendorCategory); the frontend
+     * shows the picker only when getForReview's registration.vendorCategory is still null.
+     */
+    @PostMapping("/api/supplier-registration/{registrationId}/classification")
+    public ResponseEntity<ServiceResponse> setVendorCategory(@PathVariable Long registrationId, @RequestBody java.util.Map<String, String> body) {
+        ServiceResponse response = service.setVendorCategory(registrationId, body.get("category"));
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.badRequest().body(response);
         return ResponseEntity.ok(response);
     }
 
