@@ -19,6 +19,8 @@ public interface PurchaseRequisitionService {
 
     PurchaseRequisitionResponse updatePurchaseRequisition(Long id, PurchaseRequisitionRequest request);
 
+    void createRfq(Long prId, java.util.List<Long> vendorIds);
+
     void changePurchaseRequisitionStatus(Long id, PurchaseRequisitionStatusRequest statusRequest);
 
     void deletePurchaseRequisition(Long id);

@@ -60,7 +60,7 @@ public class PortalPurchaseOrder {
     private String remarks;
 
     @Column(name = "status", nullable = false, length = 50)
-    private String status = "CREATED";
+    private String status = "RELEASED";
 
     @Column(name = "subtotal", precision = 15, scale = 2)
     private BigDecimal subtotal;
@@ -84,4 +84,8 @@ public class PortalPurchaseOrder {
     @UpdateTimestamp
     @Column(name = "modified_date")
     private LocalDateTime modifiedDate;
+
+    public String getVendorName() {
+        return vendor != null ? vendor.getCompanyName() : null;
+    }
 }

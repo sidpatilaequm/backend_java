@@ -13,6 +13,7 @@ public class ArrivalDetailsDto {
     private LogisticsDto logistics;
     private Integer declaredPackages;
     private List<LineDto> lines;
+    private List<PackageDto> packages;
 
     @Data
     public static class VendorDto {
@@ -40,5 +41,12 @@ public class ArrivalDetailsDto {
         private String description;
         private BigDecimal qty;
         private String uom;
+    }
+
+    @Data
+    public static class PackageDto {
+        private Integer packageNumber;
+        private String materialDetails;
+        private Double quantity;
     }
 }

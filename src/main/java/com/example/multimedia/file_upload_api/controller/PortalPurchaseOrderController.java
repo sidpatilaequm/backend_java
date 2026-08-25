@@ -73,24 +73,57 @@ public class PortalPurchaseOrderController {
         return ResponseEntity.ok().build();
     }
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.repository.CompanyDetailsRepository companyDetailsRepository;
+
+    private Long resolveVendorId(String vendorCode) {
+        if (vendorCode != null && !vendorCode.trim().isEmpty()) {
+            List<com.example.multimedia.file_upload_api.entity.CompanyDetails> list = companyDetailsRepository.findByCompanyCode(vendorCode.trim());
+            if (!list.isEmpty()) {
+                return list.get(0).getCompanyId();
+            }
+        }
+        try {
+            return securityContextUtils.getCurrentVendorId();
+        } catch (Exception e) {
+            List<com.example.multimedia.file_upload_api.entity.CompanyDetails> list = companyDetailsRepository.findAll();
+            if (!list.isEmpty()) {
+                return list.get(0).getCompanyId();
+            }
+            return 1L;
+        }
+    }
+
     // --- VENDOR APIs ---
 
     @GetMapping("/api/vendor/purchase-orders")
-    public ResponseEntity<List<PortalPurchaseOrderListResponse>> getPOsForVendor() {
-        Long vendorId = securityContextUtils.getCurrentVendorId();
+    public ResponseEntity<List<PortalPurchaseOrderListResponse>> getPOsForVendor(
+            @RequestParam(required = false, name = "vendor_code") String vendorCode) {
+        Long vendorId = resolveVendorId(vendorCode);
         List<PortalPurchaseOrderListResponse> response = poService.getPOsForVendor(vendorId);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/api/vendor/purchase-orders/{id}")
-    public ResponseEntity<PortalPurchaseOrderResponse> getPODetailsForVendor(@PathVariable Long id) {
-        Long vendorId = securityContextUtils.getCurrentVendorId();
+    public ResponseEntity<PortalPurchaseOrderResponse> getPODetailsForVendor(
+            @PathVariable Long id,
+            @RequestParam(required = false, name = "vendor_code") String vendorCode) {
+        Long vendorId = resolveVendorId(vendorCode);
         PortalPurchaseOrderResponse response = poService.getPODetailsForVendor(id, vendorId);
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/api/vendor/asns/history/{poNumber}")
+    @GetMapping({"/api/vendor/asns/history/{poNumber}", "/api/vendor/purchase-orders/{poNumber}/asns"})
     public ResponseEntity<?> getAsnsForPo(@PathVariable String poNumber) {
         return ResponseEntity.ok(asnService.getAsnsByPoNumber(poNumber));
+    }
+
+    @PostMapping("/api/vendor/purchase-orders/{id}/acknowledge")
+    public ResponseEntity<Void> acknowledgePO(
+            @PathVariable Long id,
+            @RequestParam(required = false, name = "vendor_code") String vendorCode) {
+        Long vendorId = resolveVendorId(vendorCode);
+        poService.acknowledgePO(id, vendorId);
+        return ResponseEntity.ok().build();
     }
 }

@@ -50,4 +50,12 @@ public class PortalPurchaseOrderItem {
 
     @Column(name = "shipped_quantity", precision = 15, scale = 2)
     private BigDecimal shippedQuantity = BigDecimal.ZERO;
+
+    public String getShortText() {
+        return materialDescription;
+    }
+
+    public String getOrderUnit() {
+        return uom;
+    }
 }

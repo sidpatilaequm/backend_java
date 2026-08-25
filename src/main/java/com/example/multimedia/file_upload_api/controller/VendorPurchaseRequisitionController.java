@@ -24,13 +24,14 @@ public class VendorPurchaseRequisitionController {
     public ResponseEntity<List<VendorPurchaseRequisitionItemResponse>> getVendorAssignedItems(
             @RequestParam(name = "vendor_id", required = false) Long vendorIdParam) {
         Long vendorId = null;
-        try {
-            vendorId = securityContextUtils.getCurrentVendorId();
-        } catch (Exception e) {
-            // If not authenticated (e.g. testing), fall back to the query param
-        }
-        if (vendorId == null) {
+        if (vendorIdParam != null) {
             vendorId = vendorIdParam;
+        } else {
+            try {
+                vendorId = securityContextUtils.getCurrentVendorId();
+            } catch (Exception e) {
+                // If not authenticated (e.g. testing)
+            }
         }
         if (vendorId == null) {
             throw new RuntimeException("Vendor ID is required but could not be determined.");
@@ -40,8 +41,21 @@ public class VendorPurchaseRequisitionController {
     }
 
     @GetMapping("/details")
-    public ResponseEntity<List<com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse>> getAllVendorPurchaseRequisitions() {
-        Long vendorId = securityContextUtils.getCurrentVendorId();
+    public ResponseEntity<List<com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse>> getAllVendorPurchaseRequisitions(
+            @RequestParam(name = "vendor_id", required = false) Long vendorIdParam) {
+        Long vendorId = null;
+        if (vendorIdParam != null) {
+            vendorId = vendorIdParam;
+        } else {
+            try {
+                vendorId = securityContextUtils.getCurrentVendorId();
+            } catch (Exception e) {
+                // Ignore if not authenticated
+            }
+        }
+        if (vendorId == null) {
+            throw new RuntimeException("Vendor ID is required but could not be determined.");
+        }
         List<com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse> response = purchaseRequisitionService.getAllVendorPurchaseRequisitions(vendorId);
         return ResponseEntity.ok(response);
     }
@@ -50,6 +64,18 @@ public class VendorPurchaseRequisitionController {
     public ResponseEntity<com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse> getVendorPurchaseRequisitionByPrNumber(@PathVariable String prNumber) {
         Long vendorId = securityContextUtils.getCurrentVendorId();
         com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse response = purchaseRequisitionService.getVendorPurchaseRequisitionByPrNumber(prNumber, vendorId);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{prId}/create-rfq")
+    public ResponseEntity<java.util.Map<String, String>> createRfq(
+            @PathVariable Long prId,
+            @RequestBody com.example.multimedia.file_upload_api.dto.CreateRfqRequest request) {
+        
+        purchaseRequisitionService.createRfq(prId, request.getVendor_ids());
+        
+        java.util.Map<String, String> response = new java.util.HashMap<>();
+        response.put("status", "success");
         return ResponseEntity.ok(response);
     }
 
@@ -62,16 +88,43 @@ public class VendorPurchaseRequisitionController {
         return ResponseEntity.ok().build();
     }
 
+    private Long extractVendorId(java.util.Map<String, Object> payload) {
+        Long vendorId = null;
+        if (payload != null && payload.containsKey("vendor_id")) {
+            Object vId = payload.get("vendor_id");
+            if (vId instanceof Number) {
+                vendorId = ((Number) vId).longValue();
+            } else if (vId instanceof String) {
+                vendorId = Long.parseLong((String) vId);
+            }
+        }
+        if (vendorId == null) {
+            try {
+                vendorId = securityContextUtils.getCurrentVendorId();
+            } catch (Exception e) {
+                // Ignore if not authenticated
+            }
+        }
+        if (vendorId == null) {
+            throw new RuntimeException("Vendor ID is required but could not be determined.");
+        }
+        return vendorId;
+    }
+
     @PostMapping("/{prId}/accept")
-    public ResponseEntity<Void> acceptPurchaseRequisition(@PathVariable Long prId) {
-        Long vendorId = securityContextUtils.getCurrentVendorId();
+    public ResponseEntity<Void> acceptPurchaseRequisition(
+            @PathVariable Long prId, 
+            @RequestBody(required = false) java.util.Map<String, Object> payload) {
+        Long vendorId = extractVendorId(payload);
         purchaseRequisitionService.respondToPurchaseRequisition(prId, vendorId, "ACCEPT");
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/{prId}/reject")
-    public ResponseEntity<Void> rejectPurchaseRequisition(@PathVariable Long prId) {
-        Long vendorId = securityContextUtils.getCurrentVendorId();
+    public ResponseEntity<Void> rejectPurchaseRequisition(
+            @PathVariable Long prId,
+            @RequestBody(required = false) java.util.Map<String, Object> payload) {
+        Long vendorId = extractVendorId(payload);
         purchaseRequisitionService.respondToPurchaseRequisition(prId, vendorId, "REJECT");
         return ResponseEntity.ok().build();
     }

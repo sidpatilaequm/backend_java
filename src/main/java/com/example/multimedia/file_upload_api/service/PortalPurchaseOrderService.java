@@ -19,4 +19,6 @@ public interface PortalPurchaseOrderService {
     List<PortalPurchaseOrderListResponse> getPOsForVendor(Long vendorId);
 
     PortalPurchaseOrderResponse getPODetailsForVendor(Long poId, Long vendorId);
+
+    void acknowledgePO(Long poId, Long vendorId);
 }

@@ -88,6 +88,9 @@ public class Asn {
     @OneToMany(mappedBy = "asn", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<AsnItem> items = new ArrayList<>();
 
+    @OneToMany(mappedBy = "asn", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<AsnPackage> packages = new ArrayList<>();
+
     @CreationTimestamp
     @Column(name = "created_date", updatable = false)
     private LocalDateTime createdDate;

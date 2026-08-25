@@ -243,7 +243,7 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
             Long superAdminId = currentUserService.getCurrentSuperAdminId();
             Page<PurchaseRequisition> prPage = prRepository.findWithFilters(superAdminId, locationId, status, search,
                     pageable);
-            return prPage.map(this::mapToResponseWithoutItems);
+            return prPage.map(this::mapToResponse);
         } else {
             UserDetail user = currentUserService.getCurrentUser();
             List<Long> allowedUserIds = new java.util.ArrayList<>();
@@ -261,10 +261,10 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
                     }
                 }
             }
-
+            allowedUserIds.add(user.getUserId());
             Page<PurchaseRequisition> prPage = prRepository.findWithFiltersIn(allowedUserIds, locationId, status, search,
                     pageable);
-            return prPage.map(this::mapToResponseWithoutItems);
+            return prPage.map(this::mapToResponse);
         }
     }
 
@@ -593,6 +593,40 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
             res.setSentDate(a.getSentAt());
             return res;
         }).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void createRfq(Long prId, java.util.List<Long> vendorIds) {
+        PurchaseRequisition pr = prRepository.findById(prId)
+                .orElseThrow(() -> new RuntimeException("Purchase Requisition not found: " + prId));
+
+        if (vendorIds == null || vendorIds.isEmpty()) {
+            throw new IllegalArgumentException("Vendor IDs must not be empty.");
+        }
+
+        // Change PR Status to RELEASED
+        pr.setStatus(PurchaseRequisitionStatus.RELEASED);
+        prRepository.save(pr);
+
+        if (pr.getItems() != null) {
+            for (PurchaseRequisitionItem item : pr.getItems()) {
+                for (Long vendorId : vendorIds) {
+                    // Check if already assigned
+                    List<PurchaseRequisitionItemVendor> existing = vendorRepository.findByVendorIdAndPrId(vendorId, prId);
+                    boolean isAssignedToThisItem = existing.stream().anyMatch(e -> e.getPurchaseRequisitionItem().getId().equals(item.getId()));
+                    if (!isAssignedToThisItem) {
+                        PurchaseRequisitionItemVendor assignment = new PurchaseRequisitionItemVendor();
+                        assignment.setPurchaseRequisitionItem(item);
+                        assignment.setVendorId(vendorId);
+                        assignment.setBpNo("BP-" + vendorId); // Fallback for testing
+                        assignment.setStatus("SENT");
+                        assignment.setSentAt(new java.sql.Timestamp(System.currentTimeMillis()));
+                        vendorRepository.save(assignment);
+                    }
+                }
+            }
+        }
     }
 
     private String resolveRequestedByName(Long requestedById) {

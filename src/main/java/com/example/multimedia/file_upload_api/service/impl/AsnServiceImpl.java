@@ -173,6 +173,17 @@ public class AsnServiceImpl implements AsnService {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, "500", "File upload failed: " + e.getMessage());
         }
 
+        if (asnRequestDto.getPackages() != null && !asnRequestDto.getPackages().isEmpty()) {
+            for (com.example.multimedia.file_upload_api.dto.AsnPackageDto pkgDto : asnRequestDto.getPackages()) {
+                com.example.multimedia.file_upload_api.entity.AsnPackage asnPackage = new com.example.multimedia.file_upload_api.entity.AsnPackage();
+                asnPackage.setAsn(asn);
+                asnPackage.setPackageNumber(pkgDto.getPackageNumber());
+                asnPackage.setMaterialDetails(pkgDto.getMaterialDetails());
+                asnPackage.setQuantity(pkgDto.getQuantity());
+                asn.getPackages().add(asnPackage);
+            }
+        }
+
         asnRepository.save(asn);
 
         // 6. Save items and update PO Item shipped quantities
@@ -213,6 +224,7 @@ public class AsnServiceImpl implements AsnService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ServiceResponse getAsnsByVendorBpno(String vendorBpno) {
         ServiceResponse response = new ServiceResponse();
         List<Asn> asns = asnRepository.findByVendorBpno(vendorBpno);
@@ -224,6 +236,7 @@ public class AsnServiceImpl implements AsnService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ServiceResponse getAllAsns() {
         ServiceResponse response = new ServiceResponse();
         List<Asn> asns = asnRepository.findAll();
@@ -235,6 +248,7 @@ public class AsnServiceImpl implements AsnService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ServiceResponse getAsnsByPoNumber(String poNumber) {
         ServiceResponse response = new ServiceResponse();
         List<Asn> asns = asnRepository.findByPurchaseOrder_PoNumber(poNumber);
@@ -246,6 +260,7 @@ public class AsnServiceImpl implements AsnService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ServiceResponse getAsnById(String asnNumber) {
         ServiceResponse response = new ServiceResponse();
         try {
@@ -297,26 +312,44 @@ public class AsnServiceImpl implements AsnService {
         dto.setModifiedDate(asn.getModifiedDate());
         
         // Calculate if it's partial
-        if (asn.getPurchaseOrder() != null && asn.getItems() != null) {
+        if (asn.getPurchaseOrder() != null && asn.getPurchaseOrder().getItems() != null && asn.getItems() != null) {
             BigDecimal totalAsnQty = asn.getItems().stream().map(item -> item.getQuantityShipped() != null ? item.getQuantityShipped() : BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal totalPoQty = asn.getPurchaseOrder().getItems().stream().map(item -> item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
             dto.setPartial(totalAsnQty.compareTo(totalPoQty) < 0);
         }
 
-        List<com.example.multimedia.file_upload_api.dto.AsnItemResponseDto> itemDtos = asn.getItems().stream().map(item -> {
-            com.example.multimedia.file_upload_api.dto.AsnItemResponseDto itemDto = new com.example.multimedia.file_upload_api.dto.AsnItemResponseDto();
-            itemDto.setId(item.getId());
-            if (item.getPurchaseOrderItem() != null) {
-                itemDto.setLineNumber(item.getPurchaseOrderItem().getLineNumber());
-            }
-            itemDto.setPartNumber(item.getPartNumber());
-            itemDto.setQuantityShipped(item.getQuantityShipped());
-            itemDto.setBatchHeatNumber(item.getBatchHeatNumber());
-            itemDto.setTestCertUrl(item.getTestCertUrl());
-            return itemDto;
-        }).collect(java.util.stream.Collectors.toList());
+        if (asn.getItems() != null) {
+            List<com.example.multimedia.file_upload_api.dto.AsnItemResponseDto> itemDtos = asn.getItems().stream().map(item -> {
+                com.example.multimedia.file_upload_api.dto.AsnItemResponseDto itemDto = new com.example.multimedia.file_upload_api.dto.AsnItemResponseDto();
+                itemDto.setId(item.getId());
+                if (item.getPurchaseOrderItem() != null) {
+                    itemDto.setLineNumber(item.getPurchaseOrderItem().getLineNumber());
+                }
+                itemDto.setPartNumber(item.getPartNumber());
+                itemDto.setQuantityShipped(item.getQuantityShipped());
+                itemDto.setBatchHeatNumber(item.getBatchHeatNumber());
+                itemDto.setTestCertUrl(item.getTestCertUrl());
+                return itemDto;
+            }).collect(java.util.stream.Collectors.toList());
 
-        dto.setItems(itemDtos);
+            dto.setItems(itemDtos);
+        } else {
+            dto.setItems(new java.util.ArrayList<>());
+        }
+
+        if (asn.getPackages() != null) {
+            List<com.example.multimedia.file_upload_api.dto.AsnPackageDto> packageDtos = asn.getPackages().stream().map(pkg -> {
+                com.example.multimedia.file_upload_api.dto.AsnPackageDto pkgDto = new com.example.multimedia.file_upload_api.dto.AsnPackageDto();
+                pkgDto.setPackageNumber(pkg.getPackageNumber());
+                pkgDto.setMaterialDetails(pkg.getMaterialDetails());
+                pkgDto.setQuantity(pkg.getQuantity());
+                return pkgDto;
+            }).collect(java.util.stream.Collectors.toList());
+            dto.setPackages(packageDtos);
+        } else {
+            dto.setPackages(new java.util.ArrayList<>());
+        }
+
         return dto;
     }
 
