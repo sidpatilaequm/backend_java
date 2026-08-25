@@ -33,7 +33,7 @@ public class AnalyticsSsoController {
     // platform_credential (local vs production each have their own NexD admin account/password)
     // — these fallbacks only matter if that seeding is ever lost, and only match production.
     private static final String DEFAULT_ANALYTICS_USERNAME = "admin";
-    private static final String DEFAULT_ANALYTICS_PASSWORD = "SVm_lz12p1BULOEHyhzNrQ";
+    private static final String DEFAULT_ANALYTICS_PASSWORD = "LMYq1ConYwOMAhwbtl7G6g";
 
     @Value("${analytics.base-url:http://127.0.0.1:5090}")
     private String analyticsBaseUrl;
