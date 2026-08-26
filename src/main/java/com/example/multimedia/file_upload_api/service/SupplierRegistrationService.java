@@ -861,8 +861,13 @@ public class SupplierRegistrationService {
     }
 
     private void provisionVendorAccount(SupplierRegistration reg) {
-        SuperAdmin systemAdmin = superAdminRepository.findByEmail("system@internal")
-                .orElseThrow(() -> new RuntimeException("System admin not found"));
+        // Was hardcoded to a "system@internal" admin — meant every newly approved vendor's
+        // UserDetail/CompanyDetails/VendorMaster belonged to an account nobody actually logs in
+        // as, so they never showed up under the real admin's Master Data / Vendors screens
+        // (VendorService filters strictly by the current admin's super_admin_id). Owning admin
+        // is now whoever this deployment's real business account is.
+        SuperAdmin owningAdmin = superAdminRepository.findByEmail("siddarthpatil17@gmail.com")
+                .orElseThrow(() -> new RuntimeException("Owning admin not found"));
         Authorization vendorAuth = authorizationRepository.findByAuthKeyIgnoreCase("vendor")
                 .orElseThrow(() -> new RuntimeException("Vendor role authorization not found"));
 
@@ -870,7 +875,7 @@ public class SupplierRegistrationService {
         String vendorCode = "VEND-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
         UserDetail user = new UserDetail();
-        user.setSuperAdmin(systemAdmin);
+        user.setSuperAdmin(owningAdmin);
         user.setEmail(reg.getEmail());
         user.setPassword(passwordEncoder.encode(rawPassword));
         user.setFirstName(reg.getContactName());
@@ -892,7 +897,7 @@ public class SupplierRegistrationService {
         company.setRegisteredAddress(reg.getAddress());
         company.setGstinNumber(reg.getGstNumber());
         company.setPanNumber(reg.getPanNumber());
-        company.setSuperAdmin(systemAdmin);
+        company.setSuperAdmin(owningAdmin);
         company.setUser(user);
         company.setAuthKey("vendor");
         company.setStatus("ACTIVE");
@@ -905,18 +910,15 @@ public class SupplierRegistrationService {
         // Also register the vendor in vendor_master — the legacy/SAP-style table RFQ vendor
         // assignment (WorkFlow's /api/vendor/selection-list) and vendor-facing Gate Entry
         // (GateEntryServiceImpl.getVendorGateStatus, which 500s without a matching row) actually
-        // read from, independently of supplier_registration/CompanyDetails above. Guarded by
-        // email so a redelivered approval webhook can't create a duplicate row.
-        if (!vendorMasterRepository.existsByEmail(reg.getEmail())) {
+        // read from, independently of supplier_registration/CompanyDetails above. Just a bp_no +
+        // a link back to this registration now — name/GST/PAN/etc. are read through that link,
+        // not duplicated here. Guarded by the linked registration's email so a redelivered
+        // approval webhook can't create a duplicate row.
+        if (!vendorMasterRepository.existsBySupplierRegistration_Email(reg.getEmail())) {
             VendorMaster vendorMaster = new VendorMaster();
             vendorMaster.setBpNo(vendorCode);
-            vendorMaster.setName(reg.getVendorName());
-            vendorMaster.setEmail(reg.getEmail());
-            vendorMaster.setGstNumber(reg.getGstNumber());
-            vendorMaster.setPan(reg.getPanNumber());
-            vendorMaster.setCompanyCode(vendorCode);
-            vendorMaster.setBankAccountNumber(reg.getAccountNumber());
-            vendorMaster.setSuperAdmin(systemAdmin);
+            vendorMaster.setSupplierRegistration(reg);
+            vendorMaster.setSuperAdmin(owningAdmin);
             vendorMasterRepository.save(vendorMaster);
         }
 

@@ -84,7 +84,8 @@ public class GateEntryServiceImpl implements GateEntryService {
             dto.setPoNumber(asn.getPurchaseOrder() != null ? asn.getPurchaseOrder().getPoNumber() : null);
             if (asn.getVendorBpno() != null) {
                 vendorMasterRepository.findByBpNo(asn.getVendorBpno())
-                        .ifPresent(vm -> dto.setVendorName(vm.getName()));
+                        .filter(vm -> vm.getSupplierRegistration() != null)
+                        .ifPresent(vm -> dto.setVendorName(vm.getSupplierRegistration().getVendorName()));
             }
             dto.setVehicleNo(asn.getVehicleNumber());
             
@@ -130,12 +131,14 @@ public class GateEntryServiceImpl implements GateEntryService {
         dto.setPoNumber(asn.getPurchaseOrder() != null ? asn.getPurchaseOrder().getPoNumber() : null);
         
         if (asn.getVendorBpno() != null) {
-            vendorMasterRepository.findByBpNo(asn.getVendorBpno()).ifPresent(vm -> {
-                ArrivalDetailsDto.VendorDto vDto = new ArrivalDetailsDto.VendorDto();
-                vDto.setName(vm.getName());
-                vDto.setGstin(vm.getGstNumber());
-                dto.setVendor(vDto);
-            });
+            vendorMasterRepository.findByBpNo(asn.getVendorBpno())
+                    .filter(vm -> vm.getSupplierRegistration() != null)
+                    .ifPresent(vm -> {
+                        ArrivalDetailsDto.VendorDto vDto = new ArrivalDetailsDto.VendorDto();
+                        vDto.setName(vm.getSupplierRegistration().getVendorName());
+                        vDto.setGstin(vm.getSupplierRegistration().getGstNumber());
+                        dto.setVendor(vDto);
+                    });
         }
 
         ArrivalDetailsDto.InvoiceDto iDto = new ArrivalDetailsDto.InvoiceDto();
@@ -429,7 +432,7 @@ public class GateEntryServiceImpl implements GateEntryService {
             return response;
         }
 
-        VendorMaster vendor = vendorMasterRepository.findByEmail(email).stream()
+        VendorMaster vendor = vendorMasterRepository.findBySupplierRegistration_Email(email).stream()
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("Vendor not found for email: " + email));
         
@@ -466,7 +469,7 @@ public class GateEntryServiceImpl implements GateEntryService {
             return response;
         }
 
-        VendorMaster vendor = vendorMasterRepository.findByEmail(email).stream()
+        VendorMaster vendor = vendorMasterRepository.findBySupplierRegistration_Email(email).stream()
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("Vendor not found for email: " + email));
         

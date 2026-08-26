@@ -141,8 +141,8 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
                         
                         // Internal fallback: If the frontend passes VendorMaster ID instead of Company ID, map it safely
                         Optional<VendorMaster> vmOpt = vendorMasterRepository.findById(passedVendorId);
-                        if (vmOpt.isPresent() && vmOpt.get().getEmail() != null) {
-                            Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vmOpt.get().getEmail());
+                        if (vmOpt.isPresent() && vmOpt.get().getSupplierRegistration() != null && vmOpt.get().getSupplierRegistration().getEmail() != null) {
+                            Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vmOpt.get().getSupplierRegistration().getEmail());
                             if (userOpt.isPresent() && userOpt.get().getCompany() != null) {
                                 finalVendorId = userOpt.get().getCompany().getCompanyId();
                             }
@@ -344,8 +344,8 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
                         
                         // Internal fallback: If the frontend passes VendorMaster ID instead of Company ID, map it safely
                         Optional<VendorMaster> vmOpt = vendorMasterRepository.findById(passedVendorId);
-                        if (vmOpt.isPresent() && vmOpt.get().getEmail() != null) {
-                            Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vmOpt.get().getEmail());
+                        if (vmOpt.isPresent() && vmOpt.get().getSupplierRegistration() != null && vmOpt.get().getSupplierRegistration().getEmail() != null) {
+                            Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vmOpt.get().getSupplierRegistration().getEmail());
                             if (userOpt.isPresent() && userOpt.get().getCompany() != null) {
                                 finalVendorId = userOpt.get().getCompany().getCompanyId();
                             }

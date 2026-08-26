@@ -35,6 +35,8 @@ public class VendorMasterExcelServiceImpl implements VendorMasterExcelService {
         int inserted = 0;
         int updated = 0;
 
+        java.util.List<com.example.multimedia.file_upload_api.entity.SuperAdmin> admins = superAdminRepository.findAll();
+
         VendorMaster vendorMaster = vendorMasterRepository.findByBpNo(dto.getBpNo()).orElse(null);
         if (vendorMaster == null) {
             vendorMaster = new VendorMaster();
@@ -43,18 +45,14 @@ public class VendorMasterExcelServiceImpl implements VendorMasterExcelService {
             updated = 1;
         }
 
+        // Name/GST/bank/address no longer live on VendorMaster itself — this bulk-import path has
+        // no SupplierRegistration to link to (these vendors never went through Become-a-Supplier),
+        // so vendorMaster.supplierRegistration stays null and those details live only on the
+        // CompanyDetails record created below, same as everywhere else that reads a SAP-imported
+        // vendor's details.
         vendorMaster.setBpNo(dto.getBpNo());
-        vendorMaster.setName(dto.getVendorName());
-        vendorMaster.setEmail(dto.getEmailAddress());
-        vendorMaster.setGstNumber(dto.getGstNumber());
-        vendorMaster.setBankAccountNumber(dto.getBankAccountNumber());
-
-        if (dto.getVendorAddress() != null) {
-            vendorMaster.setCityName(dto.getVendorAddress().getCityName());
-            vendorMaster.setStreetAndHouseNumber(dto.getVendorAddress().getStreetAndHouseNumber());
-            vendorMaster.setStreetName1(dto.getVendorAddress().getStreetName1());
-            vendorMaster.setPostalCode(dto.getVendorAddress().getPostalCode());
-            vendorMaster.setCountryCode(dto.getVendorAddress().getCountryCode());
+        if (vendorMaster.getSuperAdmin() == null && !admins.isEmpty()) {
+            vendorMaster.setSuperAdmin(admins.get(0));
         }
 
         vendorMasterRepository.save(vendorMaster);
@@ -70,12 +68,10 @@ public class VendorMasterExcelServiceImpl implements VendorMasterExcelService {
                 user.setIsActive(true);
                 user.setPassword(passwordEncoder.encode("User@123"));
 
-                // Get a super admin to link
-                java.util.List<com.example.multimedia.file_upload_api.entity.SuperAdmin> admins = superAdminRepository.findAll();
                 if (!admins.isEmpty()) {
                     user.setSuperAdmin(admins.get(0));
                 }
-                
+
                 user = userDetailRepository.save(user);
 
                 // Auto-create CompanyDetails which is required for PR and PO workflows
