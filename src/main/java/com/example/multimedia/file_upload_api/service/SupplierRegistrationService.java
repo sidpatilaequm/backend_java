@@ -338,6 +338,8 @@ public class SupplierRegistrationService {
             reg.setAs9100dCertificateNo(dto.getAs9100dCertificateNo());
             reg.setAs9100dCertifyingBody(dto.getAs9100dCertifyingBody());
             reg.setAs9100dExpiry(dto.getAs9100dExpiry());
+            reg.setNadcapCertificateNo(dto.getNadcapCertificateNo());
+            reg.setNadcapExpiry(dto.getNadcapExpiry());
 
             if (reg.getResumeCode() == null) {
                 reg.setResumeCode(generateResumeCode());

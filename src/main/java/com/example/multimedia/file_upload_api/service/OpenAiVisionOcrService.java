@@ -59,6 +59,12 @@ public class OpenAiVisionOcrService {
     public ExtractResult extractFields(String docType, MultipartFile file) throws IOException {
         SupplierDocumentConfig.DocDef doc = SupplierDocumentConfig.byId(docType);
 
+        // Nothing to read off the document (e.g. a signed NDA) — skip the OCR round trip
+        // entirely rather than asking Image_Describer to extract an empty field list.
+        if (doc.fields().isEmpty()) {
+            return new ExtractResult(Map.of(), Set.of());
+        }
+
         if (useMockResponses) {
             logger.info("Using mock OCR response for docType={}", docType);
             return new ExtractResult(mockValues(doc), Set.of());

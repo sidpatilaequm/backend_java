@@ -41,7 +41,12 @@ public final class SupplierDocumentConfig {
                     List.of(new FieldDef("asNo", "Certificate number"),
                             new FieldDef("asBody", "Certifying body"),
                             new FieldDef("asExpiry", "Valid to")),
-                    null, List.of())
+                    null, List.of()),
+            new DocDef("nadcap", "NADCAP certificate", false,
+                    List.of(new FieldDef("nadcapNo", "Certificate number"),
+                            new FieldDef("nadcapExpiry", "Expiration date")),
+                    null, List.of()),
+            new DocDef("nda", "Signed NDA", true, List.of(), null, List.of())
     );
 
     private static final Map<String, DocDef> BY_ID = DOCS.stream()
