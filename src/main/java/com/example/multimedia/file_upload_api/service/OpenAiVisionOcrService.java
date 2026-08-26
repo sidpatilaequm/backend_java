@@ -111,7 +111,8 @@ public class OpenAiVisionOcrService {
     private Map<String, String> extractOnce(SupplierDocumentConfig.DocDef doc, byte[] fileBytes, String fileName) {
         JSONArray fieldsJson = new JSONArray();
         for (SupplierDocumentConfig.FieldDef f : doc.fields()) {
-            fieldsJson.put(new JSONObject().put("key", f.key()).put("label", f.label()));
+            String label = f.isDate() ? f.label() + " (answer in YYYY-MM-DD format)" : f.label();
+            fieldsJson.put(new JSONObject().put("key", f.key()).put("label", label));
         }
 
         ByteArrayResource fileResource = new ByteArrayResource(fileBytes) {
@@ -142,11 +143,43 @@ public class OpenAiVisionOcrService {
         if (valuesJson != null) {
             for (SupplierDocumentConfig.FieldDef f : doc.fields()) {
                 if (valuesJson.has(f.key())) {
-                    values.put(f.key(), valuesJson.optString(f.key(), ""));
+                    String raw = valuesJson.optString(f.key(), "");
+                    values.put(f.key(), f.isDate() ? normalizeDate(raw) : raw);
                 }
             }
         }
         return values;
+    }
+
+    // The frontend's date input requires exact yyyy-MM-dd — the prompt asks the model for that
+    // format directly, but this is a safety net for whenever it doesn't comply (e.g. the
+    // document itself is phrased unusually). Falls back to the raw string if nothing matches,
+    // so a field the applicant can still see and fix by hand beats one silently dropped.
+    private static final java.time.format.DateTimeFormatter[] DATE_FORMATS = {
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+            java.time.format.DateTimeFormatter.ofPattern("MMMM d, yyyy", java.util.Locale.ENGLISH),
+            java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy", java.util.Locale.ENGLISH),
+            java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale.ENGLISH),
+            java.time.format.DateTimeFormatter.ofPattern("dd MMMM yyyy", java.util.Locale.ENGLISH),
+            java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy", java.util.Locale.ENGLISH),
+            java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.ENGLISH),
+            java.time.format.DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+            java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+            java.time.format.DateTimeFormatter.ofPattern("MM/dd/yyyy"),
+    };
+
+    private static String normalizeDate(String raw) {
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) return trimmed;
+        for (java.time.format.DateTimeFormatter fmt : DATE_FORMATS) {
+            try {
+                return java.time.LocalDate.parse(trimmed, fmt).toString();
+            } catch (java.time.format.DateTimeParseException ignored) {
+                // try the next pattern
+            }
+        }
+        logger.warn("Could not normalize extracted date '{}' to yyyy-MM-dd", raw);
+        return trimmed;
     }
 
     private Map<String, String> mockValues(SupplierDocumentConfig.DocDef doc) {

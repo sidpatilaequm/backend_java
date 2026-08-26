@@ -14,7 +14,11 @@ import java.util.Map;
  */
 public final class SupplierDocumentConfig {
 
-    public record FieldDef(String key, String label) {}
+    public record FieldDef(String key, String label, boolean isDate) {
+        public FieldDef(String key, String label) {
+            this(key, label, false);
+        }
+    }
 
     public record DocDef(String id, String name, boolean required, List<FieldDef> fields, String verifyKind, List<String> doubleCheck) {}
 
@@ -35,16 +39,16 @@ public final class SupplierDocumentConfig {
             new DocDef("iso", "ISO 9001 certificate", false,
                     List.of(new FieldDef("isoNo", "Certificate number"),
                             new FieldDef("isoBody", "Certifying body"),
-                            new FieldDef("isoExpiry", "Valid to")),
+                            new FieldDef("isoExpiry", "Valid to", true)),
                     null, List.of()),
             new DocDef("as", "AS9100D certificate", false,
                     List.of(new FieldDef("asNo", "Certificate number"),
                             new FieldDef("asBody", "Certifying body"),
-                            new FieldDef("asExpiry", "Valid to")),
+                            new FieldDef("asExpiry", "Valid to", true)),
                     null, List.of()),
             new DocDef("nadcap", "NADCAP certificate", false,
                     List.of(new FieldDef("nadcapNo", "Certificate number"),
-                            new FieldDef("nadcapExpiry", "Expiration date")),
+                            new FieldDef("nadcapExpiry", "Expiration date", true)),
                     null, List.of()),
             new DocDef("nda", "Signed NDA", true, List.of(), null, List.of())
     );
