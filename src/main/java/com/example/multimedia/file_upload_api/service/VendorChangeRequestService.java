@@ -50,6 +50,7 @@ public class VendorChangeRequestService {
     private final SupplierRegistrationAttachmentRepository attachmentRepository;
     private final FolderItService folderItService;
     private final QuestionnaireService questionnaireService;
+    private final OpenAiVisionOcrService ocrService;
     private final RestTemplate restTemplate;
     private final ServiceControllerUtils serviceControllerUtils;
 
@@ -68,6 +69,7 @@ public class VendorChangeRequestService {
                                        SupplierRegistrationAttachmentRepository attachmentRepository,
                                        FolderItService folderItService,
                                        QuestionnaireService questionnaireService,
+                                       OpenAiVisionOcrService ocrService,
                                        RestTemplate restTemplate,
                                        ServiceControllerUtils serviceControllerUtils) {
         this.changeRequestRepository = changeRequestRepository;
@@ -76,6 +78,7 @@ public class VendorChangeRequestService {
         this.attachmentRepository = attachmentRepository;
         this.folderItService = folderItService;
         this.questionnaireService = questionnaireService;
+        this.ocrService = ocrService;
         this.restTemplate = restTemplate;
         this.serviceControllerUtils = serviceControllerUtils;
     }
@@ -255,6 +258,26 @@ public class VendorChangeRequestService {
                 doc.setDocType(cr.getItemKey());
                 doc.setFileName(cr.getNewFileName());
                 doc.setFolderItFileUid(cr.getNewFolderItFileUid());
+
+                // Re-run OCR on the approved replacement and write the extracted values back onto
+                // the registration's own flat fields (PAN/GST/certificates/etc.) — swapping only
+                // the file and leaving the old number in place everywhere else would silently
+                // defeat the entire point of "requesting a change". Left uncaught deliberately:
+                // WorkFlow is known to redeliver this webhook, so letting a failure here roll back
+                // the whole transaction (markDecided included) lets the retry try again cleanly,
+                // rather than leaving the file swapped but the real fields stale.
+                FolderItService.DownloadedFile downloaded;
+                try {
+                    downloaded = folderItService.downloadFileBytes(cr.getNewFolderItFileUid());
+                } catch (java.io.IOException e) {
+                    throw new RuntimeException("Could not download the approved replacement document", e);
+                }
+                OpenAiVisionOcrService.ExtractResult extracted =
+                        ocrService.extractFields(cr.getItemKey(), downloaded.bytes(), cr.getNewFileName());
+                doc.setOcrExtractedFieldsJson(new JSONObject(extracted.values()).toString());
+                applyExtractedFields(reg, extracted.values());
+                registrationRepository.save(reg);
+
                 documentRepository.save(doc);
             }
             case "attachment" -> {
@@ -268,6 +291,34 @@ public class VendorChangeRequestService {
                     reg.getFormStudioResponseId(), Integer.parseInt(cr.getItemKey()), new JSONObject(cr.getNewAnswerJson()));
             default -> logger.warn("Unknown change request item type {} for change request {}", cr.getItemType(), cr.getId());
         }
+    }
+
+    /** Mirrors SupplierDocumentConfig's field keys to the matching flat column on
+     *  SupplierRegistration — the same keys OCR extraction and the original upload flow already
+     *  use, just applied here on approval of a document-replacement change request. Blank/missing
+     *  values are left untouched rather than clearing an existing field the re-read simply missed. */
+    private static void applyExtractedFields(SupplierRegistration reg, Map<String, String> values) {
+        values.forEach((key, value) -> {
+            if (value == null || value.isBlank()) return;
+            switch (key) {
+                case "cin" -> reg.setCinNumber(value);
+                case "gstin" -> reg.setGstNumber(value);
+                case "pan" -> reg.setPanNumber(value);
+                case "benName" -> reg.setBeneficiaryName(value);
+                case "acctNo" -> reg.setAccountNumber(value);
+                case "ifsc" -> reg.setIfscCode(value);
+                case "udyam" -> reg.setMsmeNumber(value);
+                case "isoNo" -> reg.setIsoCertificateNo(value);
+                case "isoBody" -> reg.setIsoCertifyingBody(value);
+                case "isoExpiry" -> reg.setIsoExpiry(value);
+                case "asNo" -> reg.setAs9100dCertificateNo(value);
+                case "asBody" -> reg.setAs9100dCertifyingBody(value);
+                case "asExpiry" -> reg.setAs9100dExpiry(value);
+                case "nadcapNo" -> reg.setNadcapCertificateNo(value);
+                case "nadcapExpiry" -> reg.setNadcapExpiry(value);
+                default -> { /* no flat column for this key (e.g. NDA has none) */ }
+            }
+        });
     }
 
     /** A human-readable name for whichever document/attachment/answer a change request is about,

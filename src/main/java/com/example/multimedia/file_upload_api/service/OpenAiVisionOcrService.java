@@ -57,6 +57,16 @@ public class OpenAiVisionOcrService {
     public record ExtractResult(Map<String, String> values, Set<String> uncertain) {}
 
     public ExtractResult extractFields(String docType, MultipartFile file) throws IOException {
+        return extractFields(docType, file.getBytes(),
+                file.getOriginalFilename() != null ? file.getOriginalFilename() : docType);
+    }
+
+    /**
+     * Same extraction, from raw bytes rather than a live upload — for callers that only have a
+     * file back from storage (e.g. re-running OCR on an approved change request's replacement
+     * document, downloaded back from FolderIt) rather than an in-flight MultipartFile.
+     */
+    public ExtractResult extractFields(String docType, byte[] fileBytes, String fileName) {
         SupplierDocumentConfig.DocDef doc = SupplierDocumentConfig.byId(docType);
 
         // Nothing to read off the document (e.g. a signed NDA) — skip the OCR round trip
@@ -69,9 +79,6 @@ public class OpenAiVisionOcrService {
             logger.info("Using mock OCR response for docType={}", docType);
             return new ExtractResult(mockValues(doc), Set.of());
         }
-
-        byte[] fileBytes = file.getBytes();
-        String fileName = file.getOriginalFilename() != null ? file.getOriginalFilename() : docType;
 
         if (doc.doubleCheck().isEmpty()) {
             return new ExtractResult(extractOnce(doc, fileBytes, fileName), Set.of());
