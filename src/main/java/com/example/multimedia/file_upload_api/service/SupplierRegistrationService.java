@@ -585,30 +585,37 @@ public class SupplierRegistrationService {
             java.util.Set.of("PRODUCT", "SERVICE", "SCHEDULING_AGREEMENT", "SUBCONTRACTING");
 
     /**
-     * The deciding approver's classification pick (Product / Service / Scheduling agreement /
-     * Sub-contracting) — only the first approver to call this actually sets it (see
-     * SupplierRegistrationRepository.claimVendorCategory); returns whichever value actually won,
-     * so a caller whose own pick lost a close race still gets back the truth rather than assuming
-     * their own value stuck.
+     * The deciding approver's classification pick — one or more of Product / Service /
+     * Scheduling agreement / Sub-contracting, stored as a comma-joined string (same convention
+     * as businessTypes/equipmentFacilities elsewhere on this entity). Only the first approver to
+     * call this actually sets it (see SupplierRegistrationRepository.claimVendorCategory);
+     * returns whichever value actually won, so a caller whose own pick lost a close race still
+     * gets back the truth rather than assuming their own picks stuck.
      */
     @Transactional(rollbackFor = Exception.class)
-    public ServiceResponse setVendorCategory(Long registrationId, String category) {
+    public ServiceResponse setVendorCategory(Long registrationId, List<String> categories) {
         ServiceResponse response = new ServiceResponse();
-        String normalized = category == null ? null : category.trim().toUpperCase();
-        if (normalized == null || !VENDOR_CATEGORIES.contains(normalized)) {
+        java.util.LinkedHashSet<String> normalized = new java.util.LinkedHashSet<>();
+        if (categories != null) {
+            for (String c : categories) {
+                if (c != null && !c.isBlank()) normalized.add(c.trim().toUpperCase());
+            }
+        }
+        if (normalized.isEmpty() || !VENDOR_CATEGORIES.containsAll(normalized)) {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
-                    "category must be one of " + VENDOR_CATEGORIES);
+                    "category must be one or more of " + VENDOR_CATEGORIES);
         }
         SupplierRegistration reg = registrationRepository.findById(registrationId).orElse(null);
         if (reg == null) {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
         }
 
-        int claimed = registrationRepository.claimVendorCategory(registrationId, normalized);
+        String joined = String.join(",", normalized);
+        int claimed = registrationRepository.claimVendorCategory(registrationId, joined);
         // Re-fetch regardless of who won — a concurrent caller may have already claimed it, and
         // this caller needs the value that actually stuck either way, not just its own guess.
         String finalCategory = registrationRepository.findById(registrationId)
-                .map(SupplierRegistration::getVendorCategory).orElse(normalized);
+                .map(SupplierRegistration::getVendorCategory).orElse(joined);
 
         Map<String, Object> data = new HashMap<>();
         data.put("vendorCategory", finalCategory);
