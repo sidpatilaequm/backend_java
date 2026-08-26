@@ -95,6 +95,7 @@ public class VendorService {
 
                 // Vendor Master details
                 vendorData.put("vendorId", vm.getVendorId());
+                vendorData.put("registrationId", reg.getId());
                 vendorData.put("bpNo", vm.getBpNo());
                 vendorData.put("companyName", reg.getVendorName()); // mapping name to companyName to keep API compatible
                 vendorData.put("name", reg.getVendorName());
