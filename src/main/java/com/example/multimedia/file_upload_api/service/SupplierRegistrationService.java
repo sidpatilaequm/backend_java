@@ -639,6 +639,10 @@ public class SupplierRegistrationService {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "No supplier profile found for this account");
         }
         Map<String, Object> data = buildRegistrationDetail(reg);
+        // The exact questionnaire this vendor answered — not whatever's active now, which may
+        // have moved on since. See QuestionnaireService.getQuestionnaireForResponse.
+        JSONObject myQuestionnaire = questionnaireService.getQuestionnaireForResponse(reg.getFormStudioResponseId());
+        data.put("myQuestionnaire", myQuestionnaire != null ? myQuestionnaire.toMap() : null);
         List<Map<String, Object>> changeRequestsOut = new ArrayList<>();
         for (SupplierChangeRequest cr : changeRequestRepository.findByRegistrationIdOrderByCreatedDateDesc(reg.getId())) {
             Map<String, Object> crOut = new HashMap<>();

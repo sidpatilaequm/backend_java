@@ -135,6 +135,27 @@ public class QuestionnaireService {
         return serializeProcess(process);
     }
 
+    /**
+     * The exact process a given response was answered against — not "whatever's active now".
+     * Once an admin activates a different process for become_a_supplier (or the old one gets
+     * duplicated-and-replaced), the original answers' question ids stop existing in the newly
+     * active process, so looking them up there fails and "request a change" silently breaks for
+     * every vendor who applied under the old one. QSResponse.processId is a real FK set at
+     * submit time and never rewritten, so this stays correct regardless of what's active later —
+     * the process itself is never deletable once it has responses (see Form Studio's
+     * require_unlocked), so this can't dangle either. Null if there's no response on file yet
+     * (e.g. a draft that never reached the dynamic-questions section) or its process was
+     * somehow removed.
+     */
+    public JSONObject getQuestionnaireForResponse(Integer responseId) {
+        if (responseId == null) return null;
+        QSResponse resp = responseRepository.findById(responseId).orElse(null);
+        if (resp == null || resp.getProcessId() == null) return null;
+        QSProcess process = processRepository.findById(resp.getProcessId()).orElse(null);
+        if (process == null) return null;
+        return serializeProcess(process);
+    }
+
     private JSONObject serializeProcess(QSProcess process) {
         List<QSSection> sections = sectionRepository.findByProcessIdOrderByPosition(process.getId());
         List<Integer> sectionIds = sections.stream().map(QSSection::getId).collect(Collectors.toList());
