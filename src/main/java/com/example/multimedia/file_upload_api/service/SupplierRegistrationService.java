@@ -59,8 +59,7 @@ public class SupplierRegistrationService {
     @Value("${workflow.vendor-approval.id:8}")
     private Long vendorApprovalWorkflowId;
 
-    @Value("${workflow.email-templates.service-token:}")
-    private String workflowServiceToken;
+    private final WorkflowEmailClient workflowEmailClient;
 
     public SupplierRegistrationService(SupplierRegistrationRepository registrationRepository,
                                         SupplierRegistrationDocumentRepository documentRepository,
@@ -79,7 +78,8 @@ public class SupplierRegistrationService {
                                         RestTemplate restTemplate,
                                         ServiceControllerUtils serviceControllerUtils,
                                         QuestionnaireService questionnaireService,
-                                        VendorChangeRequestService vendorChangeRequestService) {
+                                        VendorChangeRequestService vendorChangeRequestService,
+                                        WorkflowEmailClient workflowEmailClient) {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
         this.attachmentRepository = attachmentRepository;
@@ -98,6 +98,7 @@ public class SupplierRegistrationService {
         this.serviceControllerUtils = serviceControllerUtils;
         this.questionnaireService = questionnaireService;
         this.vendorChangeRequestService = vendorChangeRequestService;
+        this.workflowEmailClient = workflowEmailClient;
     }
 
     // ── Document upload + OCR + FolderIt storage ────────────────────────────
@@ -453,27 +454,7 @@ public class SupplierRegistrationService {
      * server-to-server call with no logged-in WorkFlow user on this side.
      */
     private void triggerWorkflowEmail(String mailKey, String toEmail, Map<String, Object> variables) {
-        if (workflowServiceToken == null || workflowServiceToken.isBlank()) {
-            logger.warn("Skipping {} email — workflow.email-templates.service-token not configured", mailKey);
-            return;
-        }
-        if (toEmail == null || toEmail.isBlank() || toEmail.contains("@placeholder.local")) {
-            logger.warn("Skipping {} email — no real recipient email yet", mailKey);
-            return;
-        }
-        try {
-            JSONObject payload = new JSONObject()
-                    .put("to_email", toEmail)
-                    .put("variables", new JSONObject(variables));
-            String url = workflowBaseUrl + "/api/email-templates/trigger/" + mailKey;
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("X-Service-Token", workflowServiceToken);
-            HttpEntity<String> request = new HttpEntity<>(payload.toString(), headers);
-            restTemplate.postForObject(url, request, String.class);
-        } catch (Exception e) {
-            logger.error("Failed to trigger {} email for {}", mailKey, toEmail, e);
-        }
+        workflowEmailClient.trigger(mailKey, toEmail, variables);
     }
 
     private void sendResumeCodeEmail(SupplierRegistration reg) {
@@ -844,10 +825,12 @@ public class SupplierRegistrationService {
         }
 
         if ("request.approved".equals(event)) {
-            if (reg.getUserId() != null) {
-                logger.info("Registration {} already provisioned (userId={}) — ignoring duplicate approval webhook", reg.getId(), reg.getUserId());
+            int claimed = registrationRepository.claimProvisioning(reg.getId());
+            if (claimed == 0) {
+                logger.info("Registration {} already provisioned or being provisioned — ignoring duplicate approval webhook", reg.getId());
                 return;
             }
+            reg = registrationRepository.findById(reg.getId()).orElse(reg);
             provisionVendorAccount(reg);
         } else if ("request.rejected".equals(event)) {
             reg.setStatus("REJECTED");
