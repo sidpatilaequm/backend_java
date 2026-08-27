@@ -58,12 +58,16 @@ public class VendorService {
             // Prepare response data
             List<Map<String, Object>> vendorList = new ArrayList<>();
             for (VendorMaster vm : vendorMasters) {
-                if (vm.getEmail() == null || vm.getEmail().isEmpty()) {
+                // Name/GST/PAN/city/etc. all live on the linked SupplierRegistration now, not on
+                // VendorMaster itself — a vendor with no link (legacy/SAP-imported) has nothing
+                // to show here and is skipped, same as the old email-based skip did.
+                SupplierRegistration reg = vm.getSupplierRegistration();
+                if (reg == null || reg.getEmail() == null || reg.getEmail().isEmpty()) {
                     continue;
                 }
 
-                // Find UserDetail linked to this VendorMaster via email
-                Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vm.getEmail());
+                // Find UserDetail linked to this vendor via email
+                Optional<UserDetail> userOpt = userDetailRepository.findByEmail(reg.getEmail());
                 if (userOpt.isEmpty()) {
                     continue; // Skip if no user linked
                 }
@@ -91,23 +95,19 @@ public class VendorService {
 
                 // Vendor Master details
                 vendorData.put("vendorId", vm.getVendorId());
+                vendorData.put("registrationId", reg.getId());
                 vendorData.put("bpNo", vm.getBpNo());
-                vendorData.put("companyName", vm.getName()); // mapping name to companyName to keep API compatible
-                vendorData.put("name", vm.getName());
-                vendorData.put("gstNumber", vm.getGstNumber());
-                vendorData.put("pan", vm.getPan());
-                vendorData.put("cityName", vm.getCityName());
-                vendorData.put("streetAndHouseNumber", vm.getStreetAndHouseNumber());
-                vendorData.put("streetName1", vm.getStreetName1());
-                vendorData.put("postalCode", vm.getPostalCode());
-                vendorData.put("countryCode", vm.getCountryCode());
-                vendorData.put("bankAccountNumber", vm.getBankAccountNumber());
+                vendorData.put("companyName", reg.getVendorName()); // mapping name to companyName to keep API compatible
+                vendorData.put("name", reg.getVendorName());
+                vendorData.put("gstNumber", reg.getGstNumber());
+                vendorData.put("pan", reg.getPanNumber());
+                // No dedicated city field on SupplierRegistration (just a free-text address) —
+                // cityName was only ever populated for SAP-imported vendors anyway; the frontend
+                // already falls back to "Location not specified" when it's absent.
 
                 // Product/Service/Scheduling agreement/Sub-contracting, set by an approver during
-                // Become-a-Supplier review (SupplierRegistration.vendorCategory) — null for vendors
-                // that didn't come through that flow, since findByEmail then finds no match.
-                supplierRegistrationRepository.findByEmail(vm.getEmail())
-                        .ifPresent(reg -> vendorData.put("vendorCategory", reg.getVendorCategory()));
+                // Become-a-Supplier review.
+                vendorData.put("vendorCategory", reg.getVendorCategory());
 
                 vendorList.add(vendorData);
             }
@@ -181,12 +181,13 @@ public class VendorService {
     public java.util.Map<String, Object> getVendorById(Long id) {
         VendorMaster vm = vendorMasterRepository.findById(id).orElse(null);
         if (vm == null) return null;
+        String name = vm.getSupplierRegistration() != null ? vm.getSupplierRegistration().getVendorName() : null;
         java.util.Map<String, Object> data = new java.util.HashMap<>();
         data.put("vendorId", vm.getVendorId());
         data.put("bp_no", vm.getBpNo());
         data.put("bpNo", vm.getBpNo());
-        data.put("name", vm.getName());
-        data.put("companyName", vm.getName());
+        data.put("name", name);
+        data.put("companyName", name);
         return data;
     }
 

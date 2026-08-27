@@ -192,14 +192,18 @@ public class SupplierRegistrationController {
     }
 
     /**
-     * The deciding approver's Product/Service/Scheduling agreement/Sub-contracting pick — call
+     * The deciding approver's Product/Service/Scheduling agreement/Sub-contracting pick(s) — call
      * this right before the actual WorkFlow approval action. Only the first approver to call it
      * actually sets the value (see SupplierRegistrationService.setVendorCategory); the frontend
      * shows the picker only when getForReview's registration.vendorCategory is still null.
      */
     @PostMapping("/api/supplier-registration/{registrationId}/classification")
-    public ResponseEntity<ServiceResponse> setVendorCategory(@PathVariable Long registrationId, @RequestBody java.util.Map<String, String> body) {
-        ServiceResponse response = service.setVendorCategory(registrationId, body.get("category"));
+    public ResponseEntity<ServiceResponse> setVendorCategory(@PathVariable Long registrationId, @RequestBody java.util.Map<String, Object> body) {
+        Object raw = body.get("categories");
+        java.util.List<String> categories = raw instanceof java.util.List<?> list
+                ? list.stream().map(String::valueOf).toList()
+                : java.util.List.of();
+        ServiceResponse response = service.setVendorCategory(registrationId, categories);
         if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.badRequest().body(response);
         return ResponseEntity.ok(response);
     }

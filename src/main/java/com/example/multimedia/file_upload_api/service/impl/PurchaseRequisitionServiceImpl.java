@@ -24,7 +24,7 @@ import com.example.multimedia.file_upload_api.entity.VendorMaster;
 import com.example.multimedia.file_upload_api.entity.UserDetail;
 import com.example.multimedia.file_upload_api.entity.SuperAdmin;
 import com.example.multimedia.file_upload_api.entity.Employee;
-import com.example.multimedia.file_upload_api.service.EmailService;
+import com.example.multimedia.file_upload_api.service.WorkflowEmailClient;
 import com.example.multimedia.file_upload_api.service.CurrentUserService;
 import com.example.multimedia.file_upload_api.service.PurchaseRequisitionService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +35,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -55,7 +57,7 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
     private CompanyDetailsRepository companyDetailsRepository;
 
     @Autowired
-    private EmailService emailService;
+    private WorkflowEmailClient workflowEmailClient;
 
     @Autowired
     private CurrentUserService currentUserService;
@@ -141,8 +143,8 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
                         
                         // Internal fallback: If the frontend passes VendorMaster ID instead of Company ID, map it safely
                         Optional<VendorMaster> vmOpt = vendorMasterRepository.findById(passedVendorId);
-                        if (vmOpt.isPresent() && vmOpt.get().getEmail() != null) {
-                            Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vmOpt.get().getEmail());
+                        if (vmOpt.isPresent() && vmOpt.get().getSupplierRegistration() != null && vmOpt.get().getSupplierRegistration().getEmail() != null) {
+                            Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vmOpt.get().getSupplierRegistration().getEmail());
                             if (userOpt.isPresent() && userOpt.get().getCompany() != null) {
                                 finalVendorId = userOpt.get().getCompany().getCompanyId();
                             }
@@ -163,18 +165,18 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
                         
                         item.getItemVendors().add(vendor);
 
-                        // Send Email Notification
+                        // Send Email Notification — admin-editable "PR.1" template (WorkFlow's
+                        // email_templates), not a hardcoded string, so this is previewable and
+                        // editable the same way the vendor-onboarding emails are.
                         companyDetailsRepository.findById(finalVendorId).ifPresent(company -> {
-                            if (company.getUser() != null) {
-                                String subject = "New RFQ: Purchase Requisition Assigned";
-                                String body = "Dear " + company.getCompanyName() + ",\n\n" +
-                                        "You have been assigned to provide a quotation for a new item.\n" +
-                                        "PR Number: " + pr.getPrNumber() + "\n" +
-                                        "Item SKU: " + itemReq.getSku() + "\n" +
-                                        "Quantity: " + qty + " " + itemReq.getUom() + "\n\n" +
-                                        "Please log in to your vendor portal to submit your quotation.\n\n" +
-                                        "Best regards,\nAdmin Team";
-                                emailService.sendSimpleEmailToUserId(company.getUser().getUserId(), subject, body);
+                            if (company.getUser() != null && company.getUser().getEmail() != null) {
+                                Map<String, Object> variables = new HashMap<>();
+                                variables.put("contact_name", company.getCompanyName());
+                                variables.put("vendor_name", company.getCompanyName());
+                                variables.put("pr_number", pr.getPrNumber());
+                                variables.put("item_sku", itemReq.getSku());
+                                variables.put("quantity", qty + " " + itemReq.getUom());
+                                workflowEmailClient.trigger("PR.1", company.getUser().getEmail(), variables);
                             }
                         });
                     }
@@ -344,8 +346,8 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
                         
                         // Internal fallback: If the frontend passes VendorMaster ID instead of Company ID, map it safely
                         Optional<VendorMaster> vmOpt = vendorMasterRepository.findById(passedVendorId);
-                        if (vmOpt.isPresent() && vmOpt.get().getEmail() != null) {
-                            Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vmOpt.get().getEmail());
+                        if (vmOpt.isPresent() && vmOpt.get().getSupplierRegistration() != null && vmOpt.get().getSupplierRegistration().getEmail() != null) {
+                            Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vmOpt.get().getSupplierRegistration().getEmail());
                             if (userOpt.isPresent() && userOpt.get().getCompany() != null) {
                                 finalVendorId = userOpt.get().getCompany().getCompanyId();
                             }
@@ -366,18 +368,18 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
                         
                         item.getItemVendors().add(vendor);
 
-                        // Send Email Notification
+                        // Send Email Notification — admin-editable "PR.1" template (WorkFlow's
+                        // email_templates), not a hardcoded string, so this is previewable and
+                        // editable the same way the vendor-onboarding emails are.
                         companyDetailsRepository.findById(finalVendorId).ifPresent(company -> {
-                            if (company.getUser() != null) {
-                                String subject = "New RFQ: Purchase Requisition Assigned";
-                                String body = "Dear " + company.getCompanyName() + ",\n\n" +
-                                        "You have been assigned to provide a quotation for a new item.\n" +
-                                        "PR Number: " + pr.getPrNumber() + "\n" +
-                                        "Item SKU: " + itemReq.getSku() + "\n" +
-                                        "Quantity: " + qty + " " + itemReq.getUom() + "\n\n" +
-                                        "Please log in to your vendor portal to submit your quotation.\n\n" +
-                                        "Best regards,\nAdmin Team";
-                                emailService.sendSimpleEmailToUserId(company.getUser().getUserId(), subject, body);
+                            if (company.getUser() != null && company.getUser().getEmail() != null) {
+                                Map<String, Object> variables = new HashMap<>();
+                                variables.put("contact_name", company.getCompanyName());
+                                variables.put("vendor_name", company.getCompanyName());
+                                variables.put("pr_number", pr.getPrNumber());
+                                variables.put("item_sku", itemReq.getSku());
+                                variables.put("quantity", qty + " " + itemReq.getUom());
+                                workflowEmailClient.trigger("PR.1", company.getUser().getEmail(), variables);
                             }
                         });
                     }

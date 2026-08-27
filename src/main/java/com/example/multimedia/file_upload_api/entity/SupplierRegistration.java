@@ -274,6 +274,12 @@ public class SupplierRegistration {
     @Column(name = "as9100d_expiry")
     private String as9100dExpiry;
 
+    @Column(name = "nadcap_certificate_no")
+    private String nadcapCertificateNo;
+
+    @Column(name = "nadcap_expiry")
+    private String nadcapExpiry;
+
     @Column(name = "verification_notes", columnDefinition = "TEXT")
     private String verificationNotes;
 

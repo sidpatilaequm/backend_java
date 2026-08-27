@@ -31,4 +31,19 @@ public interface SupplierRegistrationRepository extends JpaRepository<SupplierRe
     @Modifying
     @Query("UPDATE SupplierRegistration r SET r.vendorCategory = :category WHERE r.id = :id AND r.vendorCategory IS NULL")
     int claimVendorCategory(@Param("id") Long id, @Param("category") String category);
+
+    /**
+     * Atomically claims "who provisions this registration's vendor account" — WorkFlow's
+     * outgoing webhook is known to redeliver, and the old guard (a plain
+     * "if (reg.getUserId() != null) return;" check) was a read-then-write race: two nearly
+     * simultaneous webhook deliveries could both read userId==null before either had committed,
+     * and both call provisionVendorAccount, sending two separate credential emails with two
+     * different passwords. -1 is an impossible real userId, used purely as a claim marker;
+     * provisionVendorAccount overwrites it with the real id once the account actually exists.
+     * clearAutomatically forces the persistence context to drop its stale (pre-update) copy of
+     * this row so the very next read sees the claim, not the value cached before this ran.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE SupplierRegistration r SET r.userId = -1 WHERE r.id = :id AND r.userId IS NULL")
+    int claimProvisioning(@Param("id") Long id);
 }

@@ -50,6 +50,7 @@ public class VendorChangeRequestService {
     private final SupplierRegistrationAttachmentRepository attachmentRepository;
     private final FolderItService folderItService;
     private final QuestionnaireService questionnaireService;
+    private final OpenAiVisionOcrService ocrService;
     private final RestTemplate restTemplate;
     private final ServiceControllerUtils serviceControllerUtils;
 
@@ -59,8 +60,7 @@ public class VendorChangeRequestService {
     @Value("${workflow.vendor-change-request.id:13}")
     private Long changeRequestWorkflowId;
 
-    @Value("${workflow.email-templates.service-token:}")
-    private String workflowServiceToken;
+    private final WorkflowEmailClient workflowEmailClient;
 
     public VendorChangeRequestService(SupplierChangeRequestRepository changeRequestRepository,
                                        SupplierRegistrationRepository registrationRepository,
@@ -68,16 +68,20 @@ public class VendorChangeRequestService {
                                        SupplierRegistrationAttachmentRepository attachmentRepository,
                                        FolderItService folderItService,
                                        QuestionnaireService questionnaireService,
+                                       OpenAiVisionOcrService ocrService,
                                        RestTemplate restTemplate,
-                                       ServiceControllerUtils serviceControllerUtils) {
+                                       ServiceControllerUtils serviceControllerUtils,
+                                       WorkflowEmailClient workflowEmailClient) {
         this.changeRequestRepository = changeRequestRepository;
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
         this.attachmentRepository = attachmentRepository;
         this.folderItService = folderItService;
         this.questionnaireService = questionnaireService;
+        this.ocrService = ocrService;
         this.restTemplate = restTemplate;
         this.serviceControllerUtils = serviceControllerUtils;
+        this.workflowEmailClient = workflowEmailClient;
     }
 
     /**
@@ -239,7 +243,10 @@ public class VendorChangeRequestService {
         decidedVars.put("decision_detail", "approved".equals(decision)
                 ? "The updated document/answer is now on file."
                 : "No changes have been made — the previous document/answer stays on file.");
-        triggerWorkflowEmail("VCR.2", reg.getEmail(), decidedVars);
+        // VCR.2 is one template shared by both outcomes — the tone override lets this send
+        // show green ("ok") for an approval or red ("bad") for a rejection, instead of the
+        // template's fixed neutral-blue default.
+        workflowEmailClient.trigger("VCR.2", reg.getEmail(), decidedVars, "approved".equals(decision) ? "ok" : "bad");
 
         return true;
     }
@@ -255,6 +262,26 @@ public class VendorChangeRequestService {
                 doc.setDocType(cr.getItemKey());
                 doc.setFileName(cr.getNewFileName());
                 doc.setFolderItFileUid(cr.getNewFolderItFileUid());
+
+                // Re-run OCR on the approved replacement and write the extracted values back onto
+                // the registration's own flat fields (PAN/GST/certificates/etc.) — swapping only
+                // the file and leaving the old number in place everywhere else would silently
+                // defeat the entire point of "requesting a change". Left uncaught deliberately:
+                // WorkFlow is known to redeliver this webhook, so letting a failure here roll back
+                // the whole transaction (markDecided included) lets the retry try again cleanly,
+                // rather than leaving the file swapped but the real fields stale.
+                FolderItService.DownloadedFile downloaded;
+                try {
+                    downloaded = folderItService.downloadFileBytes(cr.getNewFolderItFileUid());
+                } catch (java.io.IOException e) {
+                    throw new RuntimeException("Could not download the approved replacement document", e);
+                }
+                OpenAiVisionOcrService.ExtractResult extracted =
+                        ocrService.extractFields(cr.getItemKey(), downloaded.bytes(), cr.getNewFileName());
+                doc.setOcrExtractedFieldsJson(new JSONObject(extracted.values()).toString());
+                applyExtractedFields(reg, extracted.values());
+                registrationRepository.save(reg);
+
                 documentRepository.save(doc);
             }
             case "attachment" -> {
@@ -268,6 +295,34 @@ public class VendorChangeRequestService {
                     reg.getFormStudioResponseId(), Integer.parseInt(cr.getItemKey()), new JSONObject(cr.getNewAnswerJson()));
             default -> logger.warn("Unknown change request item type {} for change request {}", cr.getItemType(), cr.getId());
         }
+    }
+
+    /** Mirrors SupplierDocumentConfig's field keys to the matching flat column on
+     *  SupplierRegistration — the same keys OCR extraction and the original upload flow already
+     *  use, just applied here on approval of a document-replacement change request. Blank/missing
+     *  values are left untouched rather than clearing an existing field the re-read simply missed. */
+    private static void applyExtractedFields(SupplierRegistration reg, Map<String, String> values) {
+        values.forEach((key, value) -> {
+            if (value == null || value.isBlank()) return;
+            switch (key) {
+                case "cin" -> reg.setCinNumber(value);
+                case "gstin" -> reg.setGstNumber(value);
+                case "pan" -> reg.setPanNumber(value);
+                case "benName" -> reg.setBeneficiaryName(value);
+                case "acctNo" -> reg.setAccountNumber(value);
+                case "ifsc" -> reg.setIfscCode(value);
+                case "udyam" -> reg.setMsmeNumber(value);
+                case "isoNo" -> reg.setIsoCertificateNo(value);
+                case "isoBody" -> reg.setIsoCertifyingBody(value);
+                case "isoExpiry" -> reg.setIsoExpiry(value);
+                case "asNo" -> reg.setAs9100dCertificateNo(value);
+                case "asBody" -> reg.setAs9100dCertifyingBody(value);
+                case "asExpiry" -> reg.setAs9100dExpiry(value);
+                case "nadcapNo" -> reg.setNadcapCertificateNo(value);
+                case "nadcapExpiry" -> reg.setNadcapExpiry(value);
+                default -> { /* no flat column for this key (e.g. NDA has none) */ }
+            }
+        });
     }
 
     /** A human-readable name for whichever document/attachment/answer a change request is about,
@@ -295,27 +350,7 @@ public class VendorChangeRequestService {
     /** Same Java->WorkFlow trigger convention as SupplierRegistrationService's VO.2/VO.6 —
      *  never lets an email failure break the change-request flow itself. */
     private void triggerWorkflowEmail(String mailKey, String toEmail, Map<String, Object> variables) {
-        if (workflowServiceToken == null || workflowServiceToken.isBlank()) {
-            logger.warn("Skipping {} email — workflow.email-templates.service-token not configured", mailKey);
-            return;
-        }
-        if (toEmail == null || toEmail.isBlank() || toEmail.contains("@placeholder.local")) {
-            logger.warn("Skipping {} email — no real recipient email yet", mailKey);
-            return;
-        }
-        try {
-            JSONObject payload = new JSONObject()
-                    .put("to_email", toEmail)
-                    .put("variables", new JSONObject(variables));
-            String url = workflowBaseUrl + "/api/email-templates/trigger/" + mailKey;
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("X-Service-Token", workflowServiceToken);
-            HttpEntity<String> request = new HttpEntity<>(payload.toString(), headers);
-            restTemplate.postForObject(url, request, String.class);
-        } catch (Exception e) {
-            logger.error("Failed to trigger {} email for {}", mailKey, toEmail, e);
-        }
+        workflowEmailClient.trigger(mailKey, toEmail, variables);
     }
 
     /** Full detail for the admin/employee reviewer — reason, old value, and either the proposed

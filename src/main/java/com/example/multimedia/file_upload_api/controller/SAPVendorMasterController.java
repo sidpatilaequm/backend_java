@@ -45,10 +45,11 @@ public class SAPVendorMasterController {
             List<VendorMaster> allVendorMasters = vendorMasterRepository.findAll();
             List<VendorMaster> filtered = allVendorMasters.stream()
                     .filter(vm -> {
-                        if (vm.getEmail() == null || vm.getEmail().isEmpty()) {
+                        String email = vm.getSupplierRegistration() != null ? vm.getSupplierRegistration().getEmail() : null;
+                        if (email == null || email.isEmpty()) {
                             return false;
                         }
-                        Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vm.getEmail());
+                        Optional<UserDetail> userOpt = userDetailRepository.findByEmail(email);
                         if (userOpt.isEmpty()) {
                             return false;
                         }
@@ -73,7 +74,7 @@ public class SAPVendorMasterController {
         Optional<UserDetail> userOpt = userDetailRepository.findByEmail(email);
 
         if (userOpt.isPresent()) {
-            List<VendorMaster> vendorMasters = vendorMasterRepository.findByEmail(email);
+            List<VendorMaster> vendorMasters = vendorMasterRepository.findBySupplierRegistration_Email(email);
             return ResponseEntity.ok(vendorMasters);
         }
 

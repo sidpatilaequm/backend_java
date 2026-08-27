@@ -6,10 +6,16 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.springframework.format.annotation.DateTimeFormat;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+/**
+ * The lean vendor identity record — just enough to be a stable reference point for RFQ/PO/Gate
+ * Entry/payments to foreign-key against. Everything about who the vendor actually is (name,
+ * contact, GST/PAN, certifications, bank details...) lives on the linked SupplierRegistration,
+ * reached via supplierRegistration below — not duplicated here. A null supplierRegistration means
+ * this vendor predates that link (legacy/SAP-imported data).
+ */
 @Data
 @Entity
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
@@ -29,38 +35,9 @@ public class VendorMaster {
     @JoinColumn(name = "super_admin_id", nullable = false)
     private SuperAdmin superAdmin;
 
-    @Column(name = "name")
-    private String name;
-
-    @Column(name = "email")
-    private String email;
-
-    @Column(name = "gst_number")
-    private String gstNumber;
-
-    @Column(name = "pan")
-    private String pan;
-
-    @Column(name = "company_code")
-    private String companyCode;
-
-    @Column(name = "city_name")
-    private String cityName;
-
-    @Column(name = "street_and_house_number")
-    private String streetAndHouseNumber;
-
-    @Column(name = "street_name_1")
-    private String streetName1;
-
-    @Column(name = "postal_code")
-    private String postalCode;
-
-    @Column(name = "country_code")
-    private String countryCode;
-
-    @Column(name = "bank_account_number")
-    private String bankAccountNumber;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "supplier_registration_id")
+    private SupplierRegistration supplierRegistration;
 
     @CreationTimestamp
     @Column(name = "sys_created_date", nullable = false, updatable = false)

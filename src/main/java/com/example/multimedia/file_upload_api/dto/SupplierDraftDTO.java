@@ -69,4 +69,7 @@ public class SupplierDraftDTO {
     private String as9100dCertificateNo;
     private String as9100dCertifyingBody;
     private String as9100dExpiry;
+
+    private String nadcapCertificateNo;
+    private String nadcapExpiry;
 }

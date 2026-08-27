@@ -59,8 +59,7 @@ public class SupplierRegistrationService {
     @Value("${workflow.vendor-approval.id:8}")
     private Long vendorApprovalWorkflowId;
 
-    @Value("${workflow.email-templates.service-token:}")
-    private String workflowServiceToken;
+    private final WorkflowEmailClient workflowEmailClient;
 
     public SupplierRegistrationService(SupplierRegistrationRepository registrationRepository,
                                         SupplierRegistrationDocumentRepository documentRepository,
@@ -79,7 +78,8 @@ public class SupplierRegistrationService {
                                         RestTemplate restTemplate,
                                         ServiceControllerUtils serviceControllerUtils,
                                         QuestionnaireService questionnaireService,
-                                        VendorChangeRequestService vendorChangeRequestService) {
+                                        VendorChangeRequestService vendorChangeRequestService,
+                                        WorkflowEmailClient workflowEmailClient) {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
         this.attachmentRepository = attachmentRepository;
@@ -98,6 +98,7 @@ public class SupplierRegistrationService {
         this.serviceControllerUtils = serviceControllerUtils;
         this.questionnaireService = questionnaireService;
         this.vendorChangeRequestService = vendorChangeRequestService;
+        this.workflowEmailClient = workflowEmailClient;
     }
 
     // ── Document upload + OCR + FolderIt storage ────────────────────────────
@@ -338,6 +339,8 @@ public class SupplierRegistrationService {
             reg.setAs9100dCertificateNo(dto.getAs9100dCertificateNo());
             reg.setAs9100dCertifyingBody(dto.getAs9100dCertifyingBody());
             reg.setAs9100dExpiry(dto.getAs9100dExpiry());
+            reg.setNadcapCertificateNo(dto.getNadcapCertificateNo());
+            reg.setNadcapExpiry(dto.getNadcapExpiry());
 
             if (reg.getResumeCode() == null) {
                 reg.setResumeCode(generateResumeCode());
@@ -451,27 +454,7 @@ public class SupplierRegistrationService {
      * server-to-server call with no logged-in WorkFlow user on this side.
      */
     private void triggerWorkflowEmail(String mailKey, String toEmail, Map<String, Object> variables) {
-        if (workflowServiceToken == null || workflowServiceToken.isBlank()) {
-            logger.warn("Skipping {} email — workflow.email-templates.service-token not configured", mailKey);
-            return;
-        }
-        if (toEmail == null || toEmail.isBlank() || toEmail.contains("@placeholder.local")) {
-            logger.warn("Skipping {} email — no real recipient email yet", mailKey);
-            return;
-        }
-        try {
-            JSONObject payload = new JSONObject()
-                    .put("to_email", toEmail)
-                    .put("variables", new JSONObject(variables));
-            String url = workflowBaseUrl + "/api/email-templates/trigger/" + mailKey;
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("X-Service-Token", workflowServiceToken);
-            HttpEntity<String> request = new HttpEntity<>(payload.toString(), headers);
-            restTemplate.postForObject(url, request, String.class);
-        } catch (Exception e) {
-            logger.error("Failed to trigger {} email for {}", mailKey, toEmail, e);
-        }
+        workflowEmailClient.trigger(mailKey, toEmail, variables);
     }
 
     private void sendResumeCodeEmail(SupplierRegistration reg) {
@@ -583,30 +566,37 @@ public class SupplierRegistrationService {
             java.util.Set.of("PRODUCT", "SERVICE", "SCHEDULING_AGREEMENT", "SUBCONTRACTING");
 
     /**
-     * The deciding approver's classification pick (Product / Service / Scheduling agreement /
-     * Sub-contracting) — only the first approver to call this actually sets it (see
-     * SupplierRegistrationRepository.claimVendorCategory); returns whichever value actually won,
-     * so a caller whose own pick lost a close race still gets back the truth rather than assuming
-     * their own value stuck.
+     * The deciding approver's classification pick — one or more of Product / Service /
+     * Scheduling agreement / Sub-contracting, stored as a comma-joined string (same convention
+     * as businessTypes/equipmentFacilities elsewhere on this entity). Only the first approver to
+     * call this actually sets it (see SupplierRegistrationRepository.claimVendorCategory);
+     * returns whichever value actually won, so a caller whose own pick lost a close race still
+     * gets back the truth rather than assuming their own picks stuck.
      */
     @Transactional(rollbackFor = Exception.class)
-    public ServiceResponse setVendorCategory(Long registrationId, String category) {
+    public ServiceResponse setVendorCategory(Long registrationId, List<String> categories) {
         ServiceResponse response = new ServiceResponse();
-        String normalized = category == null ? null : category.trim().toUpperCase();
-        if (normalized == null || !VENDOR_CATEGORIES.contains(normalized)) {
+        java.util.LinkedHashSet<String> normalized = new java.util.LinkedHashSet<>();
+        if (categories != null) {
+            for (String c : categories) {
+                if (c != null && !c.isBlank()) normalized.add(c.trim().toUpperCase());
+            }
+        }
+        if (normalized.isEmpty() || !VENDOR_CATEGORIES.containsAll(normalized)) {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
-                    "category must be one of " + VENDOR_CATEGORIES);
+                    "category must be one or more of " + VENDOR_CATEGORIES);
         }
         SupplierRegistration reg = registrationRepository.findById(registrationId).orElse(null);
         if (reg == null) {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
         }
 
-        int claimed = registrationRepository.claimVendorCategory(registrationId, normalized);
+        String joined = String.join(",", normalized);
+        int claimed = registrationRepository.claimVendorCategory(registrationId, joined);
         // Re-fetch regardless of who won — a concurrent caller may have already claimed it, and
         // this caller needs the value that actually stuck either way, not just its own guess.
         String finalCategory = registrationRepository.findById(registrationId)
-                .map(SupplierRegistration::getVendorCategory).orElse(normalized);
+                .map(SupplierRegistration::getVendorCategory).orElse(joined);
 
         Map<String, Object> data = new HashMap<>();
         data.put("vendorCategory", finalCategory);
@@ -630,6 +620,10 @@ public class SupplierRegistrationService {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "No supplier profile found for this account");
         }
         Map<String, Object> data = buildRegistrationDetail(reg);
+        // The exact questionnaire this vendor answered — not whatever's active now, which may
+        // have moved on since. See QuestionnaireService.getQuestionnaireForResponse.
+        JSONObject myQuestionnaire = questionnaireService.getQuestionnaireForResponse(reg.getFormStudioResponseId());
+        data.put("myQuestionnaire", myQuestionnaire != null ? myQuestionnaire.toMap() : null);
         List<Map<String, Object>> changeRequestsOut = new ArrayList<>();
         for (SupplierChangeRequest cr : changeRequestRepository.findByRegistrationIdOrderByCreatedDateDesc(reg.getId())) {
             Map<String, Object> crOut = new HashMap<>();
@@ -831,10 +825,12 @@ public class SupplierRegistrationService {
         }
 
         if ("request.approved".equals(event)) {
-            if (reg.getUserId() != null) {
-                logger.info("Registration {} already provisioned (userId={}) — ignoring duplicate approval webhook", reg.getId(), reg.getUserId());
+            int claimed = registrationRepository.claimProvisioning(reg.getId());
+            if (claimed == 0) {
+                logger.info("Registration {} already provisioned or being provisioned — ignoring duplicate approval webhook", reg.getId());
                 return;
             }
+            reg = registrationRepository.findById(reg.getId()).orElse(reg);
             provisionVendorAccount(reg);
         } else if ("request.rejected".equals(event)) {
             reg.setStatus("REJECTED");
@@ -852,8 +848,13 @@ public class SupplierRegistrationService {
     }
 
     private void provisionVendorAccount(SupplierRegistration reg) {
-        SuperAdmin systemAdmin = superAdminRepository.findByEmail("system@internal")
-                .orElseThrow(() -> new RuntimeException("System admin not found"));
+        // Was hardcoded to a "system@internal" admin — meant every newly approved vendor's
+        // UserDetail/CompanyDetails/VendorMaster belonged to an account nobody actually logs in
+        // as, so they never showed up under the real admin's Master Data / Vendors screens
+        // (VendorService filters strictly by the current admin's super_admin_id). Owning admin
+        // is now whoever this deployment's real business account is.
+        SuperAdmin owningAdmin = superAdminRepository.findByEmail("siddarthpatil17@gmail.com")
+                .orElseThrow(() -> new RuntimeException("Owning admin not found"));
         Authorization vendorAuth = authorizationRepository.findByAuthKeyIgnoreCase("vendor")
                 .orElseThrow(() -> new RuntimeException("Vendor role authorization not found"));
 
@@ -861,7 +862,7 @@ public class SupplierRegistrationService {
         String vendorCode = "VEND-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
         UserDetail user = new UserDetail();
-        user.setSuperAdmin(systemAdmin);
+        user.setSuperAdmin(owningAdmin);
         user.setEmail(reg.getEmail());
         user.setPassword(passwordEncoder.encode(rawPassword));
         user.setFirstName(reg.getContactName());
@@ -883,7 +884,7 @@ public class SupplierRegistrationService {
         company.setRegisteredAddress(reg.getAddress());
         company.setGstinNumber(reg.getGstNumber());
         company.setPanNumber(reg.getPanNumber());
-        company.setSuperAdmin(systemAdmin);
+        company.setSuperAdmin(owningAdmin);
         company.setUser(user);
         company.setAuthKey("vendor");
         company.setStatus("ACTIVE");
@@ -896,18 +897,15 @@ public class SupplierRegistrationService {
         // Also register the vendor in vendor_master — the legacy/SAP-style table RFQ vendor
         // assignment (WorkFlow's /api/vendor/selection-list) and vendor-facing Gate Entry
         // (GateEntryServiceImpl.getVendorGateStatus, which 500s without a matching row) actually
-        // read from, independently of supplier_registration/CompanyDetails above. Guarded by
-        // email so a redelivered approval webhook can't create a duplicate row.
-        if (!vendorMasterRepository.existsByEmail(reg.getEmail())) {
+        // read from, independently of supplier_registration/CompanyDetails above. Just a bp_no +
+        // a link back to this registration now — name/GST/PAN/etc. are read through that link,
+        // not duplicated here. Guarded by the linked registration's email so a redelivered
+        // approval webhook can't create a duplicate row.
+        if (!vendorMasterRepository.existsBySupplierRegistration_Email(reg.getEmail())) {
             VendorMaster vendorMaster = new VendorMaster();
             vendorMaster.setBpNo(vendorCode);
-            vendorMaster.setName(reg.getVendorName());
-            vendorMaster.setEmail(reg.getEmail());
-            vendorMaster.setGstNumber(reg.getGstNumber());
-            vendorMaster.setPan(reg.getPanNumber());
-            vendorMaster.setCompanyCode(vendorCode);
-            vendorMaster.setBankAccountNumber(reg.getAccountNumber());
-            vendorMaster.setSuperAdmin(systemAdmin);
+            vendorMaster.setSupplierRegistration(reg);
+            vendorMaster.setSuperAdmin(owningAdmin);
             vendorMasterRepository.save(vendorMaster);
         }
 
