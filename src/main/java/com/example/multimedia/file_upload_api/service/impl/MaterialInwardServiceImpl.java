@@ -26,11 +26,10 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
 
     @Override
     public List<MaterialInwardQueueDto> getQueue() {
-        // Fetch gate entries that are ALLOWED and not yet processed into Goods Receipt
+        // Fetch gate entries that are ALLOWED
         List<GateEntry> allowedEntries = gateEntryRepository.findByDecision("ALLOW");
         
         return allowedEntries.stream()
-                .filter(ge -> !goodsReceiptRepository.existsByGateEntryId(ge.getId()))
                 .map(ge -> {
                     MaterialInwardQueueDto dto = new MaterialInwardQueueDto();
                     dto.setGateEntryId(ge.getId());
@@ -45,7 +44,10 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
                         dto.setPackingSlipNo(ge.getAsn().getInvoiceNumber());
                         dto.setNoOfBoxes(ge.getAsn().getNoOfPackages());
                     }
-                    dto.setStatus("Pending");
+                    
+                    boolean isCompleted = goodsReceiptRepository.existsByGateEntryId(ge.getId());
+                    dto.setStatus(isCompleted ? "Completed" : "Pending");
+                    
                     return dto;
                 })
                 .collect(Collectors.toList());
