@@ -21,4 +21,6 @@ public interface VendorMasterRepository extends JpaRepository<VendorMaster, Long
     java.util.List<VendorMaster> findBySupplierRegistration_Email(String email);
 
     boolean existsBySupplierRegistration_Email(String email);
+    
+    Optional<VendorMaster> findBySuperAdmin(com.example.multimedia.file_upload_api.entity.SuperAdmin superAdmin);
 }

@@ -11,4 +11,7 @@ public class UserCreationRequestDTO {
     private String phoneNumber;
     private String role; // e.g. "EMPLOYEE", "ADMIN", "PURCHASE_DEPT"
     private String deptCode; // Optional
+    private String companyCode;
+    private String plantCode;
+    private String purchOrgCode;
 }

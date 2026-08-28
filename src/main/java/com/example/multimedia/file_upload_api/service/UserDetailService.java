@@ -122,11 +122,13 @@ public class UserDetailService {
             throw new RuntimeException("Email already exists");
         }
         
-        UserType userType;
-        try {
-            userType = UserType.valueOf(dto.getRole().toUpperCase());
-        } catch (Exception e) {
-            userType = UserType.EMPLOYEE;
+        UserType userType = UserType.EMPLOYEE;
+        if (dto.getRole() != null && !dto.getRole().trim().isEmpty()) {
+            try {
+                userType = UserType.valueOf(dto.getRole().toUpperCase());
+            } catch (Exception e) {
+                userType = UserType.EMPLOYEE;
+            }
         }
 
         UserDetail userDetail = new UserDetail();
@@ -138,6 +140,9 @@ public class UserDetailService {
         userDetail.setSuperAdmin(currentSuperAdmin);
         userDetail.setUserType(userType);
         userDetail.setIsActive(true);
+        userDetail.setCompanyCode(dto.getCompanyCode());
+        userDetail.setPlantCode(dto.getPlantCode());
+        userDetail.setPurchOrgCode(dto.getPurchOrgCode());
         userDetail.setSignupDate(LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME));
         
         userDetail = userDetailRepository.save(userDetail);

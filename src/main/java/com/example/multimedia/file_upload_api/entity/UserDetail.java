@@ -41,6 +41,15 @@ public class UserDetail {
     private String onboardingToken;
     private LocalDateTime tokenExpiry;
 
+    @Column(name = "company_code")
+    private String companyCode;
+
+    @Column(name = "plant_code")
+    private String plantCode;
+
+    @Column(name = "purch_org_code")
+    private String purchOrgCode;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "user_type")
     private UserType userType;
@@ -229,6 +238,30 @@ public class UserDetail {
 
     public void setTokenExpiry(LocalDateTime tokenExpiry) {
         this.tokenExpiry = tokenExpiry;
+    }
+
+    public String getCompanyCode() {
+        return companyCode;
+    }
+
+    public void setCompanyCode(String companyCode) {
+        this.companyCode = companyCode;
+    }
+
+    public String getPlantCode() {
+        return plantCode;
+    }
+
+    public void setPlantCode(String plantCode) {
+        this.plantCode = plantCode;
+    }
+
+    public String getPurchOrgCode() {
+        return purchOrgCode;
+    }
+
+    public void setPurchOrgCode(String purchOrgCode) {
+        this.purchOrgCode = purchOrgCode;
     }
 }
  

@@ -39,6 +39,15 @@ public class VendorMaster {
     @JoinColumn(name = "supplier_registration_id")
     private SupplierRegistration supplierRegistration;
 
+    @Column(name = "company_code")
+    private String companyCode;
+
+    @Column(name = "plant_code")
+    private String plantCode;
+
+    @Column(name = "purch_org_code")
+    private String purchOrgCode;
+
     @CreationTimestamp
     @Column(name = "sys_created_date", nullable = false, updatable = false)
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")

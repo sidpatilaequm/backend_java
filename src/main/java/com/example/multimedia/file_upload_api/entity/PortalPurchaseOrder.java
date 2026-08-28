@@ -62,6 +62,30 @@ public class PortalPurchaseOrder {
     @Column(name = "status", nullable = false, length = 50)
     private String status = "RELEASED";
 
+    @Column(name = "company_code", length = 10)
+    private String companyCode;
+
+    @Column(name = "purchasing_doc_type", length = 10)
+    private String purchasingDocType;
+
+    @Column(name = "created_by", length = 50)
+    private String createdBy;
+
+    @Column(name = "language_key", length = 10)
+    private String languageKey;
+
+    @Column(name = "purchasing_organization", length = 20)
+    private String purchasingOrganization;
+
+    @Column(name = "purchasing_group", length = 20)
+    private String purchasingGroup;
+
+    @Column(name = "incoterms", length = 20)
+    private String incoterms;
+
+    @Column(name = "incoterms_part2", length = 100)
+    private String incotermsPart2;
+
     @Column(name = "subtotal", precision = 15, scale = 2)
     private BigDecimal subtotal;
 
