@@ -156,6 +156,50 @@ public class SupplierRegistrationService {
      * type like the fixed documents), for anything a supplier wants to attach that doesn't fit
      * one of the 7 defined document types.
      */
+    /**
+     * The file behind one dynamic file_upload question's answer. Upsert by (registrationId,
+     * questionId) — same "re-upload replaces it" behaviour as uploadDocument's fixed slots,
+     * unlike uploadAttachment's always-a-new-row — since a question has exactly one answer.
+     * Reuses SupplierRegistrationAttachment (tagged with questionId) rather than a new table, so
+     * this gets the existing preview/download endpoint for free.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ServiceResponse uploadQuestionFile(Long registrationId, Integer questionId, MultipartFile file) {
+        ServiceResponse response = new ServiceResponse();
+        try {
+            SupplierRegistration registration = registrationId != null
+                    ? registrationRepository.findById(registrationId).orElseGet(this::newDraft)
+                    : newDraft();
+            if (registration.getId() == null) registration = registrationRepository.save(registration);
+
+            if (registration.getFolderitFolderUid() == null) {
+                registration.setFolderitFolderUid(folderItService.getOrCreateVendorFolder("REG-" + registration.getId()));
+                registration = registrationRepository.save(registration);
+            }
+
+            String folderItUid = folderItService.uploadFileToFolder(file, registration.getFolderitFolderUid());
+
+            SupplierRegistrationAttachment attachment = attachmentRepository
+                    .findByRegistrationIdAndQuestionId(registration.getId(), questionId)
+                    .orElseGet(SupplierRegistrationAttachment::new);
+            attachment.setRegistration(registration);
+            attachment.setQuestionId(questionId);
+            attachment.setFileName(file.getOriginalFilename());
+            attachment.setFolderItFileUid(folderItUid);
+            attachment = attachmentRepository.save(attachment);
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("registrationId", registration.getId());
+            data.put("attachmentId", attachment.getId());
+            data.put("fileName", attachment.getFileName());
+            response.addData("result", data);
+            return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "File uploaded");
+        } catch (IOException | RuntimeException e) {
+            logger.error("Question file upload failed for questionId={}", questionId, e);
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Failed to upload file: " + e.getMessage());
+        }
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public ServiceResponse uploadAttachment(Long registrationId, MultipartFile file) {
         ServiceResponse response = new ServiceResponse();
@@ -689,7 +733,7 @@ public class SupplierRegistrationService {
         }
         data.put("documents", docsOut);
         data.put("attachments", buildAttachmentsOut(reg.getId(), true));
-        data.put("dynamicAnswers", questionnaireService.getAnswersForReview(reg.getFormStudioResponseId()).toList());
+        data.put("dynamicAnswers", questionnaireService.getAnswersForReview(reg.getFormStudioResponseId(), reg.getId()).toList());
         return data;
     }
 

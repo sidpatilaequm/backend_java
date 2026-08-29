@@ -1,6 +1,8 @@
 package com.example.multimedia.file_upload_api.service;
 
+import com.example.multimedia.file_upload_api.entity.SupplierRegistrationAttachment;
 import com.example.multimedia.file_upload_api.entity.questionnaire.*;
+import com.example.multimedia.file_upload_api.repository.SupplierRegistrationAttachmentRepository;
 import com.example.multimedia.file_upload_api.repository.SupplierRegistrationRepository;
 import com.example.multimedia.file_upload_api.repository.questionnaire.*;
 import org.json.JSONArray;
@@ -40,6 +42,7 @@ public class QuestionnaireService {
     private final QSAnswerRepository answerRepository;
     private final QSAnswerOptionRepository answerOptionRepository;
     private final SupplierRegistrationRepository registrationRepository;
+    private final SupplierRegistrationAttachmentRepository attachmentRepository;
 
     public QuestionnaireService(QSProcessRepository processRepository,
                                  QSSectionRepository sectionRepository,
@@ -50,7 +53,8 @@ public class QuestionnaireService {
                                  QSResponseRepository responseRepository,
                                  QSAnswerRepository answerRepository,
                                  QSAnswerOptionRepository answerOptionRepository,
-                                 SupplierRegistrationRepository registrationRepository) {
+                                 SupplierRegistrationRepository registrationRepository,
+                                 SupplierRegistrationAttachmentRepository attachmentRepository) {
         this.processRepository = processRepository;
         this.sectionRepository = sectionRepository;
         this.questionRepository = questionRepository;
@@ -61,6 +65,7 @@ public class QuestionnaireService {
         this.answerRepository = answerRepository;
         this.answerOptionRepository = answerOptionRepository;
         this.registrationRepository = registrationRepository;
+        this.attachmentRepository = attachmentRepository;
     }
 
     /**
@@ -197,6 +202,8 @@ public class QuestionnaireService {
                 qOut.put("maxValue", q.getMaxValue());
                 qOut.put("minRows", q.getMinRows());
                 qOut.put("maxRows", q.getMaxRows());
+                qOut.put("dependsOnQuestionId", q.getDependsOnQuestionId());
+                qOut.put("dependsOnOptionId", q.getDependsOnOptionId());
                 JSONArray optsOut = new JSONArray();
                 for (QSQuestionOption o : byQuestion.getOrDefault(q.getId(), List.of())) {
                     JSONObject oOut = new JSONObject();
@@ -278,6 +285,11 @@ public class QuestionnaireService {
         }
 
         for (QSQuestion q : questions) {
+            if (!isQuestionVisible(q, byQuestionId)) {
+                // Never on the form as far as the respondent could tell — not required, and
+                // whatever (if anything) was submitted for it is simply ignored below.
+                continue;
+            }
             JSONObject answer = byQuestionId.get(q.getId());
             String type = q.getQuestionType();
             boolean mandatory = Boolean.TRUE.equals(q.getIsMandatory());
@@ -286,6 +298,14 @@ public class QuestionnaireService {
                 String text = answer != null ? answer.optString("textValue", "").trim() : "";
                 if (mandatory && text.isEmpty()) {
                     throw new ValidationException("\"" + q.getPrompt() + "\" is required.");
+                }
+                continue;
+            }
+
+            if ("file_upload".equals(type)) {
+                String text = answer != null ? answer.optString("textValue", "").trim() : "";
+                if (mandatory && text.isEmpty()) {
+                    throw new ValidationException("\"" + q.getPrompt() + "\" needs a file uploaded.");
                 }
                 continue;
             }
@@ -379,11 +399,12 @@ public class QuestionnaireService {
         response = responseRepository.save(response);
 
         for (QSQuestion q : questions) {
+            if (!isQuestionVisible(q, byQuestionId)) continue;
             JSONObject answer = byQuestionId.get(q.getId());
             if (answer == null) continue;
 
             String qType = q.getQuestionType();
-            if ("short_text".equals(qType) || "counter".equals(qType)) {
+            if ("short_text".equals(qType) || "counter".equals(qType) || "file_upload".equals(qType)) {
                 String text = answer.optString("textValue", "").trim();
                 if (text.isEmpty()) continue;
                 QSAnswer a = new QSAnswer();
@@ -462,9 +483,23 @@ public class QuestionnaireService {
      * per-question validator between the two since one validates a whole response's shape at
      * once and the other only ever touches one question).
      */
+    /** Same rule as isQuestionVisible, but resolved against a response's already-stored answers
+     *  rather than an in-flight submission's JSON — used by updateSingleAnswer ("request a
+     *  change"), which only ever touches one question at a time. */
+    private boolean isQuestionVisibleForResponse(QSQuestion q, Integer responseId) {
+        if (q.getDependsOnQuestionId() == null) return true;
+        QSAnswer depAnswer = answerRepository.findByResponseIdAndQuestionId(responseId, q.getDependsOnQuestionId()).orElse(null);
+        if (depAnswer == null) return false;
+        return answerOptionRepository.findByAnswerIdIn(List.of(depAnswer.getId())).stream()
+                .anyMatch(ao -> java.util.Objects.equals(ao.getOptionId(), q.getDependsOnOptionId()));
+    }
+
     public void updateSingleAnswer(Integer responseId, Integer questionId, JSONObject newAnswer) {
         QSQuestion q = questionRepository.findById(questionId)
                 .orElseThrow(() -> new ValidationException("That question no longer exists."));
+        if (!isQuestionVisibleForResponse(q, responseId)) {
+            throw new ValidationException("\"" + q.getPrompt() + "\" isn't part of this application — its condition wasn't met.");
+        }
         String type = q.getQuestionType();
         boolean mandatory = Boolean.TRUE.equals(q.getIsMandatory());
 
@@ -475,7 +510,7 @@ public class QuestionnaireService {
             answer.setQuestionId(questionId);
         }
 
-        if ("short_text".equals(type) || "counter".equals(type)) {
+        if ("short_text".equals(type) || "counter".equals(type) || "file_upload".equals(type)) {
             String text = newAnswer.optString("textValue", "").trim();
             if (text.isEmpty()) {
                 if (mandatory) throw new ValidationException("\"" + q.getPrompt() + "\" is required.");
@@ -563,12 +598,22 @@ public class QuestionnaireService {
         }
     }
 
-    /** {questionId, prompt, questionType, textValue?, selectedLabels: [...]} per answered question — for the approver review panel. */
-    public JSONArray getAnswersForReview(Integer responseId) {
+    /** {questionId, prompt, questionType, textValue?, selectedLabels: [...]} per answered question — for the approver review panel.
+     *  registrationId (nullable — pass null when there's no attachment lookup to do) resolves a
+     *  downloadable previewUrl for file_upload answers, reusing the existing attachment preview
+     *  endpoint since the file itself lives in supplier_registration_attachment. */
+    public JSONArray getAnswersForReview(Integer responseId, Long registrationId) {
         JSONArray out = new JSONArray();
         if (responseId == null) return out;
         List<QSAnswer> answers = answerRepository.findByResponseId(responseId);
         if (answers.isEmpty()) return out;
+
+        Map<Integer, Long> attachmentIdByQuestionId = new HashMap<>();
+        if (registrationId != null) {
+            for (SupplierRegistrationAttachment att : attachmentRepository.findByRegistrationIdOrderByCreatedDateAsc(registrationId)) {
+                if (att.getQuestionId() != null) attachmentIdByQuestionId.put(att.getQuestionId(), att.getId());
+            }
+        }
 
         List<Integer> questionIds = answers.stream().map(QSAnswer::getQuestionId).collect(Collectors.toList());
         Map<Integer, QSQuestion> questionsById = questionRepository.findAllById(questionIds).stream()
@@ -593,6 +638,10 @@ public class QuestionnaireService {
             out1.put("prompt", q.getPrompt());
             out1.put("questionType", q.getQuestionType());
             out1.put("textValue", a.getTextValue());
+            Long attachmentId = attachmentIdByQuestionId.get(q.getId());
+            if (attachmentId != null) {
+                out1.put("previewUrl", "/api/supplier-registration/attachment/" + attachmentId + "/preview");
+            }
             JSONArray labels = new JSONArray();
             for (Integer optId : optionIdsByAnswer.getOrDefault(a.getId(), List.of())) {
                 labels.put(labelsByOptionId.getOrDefault(optId, "—"));
@@ -648,6 +697,22 @@ public class QuestionnaireService {
 
     private static boolean hasFilledRow(JSONArray rowsArr) {
         return !filledRows(rowsArr).isEmpty();
+    }
+
+    /** A question with no depends_on_* is always visible. Otherwise it's only visible when the
+     *  respondent picked dependsOnOptionId on dependsOnQuestionId — same rule Form Studio's own
+     *  Python validator applies, re-checked here since this is a second, hand-kept-in-sync
+     *  implementation the real become-a-supplier submission actually goes through. */
+    private static boolean isQuestionVisible(QSQuestion q, Map<Integer, JSONObject> byQuestionId) {
+        if (q.getDependsOnQuestionId() == null) return true;
+        JSONObject depAnswer = byQuestionId.get(q.getDependsOnQuestionId());
+        if (depAnswer == null) return false;
+        JSONArray optionIds = depAnswer.optJSONArray("optionIds");
+        if (optionIds == null) return false;
+        for (int i = 0; i < optionIds.length(); i++) {
+            if (optionIds.optInt(i, -1) == q.getDependsOnOptionId()) return true;
+        }
+        return false;
     }
 
     private static boolean cellIsValid(String columnType, String value, Set<String> dropdownOptionLabels) {

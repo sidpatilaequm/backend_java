@@ -120,6 +120,17 @@ public class SupplierRegistrationController {
         return ResponseEntity.ok(response);
     }
 
+    /** The file behind one dynamic file_upload question's answer — see uploadQuestionFile. */
+    @PostMapping("/api/public/supplier-registration/dynamic-question-file/{questionId}")
+    public ResponseEntity<ServiceResponse> uploadQuestionFile(
+            @PathVariable Integer questionId,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "registrationId", required = false) Long registrationId) {
+        ServiceResponse response = service.uploadQuestionFile(registrationId, questionId, file);
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.badRequest().body(response);
+        return ResponseEntity.ok(response);
+    }
+
     /** Extra files with no fixed doc type — no OCR, otherwise the same storage flow as uploadDocument. */
     @PostMapping("/api/public/supplier-registration/attachments")
     public ResponseEntity<ServiceResponse> uploadAttachment(
