@@ -35,6 +35,7 @@ public class QuestionnaireService {
     private final QSQuestionRepository questionRepository;
     private final QSQuestionOptionRepository optionRepository;
     private final QSQuestionColumnRepository columnRepository;
+    private final QSQuestionColumnOptionRepository columnOptionRepository;
     private final QSResponseRepository responseRepository;
     private final QSAnswerRepository answerRepository;
     private final QSAnswerOptionRepository answerOptionRepository;
@@ -45,6 +46,7 @@ public class QuestionnaireService {
                                  QSQuestionRepository questionRepository,
                                  QSQuestionOptionRepository optionRepository,
                                  QSQuestionColumnRepository columnRepository,
+                                 QSQuestionColumnOptionRepository columnOptionRepository,
                                  QSResponseRepository responseRepository,
                                  QSAnswerRepository answerRepository,
                                  QSAnswerOptionRepository answerOptionRepository,
@@ -54,6 +56,7 @@ public class QuestionnaireService {
         this.questionRepository = questionRepository;
         this.optionRepository = optionRepository;
         this.columnRepository = columnRepository;
+        this.columnOptionRepository = columnOptionRepository;
         this.responseRepository = responseRepository;
         this.answerRepository = answerRepository;
         this.answerOptionRepository = answerOptionRepository;
@@ -166,6 +169,9 @@ public class QuestionnaireService {
         Map<Integer, List<QSQuestionOption>> byQuestion = options.stream().collect(Collectors.groupingBy(QSQuestionOption::getQuestionId, LinkedHashMap::new, Collectors.toList()));
         List<QSQuestionColumn> columns = questionIds.isEmpty() ? List.of() : columnRepository.findByQuestionIdInOrderByPosition(questionIds);
         Map<Integer, List<QSQuestionColumn>> columnsByQuestion = columns.stream().collect(Collectors.groupingBy(QSQuestionColumn::getQuestionId, LinkedHashMap::new, Collectors.toList()));
+        List<Integer> columnIds = columns.stream().map(QSQuestionColumn::getId).collect(Collectors.toList());
+        List<QSQuestionColumnOption> columnOptions = columnIds.isEmpty() ? List.of() : columnOptionRepository.findByColumnIdInOrderByPosition(columnIds);
+        Map<Integer, List<QSQuestionColumnOption>> optionsByColumn = columnOptions.stream().collect(Collectors.groupingBy(QSQuestionColumnOption::getColumnId, LinkedHashMap::new, Collectors.toList()));
 
         JSONObject out = new JSONObject();
         out.put("processId", process.getId());
@@ -206,6 +212,14 @@ public class QuestionnaireService {
                     cOut.put("label", c.getLabel());
                     cOut.put("columnType", c.getColumnType());
                     cOut.put("isRequired", Boolean.TRUE.equals(c.getIsRequired()));
+                    JSONArray colOptsOut = new JSONArray();
+                    for (QSQuestionColumnOption co : optionsByColumn.getOrDefault(c.getId(), List.of())) {
+                        JSONObject coOut = new JSONObject();
+                        coOut.put("optionId", co.getId());
+                        coOut.put("label", co.getLabel());
+                        colOptsOut.put(coOut);
+                    }
+                    cOut.put("options", colOptsOut);
                     colsOut.put(cOut);
                 }
                 qOut.put("columns", colsOut);
@@ -251,6 +265,10 @@ public class QuestionnaireService {
         List<QSQuestionColumn> allColumns = columnRepository.findByQuestionIdInOrderByPosition(questionIds);
         Map<Integer, List<QSQuestionColumn>> columnsByQuestion = allColumns.stream()
                 .collect(Collectors.groupingBy(QSQuestionColumn::getQuestionId, LinkedHashMap::new, Collectors.toList()));
+        List<Integer> allColumnIds = allColumns.stream().map(QSQuestionColumn::getId).collect(Collectors.toList());
+        List<QSQuestionColumnOption> allColumnOptions = allColumnIds.isEmpty() ? List.of() : columnOptionRepository.findByColumnIdInOrderByPosition(allColumnIds);
+        Map<Integer, Set<String>> validLabelsByColumn = allColumnOptions.stream()
+                .collect(Collectors.groupingBy(QSQuestionColumnOption::getColumnId, Collectors.mapping(QSQuestionColumnOption::getLabel, Collectors.toSet())));
 
         JSONArray answersArr = new JSONArray(Optional.ofNullable(answersJson).filter(s -> !s.isBlank()).orElse("[]"));
         Map<Integer, JSONObject> byQuestionId = new HashMap<>();
@@ -317,9 +335,11 @@ public class QuestionnaireService {
                         if (Boolean.TRUE.equals(c.getIsRequired()) && cell.isEmpty()) {
                             throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + " is missing " + c.getLabel() + ".");
                         }
-                        if (!cell.isEmpty() && !cellIsValid(c.getColumnType(), cell)) {
-                            String kind = "number".equals(c.getColumnType()) ? "number" : "date";
-                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + ": " + c.getLabel() + " needs a " + kind + ".");
+                        if (!cell.isEmpty() && !cellIsValid(c.getColumnType(), cell, validLabelsByColumn.getOrDefault(c.getId(), Set.of()))) {
+                            String kind = "number".equals(c.getColumnType()) ? "a number"
+                                    : "date".equals(c.getColumnType()) ? "a date"
+                                    : "one of the listed options";
+                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + ": " + c.getLabel() + " needs " + kind + ".");
                         }
                     }
                 }
@@ -480,6 +500,10 @@ public class QuestionnaireService {
 
         if ("table".equals(type)) {
             List<QSQuestionColumn> cols = columnRepository.findByQuestionIdOrderByPosition(questionId);
+            List<Integer> colIds = cols.stream().map(QSQuestionColumn::getId).collect(Collectors.toList());
+            List<QSQuestionColumnOption> colOptions = colIds.isEmpty() ? List.of() : columnOptionRepository.findByColumnIdInOrderByPosition(colIds);
+            Map<Integer, Set<String>> validLabelsByColumn = colOptions.stream()
+                    .collect(Collectors.groupingBy(QSQuestionColumnOption::getColumnId, Collectors.mapping(QSQuestionColumnOption::getLabel, Collectors.toSet())));
             List<JSONObject> rows = filledRows(newAnswer.optJSONArray("rows"));
             if (rows.isEmpty()) {
                 if (mandatory || q.getMinRows() != null) {
@@ -496,8 +520,12 @@ public class QuestionnaireService {
                         if (Boolean.TRUE.equals(c.getIsRequired()) && cell.isEmpty()) {
                             throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + " is missing " + c.getLabel() + ".");
                         }
-                        if (!cell.isEmpty() && !cellIsValid(c.getColumnType(), cell)) {
-                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + ": " + c.getLabel() + " needs a valid value.");
+                        if (!cell.isEmpty() && !cellIsValid(c.getColumnType(), cell, validLabelsByColumn.getOrDefault(c.getId(), Set.of()))) {
+                            String kind = "number".equals(c.getColumnType()) ? "a number"
+                                    : "date".equals(c.getColumnType()) ? "a date"
+                                    : "dropdown".equals(c.getColumnType()) ? "one of the listed options"
+                                    : "a valid value";
+                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + ": " + c.getLabel() + " needs " + kind + ".");
                         }
                     }
                 }
@@ -622,12 +650,15 @@ public class QuestionnaireService {
         return !filledRows(rowsArr).isEmpty();
     }
 
-    private static boolean cellIsValid(String columnType, String value) {
+    private static boolean cellIsValid(String columnType, String value, Set<String> dropdownOptionLabels) {
         if ("number".equals(columnType)) {
             try { Double.parseDouble(value); return true; } catch (NumberFormatException e) { return false; }
         }
         if ("date".equals(columnType)) {
             try { java.time.LocalDate.parse(value); return true; } catch (java.time.format.DateTimeParseException e) { return false; }
+        }
+        if ("dropdown".equals(columnType)) {
+            return dropdownOptionLabels != null && dropdownOptionLabels.contains(value);
         }
         return true;
     }
