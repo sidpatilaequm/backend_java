@@ -265,6 +265,33 @@ public class SupplierRegistration {
     @Column(name = "iso_expiry")
     private String isoExpiry;
 
+    @Column(name = "iso14001_certificate_no")
+    private String iso14001CertificateNo;
+
+    @Column(name = "iso14001_certifying_body")
+    private String iso14001CertifyingBody;
+
+    @Column(name = "iso14001_expiry")
+    private String iso14001Expiry;
+
+    @Column(name = "iso45001_certificate_no")
+    private String iso45001CertificateNo;
+
+    @Column(name = "iso45001_certifying_body")
+    private String iso45001CertifyingBody;
+
+    @Column(name = "iso45001_expiry")
+    private String iso45001Expiry;
+
+    @Column(name = "iso27001_certificate_no")
+    private String iso27001CertificateNo;
+
+    @Column(name = "iso27001_certifying_body")
+    private String iso27001CertifyingBody;
+
+    @Column(name = "iso27001_expiry")
+    private String iso27001Expiry;
+
     @Column(name = "as9100d_certificate_no")
     private String as9100dCertificateNo;
 

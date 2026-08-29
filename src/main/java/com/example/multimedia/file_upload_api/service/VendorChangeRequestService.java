@@ -315,6 +315,15 @@ public class VendorChangeRequestService {
                 case "isoNo" -> reg.setIsoCertificateNo(value);
                 case "isoBody" -> reg.setIsoCertifyingBody(value);
                 case "isoExpiry" -> reg.setIsoExpiry(value);
+                case "iso14001No" -> reg.setIso14001CertificateNo(value);
+                case "iso14001Body" -> reg.setIso14001CertifyingBody(value);
+                case "iso14001Expiry" -> reg.setIso14001Expiry(value);
+                case "iso45001No" -> reg.setIso45001CertificateNo(value);
+                case "iso45001Body" -> reg.setIso45001CertifyingBody(value);
+                case "iso45001Expiry" -> reg.setIso45001Expiry(value);
+                case "iso27001No" -> reg.setIso27001CertificateNo(value);
+                case "iso27001Body" -> reg.setIso27001CertifyingBody(value);
+                case "iso27001Expiry" -> reg.setIso27001Expiry(value);
                 case "asNo" -> reg.setAs9100dCertificateNo(value);
                 case "asBody" -> reg.setAs9100dCertifyingBody(value);
                 case "asExpiry" -> reg.setAs9100dExpiry(value);

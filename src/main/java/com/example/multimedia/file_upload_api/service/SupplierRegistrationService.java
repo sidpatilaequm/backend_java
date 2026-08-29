@@ -336,6 +336,15 @@ public class SupplierRegistrationService {
             reg.setIsoCertificateNo(dto.getIsoCertificateNo());
             reg.setIsoCertifyingBody(dto.getIsoCertifyingBody());
             reg.setIsoExpiry(dto.getIsoExpiry());
+            reg.setIso14001CertificateNo(dto.getIso14001CertificateNo());
+            reg.setIso14001CertifyingBody(dto.getIso14001CertifyingBody());
+            reg.setIso14001Expiry(dto.getIso14001Expiry());
+            reg.setIso45001CertificateNo(dto.getIso45001CertificateNo());
+            reg.setIso45001CertifyingBody(dto.getIso45001CertifyingBody());
+            reg.setIso45001Expiry(dto.getIso45001Expiry());
+            reg.setIso27001CertificateNo(dto.getIso27001CertificateNo());
+            reg.setIso27001CertifyingBody(dto.getIso27001CertifyingBody());
+            reg.setIso27001Expiry(dto.getIso27001Expiry());
             reg.setAs9100dCertificateNo(dto.getAs9100dCertificateNo());
             reg.setAs9100dCertifyingBody(dto.getAs9100dCertifyingBody());
             reg.setAs9100dExpiry(dto.getAs9100dExpiry());
