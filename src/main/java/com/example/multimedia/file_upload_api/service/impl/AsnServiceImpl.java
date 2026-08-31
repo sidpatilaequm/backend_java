@@ -65,8 +65,12 @@ public class AsnServiceImpl implements AsnService {
         if (user == null) {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "User not found");
         }
+        Long userVendorId = user.getCompany() != null ? user.getCompany().getCompanyId() : null;
+        if (userVendorId == null) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, "403", "User is not associated with a vendor");
+        }
 
-        Optional<PortalPurchaseOrder> poOpt = portalPurchaseOrderRepository.findByPoNumberAndVendorBpnoForUpdate(asnRequestDto.getPoId(), asnRequestDto.getVendorBpno());
+        Optional<PortalPurchaseOrder> poOpt = portalPurchaseOrderRepository.findByPoNumberAndVendorCompanyIdForUpdate(asnRequestDto.getPoId(), userVendorId);
         if (poOpt.isEmpty()) {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, "404", "Purchase Order not found or unauthorized");
         }

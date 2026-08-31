@@ -117,6 +117,11 @@ public class MasterPurchaseOrderService {
                         List<CompanyDetails> vendors = companyRepo.findByCompanyCode(vendorNo);
                         if (!vendors.isEmpty()) {
                             po.setVendor(vendors.get(0));
+                        } else {
+                            try {
+                                Long vId = Long.parseLong(vendorNo.trim());
+                                companyRepo.findById(vId).ifPresent(po::setVendor);
+                            } catch (NumberFormatException ignored) {}
                         }
                     }
                     

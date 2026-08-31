@@ -24,6 +24,10 @@ public interface PortalPurchaseOrderRepository extends JpaRepository<PortalPurch
     @org.springframework.data.jpa.repository.Query("SELECT p FROM PortalPurchaseOrder p WHERE p.poNumber = :poNumber AND p.vendor.companyCode = :vendorBpno")
     Optional<PortalPurchaseOrder> findByPoNumberAndVendorBpnoForUpdate(@org.springframework.data.repository.query.Param("poNumber") String poNumber, @org.springframework.data.repository.query.Param("vendorBpno") String vendorBpno);
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("SELECT p FROM PortalPurchaseOrder p WHERE p.poNumber = :poNumber AND p.vendor.companyId = :vendorId")
+    Optional<PortalPurchaseOrder> findByPoNumberAndVendorCompanyIdForUpdate(@org.springframework.data.repository.query.Param("poNumber") String poNumber, @org.springframework.data.repository.query.Param("vendorId") Long vendorId);
+
     Optional<PortalPurchaseOrder> findByPoNumberAndVendor_CompanyId(String poNumber, Long vendorId);
 
     @org.springframework.data.jpa.repository.Query("SELECT p FROM PortalPurchaseOrder p LEFT JOIN p.purchaseRequisition pr WHERE pr.requestedBy IN :requestedByIds OR p.createdBy IN :createdByList ORDER BY p.createdDate DESC")
