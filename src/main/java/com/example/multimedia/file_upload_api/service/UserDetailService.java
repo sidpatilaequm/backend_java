@@ -216,7 +216,14 @@ public class UserDetailService {
         SuperAdmin superAdmin = getEffectiveSuperAdmin();
 
         Optional<UserDetail> emailUser = userDetailRepository.findByEmail(userDetailDTO.getEmail());
-        Optional<UserDetail> phoneUser = userDetailRepository.findByPhoneNumber(userDetailDTO.getPhoneNumber());
+        // findByPhoneNumber(null) matches every row with a NULL phone number (Spring Data turns a
+        // null parameter into "IS NULL"), and throws IncorrectResultSizeDataAccessException the
+        // moment more than one exists — a real, reachable bug for the (very common) case of
+        // registering someone with no phone number supplied. Only look up by phone when one
+        // was actually given.
+        Optional<UserDetail> phoneUser = (userDetailDTO.getPhoneNumber() != null && !userDetailDTO.getPhoneNumber().isBlank())
+                ? userDetailRepository.findByPhoneNumber(userDetailDTO.getPhoneNumber())
+                : Optional.empty();
 
         // Case 1: Email or phone exists and belong to different users
         if (emailUser.isPresent() && phoneUser.isPresent() && !emailUser.get().getUserId().equals(phoneUser.get().getUserId())) {
