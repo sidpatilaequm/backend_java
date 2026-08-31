@@ -16,6 +16,7 @@ public class PortalPurchaseOrderItem {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "po_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private PortalPurchaseOrder purchaseOrder;
 
     @Column(name = "line_number", nullable = false)

@@ -2,6 +2,7 @@ package com.example.multimedia.file_upload_api.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "master_purchase_orders")
@@ -105,4 +106,7 @@ public class MasterPurchaseOrder {
 
     @Column(name = "gross_order_value")
     private Double grossOrderValue;
+
+    @Column(name = "sys_created_date")
+    private LocalDateTime sysCreatedDate;
 }

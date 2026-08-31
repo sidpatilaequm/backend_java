@@ -47,7 +47,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/material/upload", "/api/material/all").permitAll()
                         .requestMatchers("/api/vendor-master/upload", "/api/vendor-master/all").permitAll()
                         .requestMatchers("/api/material-master/upload").permitAll()
-                        .requestMatchers("/api/master-purchase-orders/upload").permitAll()
+                        .requestMatchers("/api/master-purchase-orders/upload", "/api/master-purchase-orders/sync-folderit").permitAll()
                         .requestMatchers("/api/purchase-orders/from-awarded-quotation/**").permitAll()
                         .requestMatchers("/api/vendor/**").permitAll()
                         .requestMatchers("/api/vendors/**").permitAll()

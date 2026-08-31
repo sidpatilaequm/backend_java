@@ -191,7 +191,8 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
                 }
             }
 
-            List<PortalPurchaseOrder> pos = poRepository.findByPurchaseRequisition_RequestedByIn(allowedUserIds);
+            java.util.List<String> createdByList = allowedUserIds.stream().map(String::valueOf).collect(java.util.stream.Collectors.toList());
+            List<PortalPurchaseOrder> pos = poRepository.findByPurchaseRequisition_RequestedByInOrCreatedByIn(allowedUserIds, createdByList);
             return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
         }
     }
@@ -380,11 +381,11 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
     public void acknowledgePO(Long poId, Long vendorId) {
         PortalPurchaseOrder po = poRepository.findById(poId)
                 .orElseThrow(() -> new RuntimeException("Purchase Order not found with ID: " + poId));
-        if (!po.getVendor().getCompanyId().equals(vendorId)) {
-            throw new RuntimeException("Unauthorized: You do not have permission to acknowledge this PO");
+        if (po.getVendor() == null || !po.getVendor().getCompanyId().equals(vendorId)) {
+            throw new RuntimeException("Unauthorized: You do not have permission to acknowledge this PO (Vendor not assigned or mismatch)");
         }
-        if (!"RELEASED".equalsIgnoreCase(po.getStatus()) && !"CREATED".equalsIgnoreCase(po.getStatus())) {
-            throw new RuntimeException("Purchase Order is not in a valid state to be acknowledged");
+        if (!"RELEASED".equalsIgnoreCase(po.getStatus()) && !"CREATED".equalsIgnoreCase(po.getStatus()) && !"APPROVED".equalsIgnoreCase(po.getStatus())) {
+            throw new RuntimeException("Purchase Order is not in a valid state to be acknowledged. Current state: " + po.getStatus());
         }
         po.setStatus("ACKNOWLEDGED");
         poRepository.save(po);

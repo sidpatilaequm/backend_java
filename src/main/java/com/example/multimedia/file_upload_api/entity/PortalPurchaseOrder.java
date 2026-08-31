@@ -27,15 +27,15 @@ public class PortalPurchaseOrder {
     private LocalDate poDate;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "pr_id", nullable = false)
+    @JoinColumn(name = "pr_id")
     private PurchaseRequisition purchaseRequisition;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "quotation_id", nullable = false)
+    @JoinColumn(name = "quotation_id")
     private VendorQuotation quotation;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "vendor_id", nullable = false)
+    @JoinColumn(name = "vendor_id")
     private CompanyDetails vendor;
 
     @Column(name = "currency", length = 20)

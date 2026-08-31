@@ -255,6 +255,43 @@ public class FolderItService {
         }
     }
 
+    public String findFirstExcelFileInFolder(String folderUid) throws IOException {
+        String token = getAccessToken();
+        String searchUrl = "https://api.folderit.com/v2/accounts/" + accountUid() + "/search/files";
+        
+        JSONObject searchPayload = new JSONObject();
+        searchPayload.put("parentUid", folderUid);
+        
+        RequestBody searchBody = RequestBody.create(
+                searchPayload.toString(),
+                MediaType.parse("application/json")
+        );
+        
+        Request searchReq = new Request.Builder()
+                .url(searchUrl)
+                .addHeader("Authorization", "Bearer " + token)
+                .post(searchBody)
+                .build();
+                
+        try (Response response = httpClient.newCall(searchReq).execute()) {
+            if (response.isSuccessful()) {
+                String resStr = response.body().string();
+                JSONObject resJson = new JSONObject(resStr);
+                if (resJson.has("files")) {
+                    JSONArray files = resJson.getJSONArray("files");
+                    for (int i = 0; i < files.length(); i++) {
+                        JSONObject file = files.getJSONObject(i);
+                        String name = file.optString("name", "").toLowerCase();
+                        if (name.endsWith(".xls") || name.endsWith(".xlsx") || name.endsWith(".csv")) {
+                            return file.getString("uid");
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
     public record DownloadedFile(byte[] bytes, String contentType) {}
 
     /**
