@@ -30,6 +30,11 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/users/register", "/api/users/login", "/api/users/generate-hash/**", "/employee/login", "/api/employee/login").permitAll()
+                        // Browser redirects, hit before anyone is authenticated — same reasoning
+                        // as /api/users/login above. /api/users/session (the endpoint the SSO
+                        // callback lands on afterwards) stays behind the existing
+                        // "/api/users/**".authenticated() rule below, unchanged.
+                        .requestMatchers("/api/auth/microsoft/**").permitAll()
                         .requestMatchers("/api/super-admin/**").permitAll()
                         .requestMatchers("/api/v1/bom/master/**").hasAuthority("super_admin")
                         .requestMatchers("/api/business-card/**").permitAll()

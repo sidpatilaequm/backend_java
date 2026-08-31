@@ -82,68 +82,7 @@ public class AuthController {
             UserDetails userDetails = (UserDetails) authentication.getPrincipal();
             String jwt = jwtUtil.generateToken(userDetails);
 
-            UserDetail user = userDetailRepository.findByEmail(userDetails.getUsername())
-                    .orElse(null);
-
-            LoginResponse response;
-
-            if (user != null) {
-                UserAuthentication userAuth = userAuthenticationRepository.findByUserId(user.getUserId())
-                        .orElseThrow(() -> new RuntimeException("User authentication not found"));
-
-                response = new LoginResponse(
-                    jwt,
-                    user.getEmail(),
-                    user.getUserId(),
-                    user.getFirstName(),
-                    user.getLastName(),
-                    user.getPhoneNumber()
-                );
-                
-                int authId = Integer.parseInt(userAuth.getAuthKey());
-                Authorization auth = authorizationRepository.findById(authId)
-                        .orElseThrow(() -> new RuntimeException("Authorization not found for ID: " + authId));
-                
-                response.setAuthId(auth.getAuthId());
-                response.setAuthName(auth.getAuthName());
-                response.setIsDocumentsPresent(checkDocumentsPresent(user.getCompany(), user.getEmail()));
-
-                // Fetch permissions based on role type
-                if (user.getUserType() == UserType.VENDOR || user.getUserType() == UserType.SUPER_ADMIN || user.getUserType() == null) {
-                    Long permissionLinkId = (user.getCompany() != null) ? user.getCompany().getCompanyId() : userAuth.getUserAuthenticationId();
-                    try {
-                        VendorPermissionResponseDto permissions = vendorPermissionService.getPermissionsForLogin(permissionLinkId);
-                        response.setPermissions(permissions);
-                    } catch (Exception e) {
-                        // If no company exists with that ID, permissions will remain null
-                    }
-                } else {
-                    try {
-                        List<PermissionItemDto> permissions = rolePermissionService.getRolePermissionsTree(user.getUserType());
-                        response.setPermissions(permissions);
-                    } catch (Exception e) {
-                        // If errors occur, permissions will remain null
-                    }
-                }
-            } else {
-                // It must be a SuperAdmin from the super_admin table. Downstream
-                // callers (e.g. vendor_portal's Workflow tab) send this userId
-                // straight through to WorkFlow, which only recognizes
-                // user_details.user_id — so resolve a real shadow user_details
-                // row for this admin instead of a dummy ID that matches nothing.
-                Long shadowUserId = resolveSuperAdminShadowUserId(userDetails.getUsername());
-                response = new LoginResponse(
-                    jwt,
-                    userDetails.getUsername(),
-                    shadowUserId,
-                    "Super",
-                    "Admin",
-                    ""
-                );
-                response.setAuthId(1); // Standard Auth ID for admin
-                response.setAuthName("SUPER_ADMIN");
-                response.setIsDocumentsPresent(true);
-            }
+            LoginResponse response = buildLoginResponse(userDetails, jwt);
 
             if (loginRequest.getLoginType() != null) {
                 switch (loginRequest.getLoginType().toLowerCase()) {
@@ -171,6 +110,103 @@ public class AuthController {
             errorResponse.put("message", "Invalid email or password");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
         }
+    }
+
+    /**
+     * Turns an already-authenticated principal into the same rich payload /login returns — the
+     * password path above passes in the UserDetails the AuthenticationManager just verified;
+     * /session (below) passes in whatever JwtRequestFilter already put in the SecurityContext for
+     * a valid bearer token; MicrosoftSsoController never calls this directly, it lands on /session
+     * after issuing its own token, same as any other caller who already has a valid JWT would.
+     * Does not set redirectUrl — that's login()'s own loginType-driven concern, callers that don't
+     * have a loginType (i.e. /session) leave it for the frontend to compute from role, same as
+     * AuthContext.jsx already does independently of whatever the server sends.
+     */
+    private LoginResponse buildLoginResponse(UserDetails userDetails, String jwt) {
+        UserDetail user = userDetailRepository.findByEmail(userDetails.getUsername())
+                .orElse(null);
+
+        LoginResponse response;
+
+        if (user != null) {
+            UserAuthentication userAuth = userAuthenticationRepository.findByUserId(user.getUserId())
+                    .orElseThrow(() -> new RuntimeException("User authentication not found"));
+
+            response = new LoginResponse(
+                jwt,
+                user.getEmail(),
+                user.getUserId(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getPhoneNumber()
+            );
+
+            int authId = Integer.parseInt(userAuth.getAuthKey());
+            Authorization auth = authorizationRepository.findById(authId)
+                    .orElseThrow(() -> new RuntimeException("Authorization not found for ID: " + authId));
+
+            response.setAuthId(auth.getAuthId());
+            response.setAuthName(auth.getAuthName());
+            response.setIsDocumentsPresent(checkDocumentsPresent(user.getCompany(), user.getEmail()));
+
+            // Fetch permissions based on role type
+            if (user.getUserType() == UserType.VENDOR || user.getUserType() == UserType.SUPER_ADMIN || user.getUserType() == null) {
+                Long permissionLinkId = (user.getCompany() != null) ? user.getCompany().getCompanyId() : userAuth.getUserAuthenticationId();
+                try {
+                    VendorPermissionResponseDto permissions = vendorPermissionService.getPermissionsForLogin(permissionLinkId);
+                    response.setPermissions(permissions);
+                } catch (Exception e) {
+                    // If no company exists with that ID, permissions will remain null
+                }
+            } else {
+                try {
+                    List<PermissionItemDto> permissions = rolePermissionService.getRolePermissionsTree(user.getUserType());
+                    response.setPermissions(permissions);
+                } catch (Exception e) {
+                    // If errors occur, permissions will remain null
+                }
+            }
+        } else {
+            // It must be a SuperAdmin from the super_admin table. Downstream
+            // callers (e.g. vendor_portal's Workflow tab) send this userId
+            // straight through to WorkFlow, which only recognizes
+            // user_details.user_id — so resolve a real shadow user_details
+            // row for this admin instead of a dummy ID that matches nothing.
+            Long shadowUserId = resolveSuperAdminShadowUserId(userDetails.getUsername());
+            response = new LoginResponse(
+                jwt,
+                userDetails.getUsername(),
+                shadowUserId,
+                "Super",
+                "Admin",
+                ""
+            );
+            response.setAuthId(1); // Standard Auth ID for admin
+            response.setAuthName("SUPER_ADMIN");
+            response.setIsDocumentsPresent(true);
+        }
+
+        return response;
+    }
+
+    /**
+     * Turns "I have a valid bearer token" into the same rich login payload /login returns —
+     * lets any flow that ends up with a valid JWT but no LoginResponse yet (right now: the
+     * Microsoft SSO callback, after it issues a token for an already-existing account) fetch one
+     * without re-implementing the permissions/authId/shadow-superadmin logic above.
+     */
+    @GetMapping("/session")
+    public ResponseEntity<?> session() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || "anonymousUser".equals(authentication.getPrincipal())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Not signed in."));
+        }
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        String jwt = jwtUtil.generateToken(userDetails);
+        LoginResponse response = buildLoginResponse(userDetails, jwt);
+        response.setRedirectUrl("/dashboard");
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/generate-hash/{password}")

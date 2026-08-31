@@ -57,6 +57,11 @@ public class PlatformCredentialController {
         m.put("folderit.account_uid", new String[]{"folderit", "Account UID"});
         m.put("microvista.token_id", new String[]{"microvista", "Token ID"});
         m.put("microvista.token_secret", new String[]{"microvista", "Token secret"});
+        // Consumed by MicrosoftAuthService — no prior hardcoded default to seed from, unlike
+        // FolderIt/Microvista, since this integration never existed before.
+        m.put("azure.tenant_id", new String[]{"azure", "Tenant ID"});
+        m.put("azure.client_id", new String[]{"azure", "Client ID"});
+        m.put("azure.client_secret", new String[]{"azure", "Client secret"});
         return m;
     }
 
