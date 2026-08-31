@@ -58,7 +58,19 @@ public class MicrosoftAuthService {
         return publicBaseUrl + "/api/auth/microsoft/callback";
     }
 
-    public String buildAuthorizeUrl() {
+    /**
+     * csrfBinder is a random value the controller generates and also sets as an httpOnly cookie —
+     * embedding it in the signed state ties this specific authorize request to the specific
+     * browser that made it. Without this, state's signature+expiry alone stop someone forging a
+     * state value, but not "login CSRF": an attacker could complete their own Microsoft sign-in,
+     * capture their own valid code+state, and trick a victim into visiting the callback URL with
+     * them — the victim's browser would complete the exchange and land signed in as the
+     * attacker's account, which is exactly the kind of thing they could then abuse (e.g. get the
+     * victim to unknowingly enter something into what they think is their own session). Requiring
+     * the callback's cookie to match what's embedded in state closes that: the attacker can't make
+     * the victim's browser present a cookie value only the victim's own /authorize request set.
+     */
+    public String buildAuthorizeUrl(String csrfBinder) {
         String tenant = tenantId();
         String client = clientId();
         if (tenant.isBlank() || client.isBlank()) {
@@ -72,14 +84,16 @@ public class MicrosoftAuthService {
                 + "&redirect_uri=" + encode(redirectUri())
                 + "&response_mode=query"
                 + "&scope=" + encode("openid email profile")
-                + "&state=" + encode(signState());
+                + "&state=" + encode(signState(csrfBinder));
     }
 
     /** Exchanges the authorization code for tokens, verifies the id_token, returns the signed-in
      *  email. Throws IllegalStateException/JwtException on anything that doesn't check out —
-     *  the caller turns that into a friendly redirect, not a stack trace shown to anyone. */
-    public String exchangeCodeForEmail(String code, String state) throws IOException {
-        verifyState(state);
+     *  the caller turns that into a friendly redirect, not a stack trace shown to anyone.
+     *  csrfBinder is the cookie value read back off the callback request — must match what's
+     *  embedded in state (see buildAuthorizeUrl's javadoc). */
+    public String exchangeCodeForEmail(String code, String state, String csrfBinder) throws IOException {
+        verifyState(state, csrfBinder);
 
         String tenant = tenantId();
         String client = clientId();
@@ -123,26 +137,37 @@ public class MicrosoftAuthService {
         return email;
     }
 
-    // -- state: a short-lived signed token, not a server-side session/cache entry — accepts a
-    // narrow (<=10 min) replay window on the state value itself as the tradeoff for that; the
-    // actual authorization code is still single-use, enforced by Microsoft. --
+    // -- state: a short-lived signed token carrying the csrfBinder claim, not a server-side
+    // session/cache entry — accepts a narrow (<=10 min) replay window on the state value itself
+    // as the tradeoff for that; the actual authorization code is still single-use, enforced by
+    // Microsoft. The csrfBinder/cookie pairing (verified below) is what actually stops login
+    // CSRF; the signature+expiry alone only stop a *forged* state. --
 
-    private String signState() {
+    private String signState(String csrfBinder) {
         return Jwts.builder()
                 .setSubject("microsoft-sso-state")
+                .claim("binder", csrfBinder)
                 .setExpiration(new Date(System.currentTimeMillis() + STATE_TTL_MS))
                 .signWith(stateSigningKey())
                 .compact();
     }
 
-    private void verifyState(String state) {
+    private void verifyState(String state, String csrfBinder) {
         if (state == null || state.isBlank()) {
             throw new IllegalStateException("Missing sign-in state.");
         }
+        if (csrfBinder == null || csrfBinder.isBlank()) {
+            throw new IllegalStateException("Missing or expired sign-in cookie — try again.");
+        }
+        String embeddedBinder;
         try {
-            Jwts.parserBuilder().setSigningKey(stateSigningKey()).build().parseClaimsJws(state);
+            embeddedBinder = Jwts.parserBuilder().setSigningKey(stateSigningKey()).build()
+                    .parseClaimsJws(state).getBody().get("binder", String.class);
         } catch (Exception e) {
             throw new IllegalStateException("Sign-in link expired or was tampered with — try again.");
+        }
+        if (!csrfBinder.equals(embeddedBinder)) {
+            throw new IllegalStateException("Sign-in did not originate from this browser — try again.");
         }
     }
 

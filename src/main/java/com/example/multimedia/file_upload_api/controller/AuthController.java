@@ -105,6 +105,15 @@ public class AuthController {
             }
 
             return ResponseEntity.ok(response);
+        } catch (org.springframework.security.authentication.DisabledException e) {
+            // CustomUserDetailsService now actually wires UserDetail.isActive/SuperAdmin.isActive
+            // into isEnabled() — previously that flag had no real effect, so this branch could
+            // never be reached; AuthenticationManager throws this before BadCredentialsException
+            // would ever apply, so it needs its own explicit response rather than falling through
+            // to "Invalid email or password" (misleading — the password may be entirely correct).
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("message", "This account has been deactivated.");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
         } catch (BadCredentialsException e) {
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("message", "Invalid email or password");
