@@ -33,6 +33,13 @@ public class SupplierRegistrationAttachment {
     @Column(name = "folderit_file_uid")
     private String folderItFileUid;
 
+    /** Set only when this attachment IS the answer to a dynamic file_upload question (Form
+     *  Studio's questions.id) — null for a genuinely free-form extra attachment. Reusing this
+     *  table rather than adding a new one gets the existing preview/download endpoint and
+     *  FolderIt storage flow for free. */
+    @Column(name = "question_id")
+    private Integer questionId;
+
     @CreationTimestamp
     @Column(name = "created_date", updatable = false)
     private LocalDateTime createdDate;

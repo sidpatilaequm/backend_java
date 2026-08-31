@@ -156,6 +156,50 @@ public class SupplierRegistrationService {
      * type like the fixed documents), for anything a supplier wants to attach that doesn't fit
      * one of the 7 defined document types.
      */
+    /**
+     * The file behind one dynamic file_upload question's answer. Upsert by (registrationId,
+     * questionId) — same "re-upload replaces it" behaviour as uploadDocument's fixed slots,
+     * unlike uploadAttachment's always-a-new-row — since a question has exactly one answer.
+     * Reuses SupplierRegistrationAttachment (tagged with questionId) rather than a new table, so
+     * this gets the existing preview/download endpoint for free.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ServiceResponse uploadQuestionFile(Long registrationId, Integer questionId, MultipartFile file) {
+        ServiceResponse response = new ServiceResponse();
+        try {
+            SupplierRegistration registration = registrationId != null
+                    ? registrationRepository.findById(registrationId).orElseGet(this::newDraft)
+                    : newDraft();
+            if (registration.getId() == null) registration = registrationRepository.save(registration);
+
+            if (registration.getFolderitFolderUid() == null) {
+                registration.setFolderitFolderUid(folderItService.getOrCreateVendorFolder("REG-" + registration.getId()));
+                registration = registrationRepository.save(registration);
+            }
+
+            String folderItUid = folderItService.uploadFileToFolder(file, registration.getFolderitFolderUid());
+
+            SupplierRegistrationAttachment attachment = attachmentRepository
+                    .findByRegistrationIdAndQuestionId(registration.getId(), questionId)
+                    .orElseGet(SupplierRegistrationAttachment::new);
+            attachment.setRegistration(registration);
+            attachment.setQuestionId(questionId);
+            attachment.setFileName(file.getOriginalFilename());
+            attachment.setFolderItFileUid(folderItUid);
+            attachment = attachmentRepository.save(attachment);
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("registrationId", registration.getId());
+            data.put("attachmentId", attachment.getId());
+            data.put("fileName", attachment.getFileName());
+            response.addData("result", data);
+            return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "File uploaded");
+        } catch (IOException | RuntimeException e) {
+            logger.error("Question file upload failed for questionId={}", questionId, e);
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Failed to upload file: " + e.getMessage());
+        }
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public ServiceResponse uploadAttachment(Long registrationId, MultipartFile file) {
         ServiceResponse response = new ServiceResponse();
@@ -336,6 +380,15 @@ public class SupplierRegistrationService {
             reg.setIsoCertificateNo(dto.getIsoCertificateNo());
             reg.setIsoCertifyingBody(dto.getIsoCertifyingBody());
             reg.setIsoExpiry(dto.getIsoExpiry());
+            reg.setIso14001CertificateNo(dto.getIso14001CertificateNo());
+            reg.setIso14001CertifyingBody(dto.getIso14001CertifyingBody());
+            reg.setIso14001Expiry(dto.getIso14001Expiry());
+            reg.setIso45001CertificateNo(dto.getIso45001CertificateNo());
+            reg.setIso45001CertifyingBody(dto.getIso45001CertifyingBody());
+            reg.setIso45001Expiry(dto.getIso45001Expiry());
+            reg.setIso27001CertificateNo(dto.getIso27001CertificateNo());
+            reg.setIso27001CertifyingBody(dto.getIso27001CertifyingBody());
+            reg.setIso27001Expiry(dto.getIso27001Expiry());
             reg.setAs9100dCertificateNo(dto.getAs9100dCertificateNo());
             reg.setAs9100dCertifyingBody(dto.getAs9100dCertifyingBody());
             reg.setAs9100dExpiry(dto.getAs9100dExpiry());
@@ -680,7 +733,7 @@ public class SupplierRegistrationService {
         }
         data.put("documents", docsOut);
         data.put("attachments", buildAttachmentsOut(reg.getId(), true));
-        data.put("dynamicAnswers", questionnaireService.getAnswersForReview(reg.getFormStudioResponseId()).toList());
+        data.put("dynamicAnswers", questionnaireService.getAnswersForReview(reg.getFormStudioResponseId(), reg.getId()).toList());
         return data;
     }
 
@@ -718,20 +771,11 @@ public class SupplierRegistrationService {
                 if (!present) missing.add(d.name());
             }
 
-            if (isBlank(reg.getContact1Name())) missing.add("contact 1 name");
-            if (isBlank(reg.getContact1Role())) missing.add("contact 1 designation");
+            // "Who we deal with" was simplified to a single primary email — name, designation,
+            // phone and the second-contact concept are no longer collected, so they're no longer
+            // required here either. contact1Name/Role/Phone and contact2* stay nullable columns,
+            // read defensively (orDefault(..., "there")) wherever anything still displays them.
             if (isBlank(reg.getContact1Email())) missing.add("contact 1 email");
-            if (isBlank(reg.getContact1Phone())) missing.add("contact 1 phone");
-            // A second contact is optional overall, but once any part of it is filled in,
-            // all of it is required — mirrors the original prototype's readiness check.
-            boolean hasSecondContact = !isBlank(reg.getContact2Name()) || !isBlank(reg.getContact2Email())
-                    || !isBlank(reg.getContact2Role()) || !isBlank(reg.getContact2Phone());
-            if (hasSecondContact) {
-                if (isBlank(reg.getContact2Name())) missing.add("contact 2 name");
-                if (isBlank(reg.getContact2Role())) missing.add("contact 2 designation");
-                if (isBlank(reg.getContact2Email())) missing.add("contact 2 email");
-                if (isBlank(reg.getContact2Phone())) missing.add("contact 2 phone");
-            }
             if (!Boolean.TRUE.equals(reg.getDeclarationAccepted())) missing.add("the declaration");
             if (reg.getEmail() == null || reg.getEmail().contains("@placeholder.local")) missing.add(0, "a real contact email");
             if (!missing.isEmpty()) {

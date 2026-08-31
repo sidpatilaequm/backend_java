@@ -42,7 +42,14 @@ public class CustomUserDetailsService implements UserDetailsService {
             if (user.getUserType() != null) {
                 authorities.add(new org.springframework.security.core.authority.SimpleGrantedAuthority(user.getUserType().name()));
             }
-            return new User(user.getEmail(), user.getPassword(), authorities);
+            // isActive previously had no effect here — Spring's 3-arg User(...) constructor
+            // defaults enabled=true regardless, so a deactivated account could still sign in.
+            // The 7-arg constructor actually wires isActive through to isEnabled(), which
+            // DaoAuthenticationProvider (password login) already checks automatically, and which
+            // MicrosoftSsoController now checks explicitly too (SSO never goes through
+            // DaoAuthenticationProvider, so it has to check this itself).
+            boolean enabled = Boolean.TRUE.equals(user.getIsActive());
+            return new User(user.getEmail(), user.getPassword(), enabled, true, true, true, authorities);
         }
 
         throw new UsernameNotFoundException("User not found with email: " + email);

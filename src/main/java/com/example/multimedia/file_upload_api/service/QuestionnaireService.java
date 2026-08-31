@@ -1,6 +1,8 @@
 package com.example.multimedia.file_upload_api.service;
 
+import com.example.multimedia.file_upload_api.entity.SupplierRegistrationAttachment;
 import com.example.multimedia.file_upload_api.entity.questionnaire.*;
+import com.example.multimedia.file_upload_api.repository.SupplierRegistrationAttachmentRepository;
 import com.example.multimedia.file_upload_api.repository.SupplierRegistrationRepository;
 import com.example.multimedia.file_upload_api.repository.questionnaire.*;
 import org.json.JSONArray;
@@ -35,29 +37,35 @@ public class QuestionnaireService {
     private final QSQuestionRepository questionRepository;
     private final QSQuestionOptionRepository optionRepository;
     private final QSQuestionColumnRepository columnRepository;
+    private final QSQuestionColumnOptionRepository columnOptionRepository;
     private final QSResponseRepository responseRepository;
     private final QSAnswerRepository answerRepository;
     private final QSAnswerOptionRepository answerOptionRepository;
     private final SupplierRegistrationRepository registrationRepository;
+    private final SupplierRegistrationAttachmentRepository attachmentRepository;
 
     public QuestionnaireService(QSProcessRepository processRepository,
                                  QSSectionRepository sectionRepository,
                                  QSQuestionRepository questionRepository,
                                  QSQuestionOptionRepository optionRepository,
                                  QSQuestionColumnRepository columnRepository,
+                                 QSQuestionColumnOptionRepository columnOptionRepository,
                                  QSResponseRepository responseRepository,
                                  QSAnswerRepository answerRepository,
                                  QSAnswerOptionRepository answerOptionRepository,
-                                 SupplierRegistrationRepository registrationRepository) {
+                                 SupplierRegistrationRepository registrationRepository,
+                                 SupplierRegistrationAttachmentRepository attachmentRepository) {
         this.processRepository = processRepository;
         this.sectionRepository = sectionRepository;
         this.questionRepository = questionRepository;
         this.optionRepository = optionRepository;
         this.columnRepository = columnRepository;
+        this.columnOptionRepository = columnOptionRepository;
         this.responseRepository = responseRepository;
         this.answerRepository = answerRepository;
         this.answerOptionRepository = answerOptionRepository;
         this.registrationRepository = registrationRepository;
+        this.attachmentRepository = attachmentRepository;
     }
 
     /**
@@ -166,6 +174,9 @@ public class QuestionnaireService {
         Map<Integer, List<QSQuestionOption>> byQuestion = options.stream().collect(Collectors.groupingBy(QSQuestionOption::getQuestionId, LinkedHashMap::new, Collectors.toList()));
         List<QSQuestionColumn> columns = questionIds.isEmpty() ? List.of() : columnRepository.findByQuestionIdInOrderByPosition(questionIds);
         Map<Integer, List<QSQuestionColumn>> columnsByQuestion = columns.stream().collect(Collectors.groupingBy(QSQuestionColumn::getQuestionId, LinkedHashMap::new, Collectors.toList()));
+        List<Integer> columnIds = columns.stream().map(QSQuestionColumn::getId).collect(Collectors.toList());
+        List<QSQuestionColumnOption> columnOptions = columnIds.isEmpty() ? List.of() : columnOptionRepository.findByColumnIdInOrderByPosition(columnIds);
+        Map<Integer, List<QSQuestionColumnOption>> optionsByColumn = columnOptions.stream().collect(Collectors.groupingBy(QSQuestionColumnOption::getColumnId, LinkedHashMap::new, Collectors.toList()));
 
         JSONObject out = new JSONObject();
         out.put("processId", process.getId());
@@ -191,6 +202,8 @@ public class QuestionnaireService {
                 qOut.put("maxValue", q.getMaxValue());
                 qOut.put("minRows", q.getMinRows());
                 qOut.put("maxRows", q.getMaxRows());
+                qOut.put("dependsOnQuestionId", q.getDependsOnQuestionId());
+                qOut.put("dependsOnOptionId", q.getDependsOnOptionId());
                 JSONArray optsOut = new JSONArray();
                 for (QSQuestionOption o : byQuestion.getOrDefault(q.getId(), List.of())) {
                     JSONObject oOut = new JSONObject();
@@ -206,6 +219,14 @@ public class QuestionnaireService {
                     cOut.put("label", c.getLabel());
                     cOut.put("columnType", c.getColumnType());
                     cOut.put("isRequired", Boolean.TRUE.equals(c.getIsRequired()));
+                    JSONArray colOptsOut = new JSONArray();
+                    for (QSQuestionColumnOption co : optionsByColumn.getOrDefault(c.getId(), List.of())) {
+                        JSONObject coOut = new JSONObject();
+                        coOut.put("optionId", co.getId());
+                        coOut.put("label", co.getLabel());
+                        colOptsOut.put(coOut);
+                    }
+                    cOut.put("options", colOptsOut);
                     colsOut.put(cOut);
                 }
                 qOut.put("columns", colsOut);
@@ -251,6 +272,10 @@ public class QuestionnaireService {
         List<QSQuestionColumn> allColumns = columnRepository.findByQuestionIdInOrderByPosition(questionIds);
         Map<Integer, List<QSQuestionColumn>> columnsByQuestion = allColumns.stream()
                 .collect(Collectors.groupingBy(QSQuestionColumn::getQuestionId, LinkedHashMap::new, Collectors.toList()));
+        List<Integer> allColumnIds = allColumns.stream().map(QSQuestionColumn::getId).collect(Collectors.toList());
+        List<QSQuestionColumnOption> allColumnOptions = allColumnIds.isEmpty() ? List.of() : columnOptionRepository.findByColumnIdInOrderByPosition(allColumnIds);
+        Map<Integer, Set<String>> validLabelsByColumn = allColumnOptions.stream()
+                .collect(Collectors.groupingBy(QSQuestionColumnOption::getColumnId, Collectors.mapping(QSQuestionColumnOption::getLabel, Collectors.toSet())));
 
         JSONArray answersArr = new JSONArray(Optional.ofNullable(answersJson).filter(s -> !s.isBlank()).orElse("[]"));
         Map<Integer, JSONObject> byQuestionId = new HashMap<>();
@@ -260,6 +285,11 @@ public class QuestionnaireService {
         }
 
         for (QSQuestion q : questions) {
+            if (!isQuestionVisible(q, byQuestionId)) {
+                // Never on the form as far as the respondent could tell — not required, and
+                // whatever (if anything) was submitted for it is simply ignored below.
+                continue;
+            }
             JSONObject answer = byQuestionId.get(q.getId());
             String type = q.getQuestionType();
             boolean mandatory = Boolean.TRUE.equals(q.getIsMandatory());
@@ -268,6 +298,14 @@ public class QuestionnaireService {
                 String text = answer != null ? answer.optString("textValue", "").trim() : "";
                 if (mandatory && text.isEmpty()) {
                     throw new ValidationException("\"" + q.getPrompt() + "\" is required.");
+                }
+                continue;
+            }
+
+            if ("file_upload".equals(type)) {
+                String text = answer != null ? answer.optString("textValue", "").trim() : "";
+                if (mandatory && text.isEmpty()) {
+                    throw new ValidationException("\"" + q.getPrompt() + "\" needs a file uploaded.");
                 }
                 continue;
             }
@@ -317,9 +355,11 @@ public class QuestionnaireService {
                         if (Boolean.TRUE.equals(c.getIsRequired()) && cell.isEmpty()) {
                             throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + " is missing " + c.getLabel() + ".");
                         }
-                        if (!cell.isEmpty() && !cellIsValid(c.getColumnType(), cell)) {
-                            String kind = "number".equals(c.getColumnType()) ? "number" : "date";
-                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + ": " + c.getLabel() + " needs a " + kind + ".");
+                        if (!cell.isEmpty() && !cellIsValid(c.getColumnType(), cell, validLabelsByColumn.getOrDefault(c.getId(), Set.of()))) {
+                            String kind = "number".equals(c.getColumnType()) ? "a number"
+                                    : "date".equals(c.getColumnType()) ? "a date"
+                                    : "one of the listed options";
+                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + ": " + c.getLabel() + " needs " + kind + ".");
                         }
                     }
                 }
@@ -359,11 +399,12 @@ public class QuestionnaireService {
         response = responseRepository.save(response);
 
         for (QSQuestion q : questions) {
+            if (!isQuestionVisible(q, byQuestionId)) continue;
             JSONObject answer = byQuestionId.get(q.getId());
             if (answer == null) continue;
 
             String qType = q.getQuestionType();
-            if ("short_text".equals(qType) || "counter".equals(qType)) {
+            if ("short_text".equals(qType) || "counter".equals(qType) || "file_upload".equals(qType)) {
                 String text = answer.optString("textValue", "").trim();
                 if (text.isEmpty()) continue;
                 QSAnswer a = new QSAnswer();
@@ -442,9 +483,23 @@ public class QuestionnaireService {
      * per-question validator between the two since one validates a whole response's shape at
      * once and the other only ever touches one question).
      */
+    /** Same rule as isQuestionVisible, but resolved against a response's already-stored answers
+     *  rather than an in-flight submission's JSON — used by updateSingleAnswer ("request a
+     *  change"), which only ever touches one question at a time. */
+    private boolean isQuestionVisibleForResponse(QSQuestion q, Integer responseId) {
+        if (q.getDependsOnQuestionId() == null) return true;
+        QSAnswer depAnswer = answerRepository.findByResponseIdAndQuestionId(responseId, q.getDependsOnQuestionId()).orElse(null);
+        if (depAnswer == null) return false;
+        return answerOptionRepository.findByAnswerIdIn(List.of(depAnswer.getId())).stream()
+                .anyMatch(ao -> java.util.Objects.equals(ao.getOptionId(), q.getDependsOnOptionId()));
+    }
+
     public void updateSingleAnswer(Integer responseId, Integer questionId, JSONObject newAnswer) {
         QSQuestion q = questionRepository.findById(questionId)
                 .orElseThrow(() -> new ValidationException("That question no longer exists."));
+        if (!isQuestionVisibleForResponse(q, responseId)) {
+            throw new ValidationException("\"" + q.getPrompt() + "\" isn't part of this application — its condition wasn't met.");
+        }
         String type = q.getQuestionType();
         boolean mandatory = Boolean.TRUE.equals(q.getIsMandatory());
 
@@ -455,7 +510,7 @@ public class QuestionnaireService {
             answer.setQuestionId(questionId);
         }
 
-        if ("short_text".equals(type) || "counter".equals(type)) {
+        if ("short_text".equals(type) || "counter".equals(type) || "file_upload".equals(type)) {
             String text = newAnswer.optString("textValue", "").trim();
             if (text.isEmpty()) {
                 if (mandatory) throw new ValidationException("\"" + q.getPrompt() + "\" is required.");
@@ -480,6 +535,10 @@ public class QuestionnaireService {
 
         if ("table".equals(type)) {
             List<QSQuestionColumn> cols = columnRepository.findByQuestionIdOrderByPosition(questionId);
+            List<Integer> colIds = cols.stream().map(QSQuestionColumn::getId).collect(Collectors.toList());
+            List<QSQuestionColumnOption> colOptions = colIds.isEmpty() ? List.of() : columnOptionRepository.findByColumnIdInOrderByPosition(colIds);
+            Map<Integer, Set<String>> validLabelsByColumn = colOptions.stream()
+                    .collect(Collectors.groupingBy(QSQuestionColumnOption::getColumnId, Collectors.mapping(QSQuestionColumnOption::getLabel, Collectors.toSet())));
             List<JSONObject> rows = filledRows(newAnswer.optJSONArray("rows"));
             if (rows.isEmpty()) {
                 if (mandatory || q.getMinRows() != null) {
@@ -496,8 +555,12 @@ public class QuestionnaireService {
                         if (Boolean.TRUE.equals(c.getIsRequired()) && cell.isEmpty()) {
                             throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + " is missing " + c.getLabel() + ".");
                         }
-                        if (!cell.isEmpty() && !cellIsValid(c.getColumnType(), cell)) {
-                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + ": " + c.getLabel() + " needs a valid value.");
+                        if (!cell.isEmpty() && !cellIsValid(c.getColumnType(), cell, validLabelsByColumn.getOrDefault(c.getId(), Set.of()))) {
+                            String kind = "number".equals(c.getColumnType()) ? "a number"
+                                    : "date".equals(c.getColumnType()) ? "a date"
+                                    : "dropdown".equals(c.getColumnType()) ? "one of the listed options"
+                                    : "a valid value";
+                            throw new ValidationException("\"" + q.getPrompt() + "\" row " + (r + 1) + ": " + c.getLabel() + " needs " + kind + ".");
                         }
                     }
                 }
@@ -535,12 +598,22 @@ public class QuestionnaireService {
         }
     }
 
-    /** {questionId, prompt, questionType, textValue?, selectedLabels: [...]} per answered question — for the approver review panel. */
-    public JSONArray getAnswersForReview(Integer responseId) {
+    /** {questionId, prompt, questionType, textValue?, selectedLabels: [...]} per answered question — for the approver review panel.
+     *  registrationId (nullable — pass null when there's no attachment lookup to do) resolves a
+     *  downloadable previewUrl for file_upload answers, reusing the existing attachment preview
+     *  endpoint since the file itself lives in supplier_registration_attachment. */
+    public JSONArray getAnswersForReview(Integer responseId, Long registrationId) {
         JSONArray out = new JSONArray();
         if (responseId == null) return out;
         List<QSAnswer> answers = answerRepository.findByResponseId(responseId);
         if (answers.isEmpty()) return out;
+
+        Map<Integer, Long> attachmentIdByQuestionId = new HashMap<>();
+        if (registrationId != null) {
+            for (SupplierRegistrationAttachment att : attachmentRepository.findByRegistrationIdOrderByCreatedDateAsc(registrationId)) {
+                if (att.getQuestionId() != null) attachmentIdByQuestionId.put(att.getQuestionId(), att.getId());
+            }
+        }
 
         List<Integer> questionIds = answers.stream().map(QSAnswer::getQuestionId).collect(Collectors.toList());
         Map<Integer, QSQuestion> questionsById = questionRepository.findAllById(questionIds).stream()
@@ -565,6 +638,10 @@ public class QuestionnaireService {
             out1.put("prompt", q.getPrompt());
             out1.put("questionType", q.getQuestionType());
             out1.put("textValue", a.getTextValue());
+            Long attachmentId = attachmentIdByQuestionId.get(q.getId());
+            if (attachmentId != null) {
+                out1.put("previewUrl", "/api/supplier-registration/attachment/" + attachmentId + "/preview");
+            }
             JSONArray labels = new JSONArray();
             for (Integer optId : optionIdsByAnswer.getOrDefault(a.getId(), List.of())) {
                 labels.put(labelsByOptionId.getOrDefault(optId, "—"));
@@ -622,12 +699,31 @@ public class QuestionnaireService {
         return !filledRows(rowsArr).isEmpty();
     }
 
-    private static boolean cellIsValid(String columnType, String value) {
+    /** A question with no depends_on_* is always visible. Otherwise it's only visible when the
+     *  respondent picked dependsOnOptionId on dependsOnQuestionId — same rule Form Studio's own
+     *  Python validator applies, re-checked here since this is a second, hand-kept-in-sync
+     *  implementation the real become-a-supplier submission actually goes through. */
+    private static boolean isQuestionVisible(QSQuestion q, Map<Integer, JSONObject> byQuestionId) {
+        if (q.getDependsOnQuestionId() == null) return true;
+        JSONObject depAnswer = byQuestionId.get(q.getDependsOnQuestionId());
+        if (depAnswer == null) return false;
+        JSONArray optionIds = depAnswer.optJSONArray("optionIds");
+        if (optionIds == null) return false;
+        for (int i = 0; i < optionIds.length(); i++) {
+            if (optionIds.optInt(i, -1) == q.getDependsOnOptionId()) return true;
+        }
+        return false;
+    }
+
+    private static boolean cellIsValid(String columnType, String value, Set<String> dropdownOptionLabels) {
         if ("number".equals(columnType)) {
             try { Double.parseDouble(value); return true; } catch (NumberFormatException e) { return false; }
         }
         if ("date".equals(columnType)) {
             try { java.time.LocalDate.parse(value); return true; } catch (java.time.format.DateTimeParseException e) { return false; }
+        }
+        if ("dropdown".equals(columnType)) {
+            return dropdownOptionLabels != null && dropdownOptionLabels.contains(value);
         }
         return true;
     }

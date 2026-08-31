@@ -19,7 +19,7 @@ public class QSQuestionColumn {
 
     private String label;
 
-    /** text / number / date */
+    /** text / number / date / dropdown */
     @Column(name = "column_type")
     private String columnType;
 

@@ -109,6 +109,15 @@
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
 
+		<!-- Just for NimbusJwtDecoder — verifying the signature/claims of the id_token Microsoft
+		     Entra ID hands back during SSO login. Everything else about that flow (authorize URL,
+		     code exchange) is hand-rolled with the OkHttp client already used by FolderItService,
+		     not this starter's oauth2Login()/session-based machinery. -->
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-oauth2-jose</artifactId>
+		</dependency>
+
 		<!-- JWT Dependencies -->
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>

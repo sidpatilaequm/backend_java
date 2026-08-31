@@ -66,6 +66,18 @@ public class SupplierDraftDTO {
     private String isoCertifyingBody;
     private String isoExpiry;
 
+    private String iso14001CertificateNo;
+    private String iso14001CertifyingBody;
+    private String iso14001Expiry;
+
+    private String iso45001CertificateNo;
+    private String iso45001CertifyingBody;
+    private String iso45001Expiry;
+
+    private String iso27001CertificateNo;
+    private String iso27001CertifyingBody;
+    private String iso27001Expiry;
+
     private String as9100dCertificateNo;
     private String as9100dCertifyingBody;
     private String as9100dExpiry;

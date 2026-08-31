@@ -23,7 +23,7 @@ public class QSQuestion {
     @Column(name = "help_text")
     private String helpText;
 
-    /** short_text / single_choice / multi_choice / counter / table */
+    /** short_text / single_choice / multi_choice / counter / table / file_upload */
     @Column(name = "question_type")
     private String questionType;
 
@@ -58,4 +58,11 @@ public class QSQuestion {
 
     @Column(name = "max_rows")
     private Integer maxRows;
+
+    /** Conditional visibility — both null means always visible. See Form Studio's models.py. */
+    @Column(name = "depends_on_question_id")
+    private Integer dependsOnQuestionId;
+
+    @Column(name = "depends_on_option_id")
+    private Integer dependsOnOptionId;
 }
