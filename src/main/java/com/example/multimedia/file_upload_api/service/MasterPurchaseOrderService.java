@@ -35,14 +35,18 @@ public class MasterPurchaseOrderService {
     
     private static final Logger log = LoggerFactory.getLogger(MasterPurchaseOrderService.class);
 
-    @Autowired
-    private MasterPurchaseOrderRepository masterPoRepo;
+    private final CompanyDetailsRepository companyRepo;
+    private final MasterPurchaseOrderRepository masterPoRepo;
+    private final PortalPurchaseOrderRepository portalPoRepo;
+    private final com.example.multimedia.file_upload_api.repository.VendorMasterRepository vendorMasterRepo;
 
     @Autowired
-    private PortalPurchaseOrderRepository portalPoRepo;
-
-    @Autowired
-    private CompanyDetailsRepository companyRepo;
+    public MasterPurchaseOrderService(CompanyDetailsRepository companyRepo, MasterPurchaseOrderRepository masterPoRepo, PortalPurchaseOrderRepository portalPoRepo, com.example.multimedia.file_upload_api.repository.VendorMasterRepository vendorMasterRepo) {
+        this.companyRepo = companyRepo;
+        this.masterPoRepo = masterPoRepo;
+        this.portalPoRepo = portalPoRepo;
+        this.vendorMasterRepo = vendorMasterRepo;
+    }
 
     @Transactional
     public void saveExcelData(MultipartFile file, Long userId) throws Exception {
@@ -114,15 +118,21 @@ public class MasterPurchaseOrderService {
                     }
                     
                     if (vendorNo != null && !vendorNo.isEmpty()) {
-                        List<CompanyDetails> vendors = companyRepo.findByCompanyCode(vendorNo);
-                        if (!vendors.isEmpty()) {
-                            po.setVendor(vendors.get(0));
-                        } else {
-                            try {
-                                Long vId = Long.parseLong(vendorNo.trim());
-                                companyRepo.findById(vId).ifPresent(po::setVendor);
-                            } catch (NumberFormatException ignored) {}
-                        }
+                        vendorMasterRepo.findByBpNo(vendorNo.trim()).ifPresentOrElse(
+                            vendorMaster -> {
+                                companyRepo.findById(vendorMaster.getVendorId()).ifPresent(po::setVendor);
+                            },
+                            () -> {
+                                List<CompanyDetails> vendors = companyRepo.findByCompanyCode(vendorNo.trim());
+                                if (!vendors.isEmpty()) po.setVendor(vendors.get(0));
+                                else {
+                                     try {
+                                         Long vId = Long.parseLong(vendorNo.trim());
+                                         companyRepo.findById(vId).ifPresent(po::setVendor);
+                                     } catch (NumberFormatException ignored) {}
+                                }
+                            }
+                        );
                     }
                     
                     po.setLanguageKey("EN");
@@ -344,8 +354,15 @@ public class MasterPurchaseOrderService {
                     }
                     
                     if (vendorNo != null && !vendorNo.isEmpty()) {
-                        List<CompanyDetails> vendors = companyRepo.findByCompanyCode(vendorNo);
-                        if (!vendors.isEmpty()) po.setVendor(vendors.get(0));
+                        vendorMasterRepo.findByBpNo(vendorNo.trim()).ifPresentOrElse(
+                            vendorMaster -> {
+                                companyRepo.findById(vendorMaster.getVendorId()).ifPresent(po::setVendor);
+                            },
+                            () -> {
+                                List<CompanyDetails> vendors = companyRepo.findByCompanyCode(vendorNo.trim());
+                                if (!vendors.isEmpty()) po.setVendor(vendors.get(0));
+                            }
+                        );
                     }
                     po.setLanguageKey("EN");
                     po.setPurchasingOrganization(purchOrg);
