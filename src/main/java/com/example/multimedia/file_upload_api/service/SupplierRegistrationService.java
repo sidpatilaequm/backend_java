@@ -771,20 +771,11 @@ public class SupplierRegistrationService {
                 if (!present) missing.add(d.name());
             }
 
-            if (isBlank(reg.getContact1Name())) missing.add("contact 1 name");
-            if (isBlank(reg.getContact1Role())) missing.add("contact 1 designation");
+            // "Who we deal with" was simplified to a single primary email — name, designation,
+            // phone and the second-contact concept are no longer collected, so they're no longer
+            // required here either. contact1Name/Role/Phone and contact2* stay nullable columns,
+            // read defensively (orDefault(..., "there")) wherever anything still displays them.
             if (isBlank(reg.getContact1Email())) missing.add("contact 1 email");
-            if (isBlank(reg.getContact1Phone())) missing.add("contact 1 phone");
-            // A second contact is optional overall, but once any part of it is filled in,
-            // all of it is required — mirrors the original prototype's readiness check.
-            boolean hasSecondContact = !isBlank(reg.getContact2Name()) || !isBlank(reg.getContact2Email())
-                    || !isBlank(reg.getContact2Role()) || !isBlank(reg.getContact2Phone());
-            if (hasSecondContact) {
-                if (isBlank(reg.getContact2Name())) missing.add("contact 2 name");
-                if (isBlank(reg.getContact2Role())) missing.add("contact 2 designation");
-                if (isBlank(reg.getContact2Email())) missing.add("contact 2 email");
-                if (isBlank(reg.getContact2Phone())) missing.add("contact 2 phone");
-            }
             if (!Boolean.TRUE.equals(reg.getDeclarationAccepted())) missing.add("the declaration");
             if (reg.getEmail() == null || reg.getEmail().contains("@placeholder.local")) missing.add(0, "a real contact email");
             if (!missing.isEmpty()) {
