@@ -1,6 +1,5 @@
 package com.example.multimedia.file_upload_api.controller;
 
-import com.example.multimedia.file_upload_api.dto.ForgotPasswordDTO;
 import com.example.multimedia.file_upload_api.dto.ServiceResponse;
 import com.example.multimedia.file_upload_api.dto.UserDetailDTO;
 import com.example.multimedia.file_upload_api.entity.UserDetail;
@@ -26,6 +25,15 @@ public class UserDetailController {
     @Autowired
     private ServiceControllerUtils scutils;
 
+    // requireAdmin()/assertSameTenant() throw SecurityException (403) or a "not found"
+    // RuntimeException (404) — previously every failure here, admin-check included, fell through
+    // to a generic 500/400, indistinguishable from an actual server error.
+    private HttpStatus statusFor(Exception e) {
+        if (e instanceof SecurityException) return HttpStatus.FORBIDDEN;
+        if (e.getMessage() != null && e.getMessage().toLowerCase().contains("not found")) return HttpStatus.NOT_FOUND;
+        return HttpStatus.BAD_REQUEST;
+    }
+
 
     @GetMapping("/list")
     public ResponseEntity<ServiceResponse> listUsers() {
@@ -40,7 +48,7 @@ public class UserDetailController {
             e.printStackTrace(new java.io.PrintWriter(sw));
             response = scutils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Error: " + e.getMessage() + "\n" + sw.toString());
             e.printStackTrace();
-            return ResponseEntity.status(500).body(response);
+            return ResponseEntity.status(statusFor(e)).body(response);
         }
     }
 
@@ -55,7 +63,7 @@ public class UserDetailController {
         } catch (Exception e) {
             response = scutils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Creation failed: " + e.getMessage());
             e.printStackTrace();
-            return ResponseEntity.status(500).body(response);
+            return ResponseEntity.status(statusFor(e)).body(response);
         }
     }
 
@@ -70,7 +78,7 @@ public class UserDetailController {
         } catch (Exception e) {
             response = scutils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration failed: " + e.getMessage());
             e.printStackTrace();
-            return ResponseEntity.status(500).body(response);
+            return ResponseEntity.status(statusFor(e)).body(response);
         }
     }
     @GetMapping("/{userId:\\d+}")
@@ -83,7 +91,7 @@ public class UserDetailController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             response = scutils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Error fetching user: " + e.getMessage());
-            return ResponseEntity.status(404).body(response);
+            return ResponseEntity.status(statusFor(e)).body(response);
         }
     }
 
@@ -97,7 +105,7 @@ public class UserDetailController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             response = scutils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Update failed: " + e.getMessage());
-            return ResponseEntity.status(400).body(response);
+            return ResponseEntity.status(statusFor(e)).body(response);
         }
     }
 
@@ -110,20 +118,12 @@ public class UserDetailController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             response = scutils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Deactivation failed: " + e.getMessage());
-            return ResponseEntity.status(400).body(response);
+            return ResponseEntity.status(statusFor(e)).body(response);
         }
     }
 
-    @PostMapping("/forgot-password")
-    public ResponseEntity<ServiceResponse> forgotPassword(@RequestBody ForgotPasswordDTO dto) {
-        ServiceResponse response = new ServiceResponse();
-        try {
-            response = userDetailService.resetPasswordByEmail(dto);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(scutils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, e.getMessage()));
-        }
-    }
-
-} 
+    // POST /forgot-password used to live here — removed rather than fixed in place. It took just
+    // { email, newPassword } with no proof the caller owned that email, so any authenticated user
+    // could overwrite any other account's password. Resetting a user's password is now an
+    // admin-only, tenant-checked action via PUT /{userId} (UserDetailService.updateUser) instead.
+}

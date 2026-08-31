@@ -1,11 +1,11 @@
 package com.example.multimedia.file_upload_api.utils;
 
-import java.util.Random;
+import java.security.SecureRandom;
 
 public class PasswordUtils {
 
     private static final String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    private static final Random RANDOM = new Random();
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     public static String generateRandomPassword(String name) {
         String cleanName = "User";

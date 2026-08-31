@@ -14,7 +14,11 @@ import java.util.Optional;
 @Repository
 public interface UserAuthenticationRepository extends JpaRepository<UserAuthentication, Long> {
 
-    @Query("SELECT CASE WHEN COUNT(ua) > 0 THEN true ELSE false END FROM UserAuthentication ua WHERE ua.userId = :#{#user.userId} AND ua.authKey = :#{#authorization.authKey}")
+    // UserAuthentication.authKey stores the numeric Authorization.authId AS A STRING (every writer
+    // does setAuthKey(String.valueOf(authId))) — comparing it against authorization.authKey (the
+    // string role key, e.g. "employee") compared two different string spaces and could never
+    // match, so the "already registered with this role" guard this backs silently never fired.
+    @Query("SELECT CASE WHEN COUNT(ua) > 0 THEN true ELSE false END FROM UserAuthentication ua WHERE ua.userId = :#{#user.userId} AND ua.authKey = :#{#authorization.authId.toString()}")
     boolean existsByUserIdAndAuthKey(@Param("user") UserDetail user, @Param("authorization") Authorization authorization);
     Optional<UserAuthentication> findByUserId(Long userId);
     @Query("SELECT ua FROM UserAuthentication ua WHERE ua.authKey = :authKey AND ua.isActive = true")
