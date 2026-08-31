@@ -29,15 +29,19 @@ public class VendorTermsController {
     @Autowired
     private CurrentUserService currentUserService;
 
-    private void validateCurrentSuperAdmin() {
+    private SuperAdmin validateCurrentSuperAdmin() {
         try {
             SuperAdmin currentSuperAdmin = currentUserService.getCurrentSuperAdmin();
             if (currentSuperAdmin == null) {
                 throw new RuntimeException("Super Admin not found in security context");
             }
-            if (!userService.isUserActive(currentSuperAdmin.getSuperAdminId())) {
-                throw new RuntimeException("Super Admin account is not active");
-            }
+            // Was: userService.isUserActive(currentSuperAdmin.getSuperAdminId()) — isUserActive
+            // looks up UserAuthentication by UserDetail.userId, a different ID space entirely from
+            // SuperAdmin.superAdminId, so this either spuriously threw or coincidentally matched
+            // an unrelated user with the same numeric id. getCurrentSuperAdmin() already only
+            // succeeds for a real, authenticated super admin, which is definitionally what this
+            // check exists to confirm — nothing more to check against the wrong table.
+            return currentSuperAdmin;
         } catch (Exception e) {
             throw new RuntimeException("Invalid Super Admin: " + e.getMessage());
         }
@@ -78,8 +82,8 @@ public class VendorTermsController {
 
     @GetMapping("/{id}")
     public ResponseEntity<VendorTermsResponseDTO> getVendorTerms(@PathVariable Long id) {
-        validateCurrentSuperAdmin();
-        return ResponseEntity.ok(vendorTermsService.getVendorTerms(id));
+        SuperAdmin currentSuperAdmin = validateCurrentSuperAdmin();
+        return ResponseEntity.ok(vendorTermsService.getVendorTerms(id, currentSuperAdmin.getSuperAdminId()));
     }
 
     @GetMapping("/user/{userId}")
@@ -102,38 +106,38 @@ public class VendorTermsController {
             @RequestParam(value = "incotermsFile", required = false) MultipartFile incotermsFile,
             @RequestParam(value = "deliveryTermsFile", required = false) MultipartFile deliveryTermsFile) {
         
-        validateCurrentSuperAdmin();
-        
+        SuperAdmin currentSuperAdmin = validateCurrentSuperAdmin();
+
         VendorTermsDTO vendorTermsDTO = new VendorTermsDTO();
         vendorTermsDTO.setPaymentTermsFile(paymentTermsFile);
         vendorTermsDTO.setIncotermsFile(incotermsFile);
         vendorTermsDTO.setDeliveryTermsFile(deliveryTermsFile);
-        
-        return ResponseEntity.ok(vendorTermsService.updateVendorTerms(id, vendorTermsDTO));
+
+        return ResponseEntity.ok(vendorTermsService.updateVendorTerms(id, vendorTermsDTO, currentSuperAdmin.getSuperAdminId()));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteVendorTerms(@PathVariable Long id) {
-        validateCurrentSuperAdmin();
-        vendorTermsService.deleteVendorTerms(id);
+        SuperAdmin currentSuperAdmin = validateCurrentSuperAdmin();
+        vendorTermsService.deleteVendorTerms(id, currentSuperAdmin.getSuperAdminId());
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/payment-terms")
     public ResponseEntity<byte[]> getPaymentTermsFile(@PathVariable Long id) {
-        validateCurrentSuperAdmin();
-        return vendorTermsService.getPaymentTermsFile(id);
+        SuperAdmin currentSuperAdmin = validateCurrentSuperAdmin();
+        return vendorTermsService.getPaymentTermsFile(id, currentSuperAdmin.getSuperAdminId());
     }
 
     @GetMapping("/{id}/incoterms")
     public ResponseEntity<byte[]> getIncotermsFile(@PathVariable Long id) {
-        validateCurrentSuperAdmin();
-        return vendorTermsService.getIncotermsFile(id);
+        SuperAdmin currentSuperAdmin = validateCurrentSuperAdmin();
+        return vendorTermsService.getIncotermsFile(id, currentSuperAdmin.getSuperAdminId());
     }
 
     @GetMapping("/{id}/delivery-terms")
     public ResponseEntity<byte[]> getDeliveryTermsFile(@PathVariable Long id) {
-        validateCurrentSuperAdmin();
-        return vendorTermsService.getDeliveryTermsFile(id);
+        SuperAdmin currentSuperAdmin = validateCurrentSuperAdmin();
+        return vendorTermsService.getDeliveryTermsFile(id, currentSuperAdmin.getSuperAdminId());
     }
 } 

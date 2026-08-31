@@ -29,7 +29,12 @@ public class SecurityConfig {
                 .cors(org.springframework.security.config.Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/users/register", "/api/users/login", "/api/users/generate-hash/**", "/employee/login", "/api/employee/login").permitAll()
+                        // /api/users/register used to be here too — removed: it let an
+                        // unauthenticated caller create an account in any tenant with any role
+                        // (caller-supplied superAdminId/authKey, no ownership check). It's now
+                        // admin-gated like the rest of user management (UserDetailService), so it
+                        // falls under the generic "/api/users/**".authenticated() rule below.
+                        .requestMatchers("/api/users/login", "/api/users/generate-hash/**", "/employee/login", "/api/employee/login").permitAll()
                         // Browser redirects, hit before anyone is authenticated — same reasoning
                         // as /api/users/login above. /api/users/session (the endpoint the SSO
                         // callback lands on afterwards) stays behind the existing

@@ -1,18 +1,14 @@
 package com.example.multimedia.file_upload_api.service;
 
-import com.example.multimedia.file_upload_api.dto.ForgotPasswordDTO;
-import com.example.multimedia.file_upload_api.dto.ServiceResponse;
 import com.example.multimedia.file_upload_api.dto.UserDetailDTO;
 import com.example.multimedia.file_upload_api.entity.Authorization;
 import com.example.multimedia.file_upload_api.entity.SuperAdmin;
 import com.example.multimedia.file_upload_api.entity.UserAuthentication;
 import com.example.multimedia.file_upload_api.entity.UserDetail;
 import com.example.multimedia.file_upload_api.repository.AuthorizationRepository;
-import com.example.multimedia.file_upload_api.repository.SuperAdminRepository;
 import com.example.multimedia.file_upload_api.repository.UserAuthenticationRepository;
 import com.example.multimedia.file_upload_api.repository.UserDetailRepository;
-import com.example.multimedia.file_upload_api.utils.AppConstants;
-import com.example.multimedia.file_upload_api.utils.ServiceControllerUtils;
+import com.example.multimedia.file_upload_api.security.AdminAuthChecker;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import com.example.multimedia.file_upload_api.dto.UserCreationRequestDTO;
@@ -22,7 +18,6 @@ import com.example.multimedia.file_upload_api.enums.UserType;
 import com.example.multimedia.file_upload_api.repository.EmployeeRepository;
 import com.example.multimedia.file_upload_api.repository.DepartmentRepository;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,7 +27,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Random;
 
 @Service
 public class UserDetailService {
@@ -50,12 +44,6 @@ public class UserDetailService {
     private UserAuthenticationRepository userAuthenticationRepository;
 
     @Autowired
-    private SuperAdminRepository superAdminRepository;
-
-    @Autowired
-    private ServiceControllerUtils serviceControllerUtils;
-
-    @Autowired
     private CurrentUserService currentUserService;
 
     @Autowired
@@ -63,6 +51,18 @@ public class UserDetailService {
 
     @Autowired
     private DepartmentRepository departmentRepository;
+
+    @Autowired
+    private AdminAuthChecker adminAuthChecker;
+
+    @Autowired
+    private EmailService emailService;
+
+    private void requireAdmin() {
+        if (!adminAuthChecker.isAdmin()) {
+            throw new SecurityException("Admin access required for this action.");
+        }
+    }
 
 
 
@@ -87,6 +87,7 @@ public class UserDetailService {
 
     @Transactional
     public List<Map<String, Object>> getUsersForCurrentAdmin() {
+        requireAdmin();
         SuperAdmin currentSuperAdmin = getEffectiveSuperAdmin();
         List<UserDetail> users = userDetailRepository.findBySuperAdmin(currentSuperAdmin);
         
@@ -116,8 +117,12 @@ public class UserDetailService {
 
     @Transactional
     public Map<String, Object> createEmployeeUser(UserCreationRequestDTO dto) {
+        // Was reachable by any authenticated user (vendor, employee, ...) via getEffectiveSuperAdmin's
+        // fallback to the caller's own tenant — meaning a plain employee could create an
+        // ADMINISTRATOR account for themselves within their own company.
+        requireAdmin();
         SuperAdmin currentSuperAdmin = getEffectiveSuperAdmin();
-        
+
         if (userDetailRepository.findByEmail(dto.getEmail()).isPresent()) {
             throw new RuntimeException("Email already exists");
         }
@@ -142,11 +147,16 @@ public class UserDetailService {
         
         userDetail = userDetailRepository.save(userDetail);
         
-        // Default AuthKey mapping logic based on role
+        // Default AuthKey mapping logic based on role. Was missing PURCHASE_DEPT/APPROVER —
+        // both fell through to "employee" silently, giving that user the wrong permission link
+        // with no error (PermissionDataInitializer now seeds Authorization rows for both).
         String authKeyStr = "employee"; // default
         if (userType == UserType.ADMINISTRATOR || userType == UserType.SUPER_ADMIN) authKeyStr = "administrator";
         else if (userType == UserType.PROCUREMENT_MANAGER) authKeyStr = "procurement_manager";
-        
+        else if (userType == UserType.PURCHASE_DEPT) authKeyStr = "purchase_dept";
+        else if (userType == UserType.APPROVER) authKeyStr = "approver";
+
+
         Optional<Authorization> authOpt = authorizationRepository.findByAuthKeyIgnoreCase(authKeyStr);
         if (authOpt.isPresent()) {
             UserAuthentication userAuth = new UserAuthentication();
@@ -172,7 +182,23 @@ public class UserDetailService {
         }
         
         employeeRepository.save(employee);
-        
+
+        // The generated password used to only ever reach the admin who created this account, in
+        // the API response — never the actual user. sendSimpleEmailToUserId already existed
+        // (used for other notifications) but was never called from account creation.
+        try {
+            emailService.sendSimpleEmailToUserId(userDetail.getUserId(),
+                    "Your account was created",
+                    "Hi " + dto.getFirstName() + ",\n\n"
+                            + "An account was created for you.\n\n"
+                            + "Email: " + dto.getEmail() + "\n"
+                            + "Temporary password: " + dto.getPassword() + "\n\n"
+                            + "Sign in and change this password as soon as you can.");
+        } catch (Exception e) {
+            // Don't fail account creation over a delivery problem — the admin still sees the
+            // password in the response and can pass it along another way.
+        }
+
         Map<String, Object> response = new HashMap<>();
         response.put("userId", userDetail.getUserId());
         response.put("employeeCode", employee.getEmployeeCode());
@@ -180,20 +206,36 @@ public class UserDetailService {
         return response;
     }
 
+    @Transactional
     public Map<String, Object> registerUser(UserDetailDTO userDetailDTO) {
-        // Validate SuperAdmin
-        SuperAdmin superAdmin = superAdminRepository.findById(userDetailDTO.getSuperAdminId())
-                .orElseThrow(() -> new RuntimeException("SuperAdmin not found"));
+        // This endpoint used to be fully public (no auth at all) and trusted whatever
+        // superAdminId/authKey the caller sent — an anonymous caller could plant an account with
+        // any role in any tenant and get the generated password back in the response. Now:
+        // admin-gated, and the tenant is always the caller's own, never client-supplied.
+        requireAdmin();
+        SuperAdmin superAdmin = getEffectiveSuperAdmin();
 
         Optional<UserDetail> emailUser = userDetailRepository.findByEmail(userDetailDTO.getEmail());
         Optional<UserDetail> phoneUser = userDetailRepository.findByPhoneNumber(userDetailDTO.getPhoneNumber());
-
-        UserDetail userDetail;
 
         // Case 1: Email or phone exists and belong to different users
         if (emailUser.isPresent() && phoneUser.isPresent() && !emailUser.get().getUserId().equals(phoneUser.get().getUserId())) {
             throw new RuntimeException("Email and phone number belong to different users.");
         }
+
+        // An existing match in a different tenant would otherwise let this endpoint attach a new
+        // role to someone else's account.
+        Optional<UserDetail> existingMatch = emailUser.isPresent() ? emailUser : phoneUser;
+        if (existingMatch.isPresent()) {
+            UserDetail existing = existingMatch.get();
+            if (existing.getSuperAdmin() == null
+                    || !existing.getSuperAdmin().getSuperAdminId().equals(superAdmin.getSuperAdminId())) {
+                throw new SecurityException("That email or phone number belongs to an account outside your organization.");
+            }
+        }
+
+        UserDetail userDetail;
+        boolean isNewUser = existingMatch.isEmpty();
 
         String rawPassword = "********";
 
@@ -246,6 +288,20 @@ public class UserDetailService {
         userAuth.setIsActive(true);
         userAuthenticationRepository.save(userAuth);
 
+        if (isNewUser) {
+            try {
+                emailService.sendSimpleEmailToUserId(userDetail.getUserId(),
+                        "Your account was created",
+                        "Hi " + (userDetail.getFirstName() != null ? userDetail.getFirstName() : "") + ",\n\n"
+                                + "An account was created for you as " + authorization.getAuthName() + ".\n\n"
+                                + "Email: " + userDetail.getEmail() + "\n"
+                                + "Temporary password: " + rawPassword + "\n\n"
+                                + "Sign in and change this password as soon as you can.");
+            } catch (Exception e) {
+                // Don't fail account creation over a delivery problem.
+            }
+        }
+
         // Response
         Map<String, Object> response = new HashMap<>();
         response.put("userId", userDetail.getUserId());
@@ -262,50 +318,86 @@ public class UserDetailService {
         return response;
     }
 
-    public UserDetail getUserById(Long userId) {
+    // Not exposed directly — every caller above needs the admin+tenant check in getUserById below,
+    // this only exists so updateUser/deactivateUser (which do their own save afterward) don't run
+    // the lookup twice.
+    private UserDetail findByIdRaw(Long userId) {
         return userDetailRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
     }
 
+    // Was: any authenticated user, in any tenant, could fetch any user by id.
+    public UserDetail getUserById(Long userId) {
+        requireAdmin();
+        UserDetail user = findByIdRaw(userId);
+        assertSameTenant(user);
+        return user;
+    }
+
+    // Was: no admin check, no tenant check — any authenticated user could edit (including set the
+    // password of) any user in any tenant.
+    @Transactional
     public UserDetail updateUser(Long userId, UserDetailDTO userDetailDTO) {
-        UserDetail existingUser = getUserById(userId);
-        
+        requireAdmin();
+        UserDetail existingUser = findByIdRaw(userId);
+        assertSameTenant(existingUser);
+
         if (userDetailDTO.getFirstName() != null) {
-        existingUser.setFirstName(userDetailDTO.getFirstName());
+            existingUser.setFirstName(userDetailDTO.getFirstName());
         }
         if (userDetailDTO.getLastName() != null) {
-        existingUser.setLastName(userDetailDTO.getLastName());
+            existingUser.setLastName(userDetailDTO.getLastName());
         }
         if (userDetailDTO.getPhoneNumber() != null) {
-        existingUser.setPhoneNumber(userDetailDTO.getPhoneNumber());
+            existingUser.setPhoneNumber(userDetailDTO.getPhoneNumber());
         }
-        
-        if (userDetailDTO.getPassword() != null && !userDetailDTO.getPassword().isEmpty()) {
+
+        boolean passwordReset = userDetailDTO.getPassword() != null && !userDetailDTO.getPassword().isEmpty();
+        if (passwordReset) {
             existingUser.setPassword(passwordEncoder.encode(userDetailDTO.getPassword()));
         }
 
-        return userDetailRepository.save(existingUser);
+        existingUser = userDetailRepository.save(existingUser);
+
+        // This is now also where "reset a user's password" happens (the old, unauthenticated
+        // /forgot-password endpoint — any logged-in user could reset anyone's password just by
+        // knowing their email — was removed rather than fixed in place; an admin-initiated reset
+        // through this already-gated, already-tenant-checked path is the replacement).
+        if (passwordReset) {
+            try {
+                emailService.sendSimpleEmailToUserId(existingUser.getUserId(),
+                        "Your password was reset",
+                        "Hi " + (existingUser.getFirstName() != null ? existingUser.getFirstName() : "") + ",\n\n"
+                                + "An administrator reset your password.\n\n"
+                                + "New temporary password: " + userDetailDTO.getPassword() + "\n\n"
+                                + "Sign in and change it as soon as you can. If you didn't expect "
+                                + "this, contact your administrator.");
+            } catch (Exception e) {
+                // Don't fail the update over a delivery problem.
+            }
+        }
+
+        return existingUser;
     }
 
+    // Was: no admin check, no tenant check — any authenticated user could deactivate any user in
+    // any tenant.
+    @Transactional
     public void deactivateUser(Long userId) {
-        UserDetail user = getUserById(userId);
+        requireAdmin();
+        UserDetail user = findByIdRaw(userId);
+        assertSameTenant(user);
         user.setIsActive(false);
         userDetailRepository.save(user);
     }
 
-    public ServiceResponse resetPasswordByEmail(ForgotPasswordDTO dto) {
-        ServiceResponse response = new ServiceResponse();
-
-        Optional<UserDetail> userOpt = userDetailRepository.findByEmail(dto.getEmail());
-        if (userOpt.isEmpty()) {
-            return serviceControllerUtils.prepareMobileResponseInvalidData(response, "No user found with the provided email.");
+    private void assertSameTenant(UserDetail target) {
+        SuperAdmin currentSuperAdmin = getEffectiveSuperAdmin();
+        if (target.getSuperAdmin() == null
+                || !target.getSuperAdmin().getSuperAdminId().equals(currentSuperAdmin.getSuperAdminId())) {
+            // Same message as "not found" deliberately — this shouldn't confirm to a caller in one
+            // tenant that a given id exists in another.
+            throw new RuntimeException("User not found");
         }
-
-        UserDetail user = userOpt.get();
-        user.setPassword(passwordEncoder.encode(dto.getNewPassword()));
-        userDetailRepository.save(user);
-
-        return serviceControllerUtils.prepareMobileResponseSuccessStatus(
-                response, AppConstants.SUCCESSCODE, "Password updated successfully.");
     }
 } 

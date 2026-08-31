@@ -29,10 +29,24 @@ public class VendorTermsService {
         return convertToResponseDTO(vendorTerms);
     }
 
-    public VendorTermsResponseDTO getVendorTerms(Long id) {
+    public VendorTermsResponseDTO getVendorTerms(Long id, Long callerSuperAdminId) {
+        VendorTerms vendorTerms = findOwned(id, callerSuperAdminId);
+        return convertToResponseDTO(vendorTerms);
+    }
+
+    // None of the by-id operations below checked that the record actually belonged to the calling
+    // super admin's own tenant — any super admin could view/edit/delete/download another tenant's
+    // vendor terms documents by guessing a sequential id. Centralized here since every one of them
+    // needs the identical check.
+    private VendorTerms findOwned(Long id, Long callerSuperAdminId) {
         VendorTerms vendorTerms = vendorTermsRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Vendor terms not found"));
-        return convertToResponseDTO(vendorTerms);
+        Long ownerSuperAdminId = vendorTerms.getUser() != null && vendorTerms.getUser().getSuperAdmin() != null
+                ? vendorTerms.getUser().getSuperAdmin().getSuperAdminId() : null;
+        if (ownerSuperAdminId == null || !ownerSuperAdminId.equals(callerSuperAdminId)) {
+            throw new SecurityException("Vendor terms not found");
+        }
+        return vendorTerms;
     }
 
     public List<VendorTermsResponseDTO> getVendorTermsByUser(Long userId) {
@@ -47,39 +61,36 @@ public class VendorTermsService {
                 .collect(Collectors.toList());
     }
 
-    public VendorTermsResponseDTO updateVendorTerms(Long id, VendorTermsDTO dto) {
-        VendorTerms vendorTerms = vendorTermsRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Vendor terms not found"));
+    public VendorTermsResponseDTO updateVendorTerms(Long id, VendorTermsDTO dto, Long callerSuperAdminId) {
+        VendorTerms vendorTerms = findOwned(id, callerSuperAdminId);
         updateVendorTermsFromDTO(vendorTerms, dto);
         vendorTerms = vendorTermsRepository.save(vendorTerms);
         return convertToResponseDTO(vendorTerms);
     }
 
-    public void deleteVendorTerms(Long id) {
+    public void deleteVendorTerms(Long id, Long callerSuperAdminId) {
+        findOwned(id, callerSuperAdminId);
         vendorTermsRepository.deleteById(id);
     }
 
-    public ResponseEntity<byte[]> getPaymentTermsFile(Long id) {
-        VendorTerms vendorTerms = vendorTermsRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Vendor terms not found"));
-        return createFileResponse(vendorTerms.getPaymentTermsFile(), 
-                                vendorTerms.getPaymentTermsFileName(), 
+    public ResponseEntity<byte[]> getPaymentTermsFile(Long id, Long callerSuperAdminId) {
+        VendorTerms vendorTerms = findOwned(id, callerSuperAdminId);
+        return createFileResponse(vendorTerms.getPaymentTermsFile(),
+                                vendorTerms.getPaymentTermsFileName(),
                                 vendorTerms.getPaymentTermsFileType());
     }
 
-    public ResponseEntity<byte[]> getIncotermsFile(Long id) {
-        VendorTerms vendorTerms = vendorTermsRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Vendor terms not found"));
-        return createFileResponse(vendorTerms.getIncotermsFile(), 
-                                vendorTerms.getIncotermsFileName(), 
+    public ResponseEntity<byte[]> getIncotermsFile(Long id, Long callerSuperAdminId) {
+        VendorTerms vendorTerms = findOwned(id, callerSuperAdminId);
+        return createFileResponse(vendorTerms.getIncotermsFile(),
+                                vendorTerms.getIncotermsFileName(),
                                 vendorTerms.getIncotermsFileType());
     }
 
-    public ResponseEntity<byte[]> getDeliveryTermsFile(Long id) {
-        VendorTerms vendorTerms = vendorTermsRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Vendor terms not found"));
-        return createFileResponse(vendorTerms.getDeliveryTermsFile(), 
-                                vendorTerms.getDeliveryTermsFileName(), 
+    public ResponseEntity<byte[]> getDeliveryTermsFile(Long id, Long callerSuperAdminId) {
+        VendorTerms vendorTerms = findOwned(id, callerSuperAdminId);
+        return createFileResponse(vendorTerms.getDeliveryTermsFile(),
+                                vendorTerms.getDeliveryTermsFileName(),
                                 vendorTerms.getDeliveryTermsFileType());
     }
 

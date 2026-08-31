@@ -27,6 +27,12 @@ public class PermissionDataInitializer implements CommandLineRunner {
         ensureAuthorization("administrator", "Administrator");
         ensureAuthorization("procurement_manager", "Procurement Manager");
         ensureAuthorization("employee", "Employee");
+        // UserType.PURCHASE_DEPT/APPROVER were valid roles with no matching Authorization row —
+        // AuthController.mapUserTypeToAuthKey had no case for either and silently fell back to
+        // "employee", meaning a user created with either role got the wrong permission link.
+        // ensureAuthorization is idempotent (checks-then-inserts), so this self-heals on next boot.
+        ensureAuthorization("purchase_dept", "Purchase Dept");
+        ensureAuthorization("approver", "Approver");
 
         // --- 1. Purchase Requisition ---
         PermissionMaster pr = ensurePermission("PURCHASE_REQUISITION", "Purchase Requisition", PermissionType.MODULE,

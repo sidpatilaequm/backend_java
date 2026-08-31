@@ -5,6 +5,7 @@ import com.example.multimedia.file_upload_api.entity.Employee;
 import com.example.multimedia.file_upload_api.entity.UserDetail;
 import com.example.multimedia.file_upload_api.repository.EmployeeRepository;
 import com.example.multimedia.file_upload_api.repository.UserDetailRepository;
+import com.example.multimedia.file_upload_api.security.AdminAuthChecker;
 import com.example.multimedia.file_upload_api.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -39,6 +40,12 @@ public class EmployeeController {
 
     @Autowired
     private EmployeeRepository employeeRepository;
+
+    @Autowired
+    private AdminAuthChecker adminAuthChecker;
+
+    @Autowired
+    private com.example.multimedia.file_upload_api.repository.SuperAdminRepository superAdminRepository;
 
     /**
      * POST /employee/login or /api/employee/login
@@ -101,6 +108,36 @@ public class EmployeeController {
         try {
             UserDetail user = userDetailRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+
+            // Was reachable by anyone with a valid token, for any userId — iterate the path
+            // param and read anyone's name/email/phone/tenant. Only the profile's own owner, or
+            // an admin within that same tenant, may fetch it.
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String callerEmail = auth != null ? auth.getName() : null;
+            boolean isSelf = callerEmail != null && callerEmail.equalsIgnoreCase(user.getEmail());
+            if (!isSelf) {
+                Long targetTenantId = user.getSuperAdmin() != null ? user.getSuperAdmin().getSuperAdminId() : null;
+                // Resolve the caller's own tenant id regardless of which table they live in — a
+                // SuperAdmin's "tenant" is itself; a UserDetail's tenant is its superAdmin FK.
+                Long callerTenantId = null;
+                if (callerEmail != null) {
+                    Optional<com.example.multimedia.file_upload_api.entity.SuperAdmin> callerAsSuperAdmin =
+                            superAdminRepository.findByEmail(callerEmail);
+                    if (callerAsSuperAdmin.isPresent()) {
+                        callerTenantId = callerAsSuperAdmin.get().getSuperAdminId();
+                    } else {
+                        UserDetail caller = userDetailRepository.findByEmail(callerEmail).orElse(null);
+                        if (caller != null && caller.getSuperAdmin() != null) {
+                            callerTenantId = caller.getSuperAdmin().getSuperAdminId();
+                        }
+                    }
+                }
+                boolean sameTenant = targetTenantId != null && targetTenantId.equals(callerTenantId);
+                if (!adminAuthChecker.isAdmin() || !sameTenant) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                            .body(Map.of("message", "Not authorized to view this profile."));
+                }
+            }
 
             // Use the new user_id FK for a direct, reliable lookup
             Optional<Employee> empOpt = employeeRepository.findByUserDetail_UserId(userId);
