@@ -11,7 +11,7 @@ public interface AsnService {
                               Map<String, MultipartFile> files,
                               Long userId);
 
-    ServiceResponse getAsnsByVendorBpno(String vendorBpno);
+    ServiceResponse getAsnsByVendorBpno(String vendorBpno, String companyCode);
 
     ServiceResponse getAllAsns();
 

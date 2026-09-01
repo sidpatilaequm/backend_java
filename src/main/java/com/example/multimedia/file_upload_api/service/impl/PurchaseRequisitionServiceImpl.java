@@ -104,6 +104,7 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
         pr.setLocationId(request.getLocationId());
         pr.setRequiredDate(request.getRequiredDate());
         pr.setRemarks(request.getRemarks());
+        pr.setCompanyCode(request.getCompanyCode());
         pr.setStatus(request.getStatus() != null ? request.getStatus() : PurchaseRequisitionStatus.CREATED);
         pr.setRequestedBy(requestedById);
 
@@ -311,6 +312,7 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
         pr.setLocationId(request.getLocationId());
         pr.setRequiredDate(request.getRequiredDate());
         pr.setRemarks(request.getRemarks());
+        pr.setCompanyCode(request.getCompanyCode());
 
         pr.getItems().clear();
 
@@ -463,8 +465,8 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
     }
 
     @Override
-    public List<PurchaseRequisitionResponse> getAllVendorPurchaseRequisitions(Long vendorId) {
-        List<PurchaseRequisitionItemVendor> assignments = vendorRepository.findByVendorIdWithDetails(vendorId);
+    public List<PurchaseRequisitionResponse> getAllVendorPurchaseRequisitions(Long vendorId, String companyCode) {
+        List<PurchaseRequisitionItemVendor> assignments = vendorRepository.findByVendorIdWithDetails(vendorId, companyCode);
         
         String paymentTerms = null;
         String incoterms = null;
@@ -532,7 +534,7 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
         PurchaseRequisitionResponse response = mapToResponseWithoutItems(pr);
         response.setTotalAmount(null);
         
-        List<PurchaseRequisitionItemVendor> assignments = vendorRepository.findByVendorIdWithDetails(vendorId);
+        List<PurchaseRequisitionItemVendor> assignments = vendorRepository.findByVendorIdWithDetails(vendorId, null);
         String vendorStatus = assignments.stream()
                 .filter(a -> a.getPurchaseRequisitionItem().getPurchaseRequisition().getId().equals(pr.getId()))
                 .map(PurchaseRequisitionItemVendor::getStatus)
@@ -580,8 +582,8 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
     }
 
     @Override
-    public List<VendorPurchaseRequisitionItemResponse> getVendorAssignedItems(Long vendorId) {
-        List<PurchaseRequisitionItemVendor> assignments = vendorRepository.findByVendorIdWithDetails(vendorId);
+    public List<VendorPurchaseRequisitionItemResponse> getVendorAssignedItems(Long vendorId, String companyCode) {
+        List<PurchaseRequisitionItemVendor> assignments = vendorRepository.findByVendorIdWithDetails(vendorId, companyCode);
         return assignments.stream().map(a -> {
             VendorPurchaseRequisitionItemResponse res = new VendorPurchaseRequisitionItemResponse();
             res.setId(a.getPurchaseRequisitionItem().getPurchaseRequisition().getId());
@@ -755,8 +757,8 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
     }
 
     @Override
-    public List<PurchaseRequisitionResponse> getAcceptedVendorPurchaseRequisitions(Long vendorId) {
-        List<PurchaseRequisitionItemVendor> assignments = vendorRepository.findByVendorIdAndStatus(vendorId, "ACCEPTED");
+    public List<PurchaseRequisitionResponse> getAcceptedVendorPurchaseRequisitions(Long vendorId, String companyCode) {
+        List<PurchaseRequisitionItemVendor> assignments = vendorRepository.findByVendorIdAndStatus(vendorId, "ACCEPTED", companyCode);
         
         String paymentTerms = null;
         String incoterms = null;

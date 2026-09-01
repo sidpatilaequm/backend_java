@@ -13,6 +13,9 @@ public class VendorQuotationRequest {
     @JsonProperty("pr_id")
     private Long prId;
 
+    @JsonProperty("company_code")
+    private String companyCode;
+
     @JsonProperty("quotation_header")
     private QuotationHeader quotationHeader;
 

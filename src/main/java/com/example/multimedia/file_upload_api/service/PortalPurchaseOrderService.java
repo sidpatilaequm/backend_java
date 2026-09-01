@@ -16,7 +16,7 @@ public interface PortalPurchaseOrderService {
 
     void cancelPO(Long poId, Long adminId);
 
-    List<PortalPurchaseOrderListResponse> getPOsForVendor(Long vendorId);
+    List<PortalPurchaseOrderListResponse> getPOsForVendor(Long vendorId, String companyCode);
 
     PortalPurchaseOrderResponse getPODetailsForVendor(Long poId, Long vendorId);
 

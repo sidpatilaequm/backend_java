@@ -31,9 +31,10 @@ public class VendorQuotationController {
 
     @GetMapping
     public ResponseEntity<List<VendorQuotationResponse>> getAllMyQuotations(
-            @RequestParam(name = "vendor_id", required = false) Long vendorIdParam) {
+            @RequestParam(name = "vendor_id", required = false) Long vendorIdParam,
+            @RequestParam(name = "company_code", required = false) String companyCode) {
         Long vendorId = vendorIdParam != null ? vendorIdParam : securityContextUtils.getCurrentVendorId();
-        List<VendorQuotationResponse> responses = quotationService.getQuotationsByVendorId(vendorId);
+        List<VendorQuotationResponse> responses = quotationService.getQuotationsByVendorId(vendorId, companyCode);
         return ResponseEntity.ok(responses);
     }
 

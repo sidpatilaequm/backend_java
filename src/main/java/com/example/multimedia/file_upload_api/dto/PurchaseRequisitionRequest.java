@@ -8,6 +8,7 @@ public class PurchaseRequisitionRequest {
     private Long locationId;
     private LocalDate requiredDate;
     private String remarks;
+    private String companyCode;
     private PurchaseRequisitionStatus status = PurchaseRequisitionStatus.CREATED;
     private List<PurchaseRequisitionItemRequest> items;
 
@@ -33,6 +34,14 @@ public class PurchaseRequisitionRequest {
 
     public void setRemarks(String remarks) {
         this.remarks = remarks;
+    }
+
+    public String getCompanyCode() {
+        return companyCode;
+    }
+
+    public void setCompanyCode(String companyCode) {
+        this.companyCode = companyCode;
     }
 
     public PurchaseRequisitionStatus getStatus() {

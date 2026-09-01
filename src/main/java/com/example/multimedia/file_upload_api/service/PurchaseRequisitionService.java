@@ -27,15 +27,15 @@ public interface PurchaseRequisitionService {
 
     PurchaseRequisitionResponse getPurchaseRequisitionByPrNumber(String prNumber);
 
-    List<PurchaseRequisitionResponse> getAllVendorPurchaseRequisitions(Long vendorId);
+    List<PurchaseRequisitionResponse> getAllVendorPurchaseRequisitions(Long vendorId, String companyCode);
 
     PurchaseRequisitionResponse getVendorPurchaseRequisitionByPrNumber(String prNumber, Long vendorId);
 
-    List<com.example.multimedia.file_upload_api.dto.VendorPurchaseRequisitionItemResponse> getVendorAssignedItems(Long vendorId);
+    List<com.example.multimedia.file_upload_api.dto.VendorPurchaseRequisitionItemResponse> getVendorAssignedItems(Long vendorId, String companyCode);
 
     void respondToPurchaseRequisition(Long prId, Long vendorId, String action);
 
-    List<PurchaseRequisitionResponse> getAcceptedVendorPurchaseRequisitions(Long vendorId);
+    List<PurchaseRequisitionResponse> getAcceptedVendorPurchaseRequisitions(Long vendorId, String companyCode);
 
     PurchaseRequisitionResponse getAcceptedVendorPurchaseRequisitionById(Long prId, Long vendorId);
 }

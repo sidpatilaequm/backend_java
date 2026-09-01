@@ -11,7 +11,8 @@ import java.util.Optional;
 
 @Repository
 public interface VendorQuotationRepository extends JpaRepository<VendorQuotation, Long> {
-    List<VendorQuotation> findByVendor_CompanyId(Long vendorId);
+    @Query("SELECT q FROM VendorQuotation q WHERE q.vendor.companyId = :vendorId AND (:companyCode IS NULL OR q.companyCode = :companyCode)")
+    List<VendorQuotation> findByVendor_CompanyId(@Param("vendorId") Long vendorId, @Param("companyCode") String companyCode);
     List<VendorQuotation> findByPurchaseRequisition_Id(Long prId);
     boolean existsByPurchaseRequisition_IdAndVendor_CompanyId(Long prId, Long vendorId);
     Optional<VendorQuotation> findByQuotationNumber(String quotationNumber);

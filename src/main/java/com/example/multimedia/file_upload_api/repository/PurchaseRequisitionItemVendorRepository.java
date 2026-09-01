@@ -11,11 +11,11 @@ import java.util.List;
 @Repository
 public interface PurchaseRequisitionItemVendorRepository extends JpaRepository<PurchaseRequisitionItemVendor, Long> {
     
-    @Query("SELECT v FROM PurchaseRequisitionItemVendor v JOIN FETCH v.purchaseRequisitionItem pri JOIN FETCH pri.purchaseRequisition pr WHERE v.vendorId = :vendorId ORDER BY v.sentAt DESC")
-    List<PurchaseRequisitionItemVendor> findByVendorIdWithDetails(@Param("vendorId") Long vendorId);
+    @Query("SELECT v FROM PurchaseRequisitionItemVendor v JOIN FETCH v.purchaseRequisitionItem pri JOIN FETCH pri.purchaseRequisition pr WHERE v.vendorId = :vendorId AND (:companyCode IS NULL OR pr.companyCode = :companyCode) ORDER BY v.sentAt DESC")
+    List<PurchaseRequisitionItemVendor> findByVendorIdWithDetails(@Param("vendorId") Long vendorId, @Param("companyCode") String companyCode);
 
-    @Query("SELECT v FROM PurchaseRequisitionItemVendor v JOIN FETCH v.purchaseRequisitionItem pri JOIN FETCH pri.purchaseRequisition pr WHERE v.vendorId = :vendorId AND v.status = :status ORDER BY v.sentAt DESC")
-    List<PurchaseRequisitionItemVendor> findByVendorIdAndStatus(@Param("vendorId") Long vendorId, @Param("status") String status);
+    @Query("SELECT v FROM PurchaseRequisitionItemVendor v JOIN FETCH v.purchaseRequisitionItem pri JOIN FETCH pri.purchaseRequisition pr WHERE v.vendorId = :vendorId AND v.status = :status AND (:companyCode IS NULL OR pr.companyCode = :companyCode) ORDER BY v.sentAt DESC")
+    List<PurchaseRequisitionItemVendor> findByVendorIdAndStatus(@Param("vendorId") Long vendorId, @Param("status") String status, @Param("companyCode") String companyCode);
 
     @Query("SELECT v FROM PurchaseRequisitionItemVendor v JOIN FETCH v.purchaseRequisitionItem pri JOIN FETCH pri.purchaseRequisition pr WHERE v.vendorId = :vendorId AND v.status = 'ACCEPTED' AND pr.id = :prId")
     List<PurchaseRequisitionItemVendor> findAcceptedByVendorIdAndPrId(@Param("vendorId") Long vendorId, @Param("prId") Long prId);

@@ -197,6 +197,7 @@ public class GateEntryServiceImpl implements GateEntryService {
         Asn asn = asnOpt.get();
         GateEntry entry = new GateEntry();
         entry.setAsn(asn);
+        entry.setCompanyCode(asn.getCompanyCode());
         
         if ("ALLOW".equalsIgnoreCase(processDto.getDecision())) {
             entry.setGatePassNumber(generateGatePassNumber());
@@ -438,7 +439,7 @@ public class GateEntryServiceImpl implements GateEntryService {
         
         String vendorBpno = vendor.getBpNo();
 
-        List<Asn> asns = asnRepository.findByVendorBpno(vendorBpno);
+        List<Asn> asns = asnRepository.findByVendorBpno(vendorBpno, null);
         
         List<VendorGateStatusDto> list = asns.stream()
                 .filter(asn -> asn.getGateStatus() != null)

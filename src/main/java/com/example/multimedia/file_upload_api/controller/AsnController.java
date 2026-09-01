@@ -63,11 +63,13 @@ public class AsnController {
     }
 
     @GetMapping("")
-    public ResponseEntity<ServiceResponse> getAsns(@RequestParam(value = "vendorBpno", required = false) String vendorBpno) {
+    public ResponseEntity<ServiceResponse> getAsns(
+            @RequestParam(value = "vendorBpno", required = false) String vendorBpno,
+            @RequestParam(value = "company_code", required = false) String companyCode) {
         try {
             ServiceResponse serviceResponse;
             if (vendorBpno != null && !vendorBpno.trim().isEmpty()) {
-                serviceResponse = asnService.getAsnsByVendorBpno(vendorBpno);
+                serviceResponse = asnService.getAsnsByVendorBpno(vendorBpno, companyCode);
             } else {
                 serviceResponse = asnService.getAllAsns();
             }

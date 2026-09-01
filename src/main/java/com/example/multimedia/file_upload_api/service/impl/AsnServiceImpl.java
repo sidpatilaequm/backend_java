@@ -122,6 +122,7 @@ public class AsnServiceImpl implements AsnService {
         // 4. Create ASN
         Asn asn = new Asn();
         asn.setPurchaseOrder(po);
+        asn.setCompanyCode(po.getCompanyCode());
         asn.setVendorBpno(vendor.getCompanyCode());
         asn.setInvoiceNumber(asnRequestDto.getShipmentDetails().getInvoiceNumber());
         asn.setInvoiceDate(asnRequestDto.getShipmentDetails().getInvoiceDate());
@@ -229,9 +230,9 @@ public class AsnServiceImpl implements AsnService {
 
     @Override
     @Transactional(readOnly = true)
-    public ServiceResponse getAsnsByVendorBpno(String vendorBpno) {
+    public ServiceResponse getAsnsByVendorBpno(String vendorBpno, String companyCode) {
         ServiceResponse response = new ServiceResponse();
-        List<Asn> asns = asnRepository.findByVendorBpno(vendorBpno);
+        List<Asn> asns = asnRepository.findByVendorBpno(vendorBpno, companyCode);
         List<com.example.multimedia.file_upload_api.dto.AsnResponseDto> dtos = asns.stream().map(this::mapToDto).collect(java.util.stream.Collectors.toList());
         response.addData("asns", dtos);
         response.setStatus("SUCCESS");

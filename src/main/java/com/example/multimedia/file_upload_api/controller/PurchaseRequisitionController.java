@@ -13,6 +13,11 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.example.multimedia.file_upload_api.repository.LocationRepository;
+import com.example.multimedia.file_upload_api.repository.MaterialRepository;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/purchase-requisitions")
@@ -20,6 +25,20 @@ public class PurchaseRequisitionController {
 
     @Autowired
     private PurchaseRequisitionService prService;
+
+    @Autowired
+    private LocationRepository locationRepository;
+
+    @Autowired
+    private MaterialRepository materialRepository;
+
+    @GetMapping("/create-pr-options")
+    public ResponseEntity<Map<String, Object>> getCreatePrOptions() {
+        Map<String, Object> response = new HashMap<>();
+        response.put("locations", locationRepository.findAll());
+        response.put("materials", materialRepository.findAll());
+        return ResponseEntity.ok(response);
+    }
 
     @PostMapping
     public ResponseEntity<?> createPurchaseRequisition(

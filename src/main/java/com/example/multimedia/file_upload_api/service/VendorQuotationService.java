@@ -8,7 +8,7 @@ import java.util.List;
 
 public interface VendorQuotationService {
     VendorQuotationResponse createQuotation(VendorQuotationRequest request, Long vendorId);
-    List<VendorQuotationResponse> getQuotationsByVendorId(Long vendorId);
+    List<VendorQuotationResponse> getQuotationsByVendorId(Long vendorId, String companyCode);
     VendorQuotationResponse getQuotationById(Long id, Long vendorId);
     VendorQuotationResponse getQuotationByIdForAdmin(Long id);
     VendorQuotationResponse getQuotationByQuotationNumber(String quotationNumber);

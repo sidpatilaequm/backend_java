@@ -22,6 +22,9 @@ public class PurchaseRequisition {
     @Column(unique = true, nullable = false)
     private String prNumber;
 
+    @Column(name = "company_code")
+    private String companyCode;
+
     @Column(nullable = false)
     private Long locationId;
 
@@ -72,6 +75,14 @@ public class PurchaseRequisition {
 
     public void setPrNumber(String prNumber) {
         this.prNumber = prNumber;
+    }
+
+    public String getCompanyCode() {
+        return companyCode;
+    }
+
+    public void setCompanyCode(String companyCode) {
+        this.companyCode = companyCode;
     }
 
     public Long getLocationId() {

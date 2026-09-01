@@ -12,7 +12,8 @@ public interface PortalPurchaseOrderRepository extends JpaRepository<PortalPurch
 
     List<PortalPurchaseOrder> findByVendor_SuperAdmin_SuperAdminIdOrderByIdDesc(Long adminId);
 
-    List<PortalPurchaseOrder> findByVendor_CompanyIdOrderByIdDesc(Long vendorId);
+    @org.springframework.data.jpa.repository.Query("SELECT p FROM PortalPurchaseOrder p WHERE p.vendor.companyId = :vendorId AND (:companyCode IS NULL OR p.companyCode = :companyCode) ORDER BY p.id DESC")
+    List<PortalPurchaseOrder> findByVendor_CompanyIdOrderByIdDesc(@org.springframework.data.repository.query.Param("vendorId") Long vendorId, @org.springframework.data.repository.query.Param("companyCode") String companyCode);
 
     List<PortalPurchaseOrder> findByVendor_CompanyCodeOrderByIdDesc(String companyCode);
 

@@ -98,9 +98,10 @@ public class PortalPurchaseOrderController {
 
     @GetMapping("/api/vendor/purchase-orders")
     public ResponseEntity<List<PortalPurchaseOrderListResponse>> getPOsForVendor(
-            @RequestParam(required = false, name = "vendor_code") String vendorCode) {
+            @RequestParam(required = false, name = "vendor_code") String vendorCode,
+            @RequestParam(required = false, name = "company_code") String companyCode) {
         Long vendorId = resolveVendorId(vendorCode);
-        List<PortalPurchaseOrderListResponse> response = poService.getPOsForVendor(vendorId);
+        List<PortalPurchaseOrderListResponse> response = poService.getPOsForVendor(vendorId, companyCode);
         return ResponseEntity.ok(response);
     }
 

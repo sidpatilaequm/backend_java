@@ -60,6 +60,9 @@ public class Asn {
     @Column(name = "status")
     private String status = "IN_TRANSIT";
 
+    @Column(name = "company_code")
+    private String companyCode;
+
     @Column(name = "gate_status")
     private String gateStatus;
 

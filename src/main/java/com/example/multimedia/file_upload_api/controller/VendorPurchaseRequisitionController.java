@@ -22,7 +22,8 @@ public class VendorPurchaseRequisitionController {
 
     @GetMapping
     public ResponseEntity<List<VendorPurchaseRequisitionItemResponse>> getVendorAssignedItems(
-            @RequestParam(name = "vendor_id", required = false) Long vendorIdParam) {
+            @RequestParam(name = "vendor_id", required = false) Long vendorIdParam,
+            @RequestParam(name = "company_code", required = false) String companyCode) {
         Long vendorId = null;
         if (vendorIdParam != null) {
             vendorId = vendorIdParam;
@@ -36,13 +37,14 @@ public class VendorPurchaseRequisitionController {
         if (vendorId == null) {
             throw new RuntimeException("Vendor ID is required but could not be determined.");
         }
-        List<VendorPurchaseRequisitionItemResponse> items = purchaseRequisitionService.getVendorAssignedItems(vendorId);
+        List<VendorPurchaseRequisitionItemResponse> items = purchaseRequisitionService.getVendorAssignedItems(vendorId, companyCode);
         return ResponseEntity.ok(items);
     }
 
     @GetMapping("/details")
     public ResponseEntity<List<com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse>> getAllVendorPurchaseRequisitions(
-            @RequestParam(name = "vendor_id", required = false) Long vendorIdParam) {
+            @RequestParam(name = "vendor_id", required = false) Long vendorIdParam,
+            @RequestParam(name = "company_code", required = false) String companyCode) {
         Long vendorId = null;
         if (vendorIdParam != null) {
             vendorId = vendorIdParam;
@@ -56,7 +58,7 @@ public class VendorPurchaseRequisitionController {
         if (vendorId == null) {
             throw new RuntimeException("Vendor ID is required but could not be determined.");
         }
-        List<com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse> response = purchaseRequisitionService.getAllVendorPurchaseRequisitions(vendorId);
+        List<com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse> response = purchaseRequisitionService.getAllVendorPurchaseRequisitions(vendorId, companyCode);
         return ResponseEntity.ok(response);
     }
 
@@ -130,9 +132,10 @@ public class VendorPurchaseRequisitionController {
     }
 
     @GetMapping("/accepted")
-    public ResponseEntity<List<com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse>> getAcceptedVendorPurchaseRequisitions() {
+    public ResponseEntity<List<com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse>> getAcceptedVendorPurchaseRequisitions(
+            @RequestParam(name = "company_code", required = false) String companyCode) {
         Long vendorId = securityContextUtils.getCurrentVendorId();
-        List<com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse> response = purchaseRequisitionService.getAcceptedVendorPurchaseRequisitions(vendorId);
+        List<com.example.multimedia.file_upload_api.dto.PurchaseRequisitionResponse> response = purchaseRequisitionService.getAcceptedVendorPurchaseRequisitions(vendorId, companyCode);
         return ResponseEntity.ok(response);
     }
 

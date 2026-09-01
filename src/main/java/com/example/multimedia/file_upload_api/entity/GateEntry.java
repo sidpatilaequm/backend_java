@@ -25,6 +25,9 @@ public class GateEntry {
     @Column(name = "gate_pass_number", unique = true)
     private String gatePassNumber;
 
+    @Column(name = "company_code")
+    private String companyCode;
+
     @Column(name = "decision", nullable = false)
     private String decision; // ALLOW, HOLD, REJECT
 

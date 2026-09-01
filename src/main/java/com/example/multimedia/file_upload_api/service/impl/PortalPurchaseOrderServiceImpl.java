@@ -70,7 +70,7 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
         // Validate PO is not already created for this quotation
         Optional<PortalPurchaseOrder> existingPO = poRepository.findByPoNumber("PO-" + quotation.getQuotationNumber());
         // Or check by quotation id directly using custom filter
-        List<PortalPurchaseOrder> checkList = poRepository.findByVendor_CompanyIdOrderByIdDesc(quotation.getVendor().getCompanyId());
+        List<PortalPurchaseOrder> checkList = poRepository.findByVendor_CompanyIdOrderByIdDesc(quotation.getVendor().getCompanyId(), null);
         for (PortalPurchaseOrder po : checkList) {
             if (po.getQuotation() != null && po.getQuotation().getQuotationId().equals(quotationId)) {
                 throw new IllegalArgumentException("Purchase Order has already been created for this quotation.");
@@ -102,6 +102,7 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
         po.setPoDate(LocalDate.now());
         po.setPurchaseRequisition(pr);
         po.setQuotation(quotation);
+        po.setCompanyCode(pr.getCompanyCode());
         // Resolve the true vendor by BP No if companyCode is missing
         CompanyDetails quoteVendor = quotation.getVendor();
         CompanyDetails finalVendor = quoteVendor;
@@ -198,6 +199,7 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
     }
 
     @Override
+    @Transactional
     public PortalPurchaseOrderResponse getPODetailsForAdmin(Long poId, Long adminId) {
         PortalPurchaseOrder po = poRepository.findById(poId)
                 .orElseThrow(() -> new RuntimeException("Purchase Order not found with ID: " + poId));
@@ -258,25 +260,49 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
     }
 
     @Override
-    public List<PortalPurchaseOrderListResponse> getPOsForVendor(Long vendorId) {
+    public List<PortalPurchaseOrderListResponse> getPOsForVendor(Long vendorId, String companyCode) {
         String bpNo = companyDetailsRepository.findById(vendorId)
                 .map(com.example.multimedia.file_upload_api.entity.CompanyDetails::getCompanyCode)
                 .orElse(null);
 
         if (bpNo != null) {
             List<PortalPurchaseOrder> pos = poRepository.findByVendor_CompanyCodeOrderByIdDesc(bpNo);
+            // Additionally filter by companyCode if passed, because the above method doesn't do it.
+            // But wait, the PR actually uses companyCode, let's just filter it in memory to be safe, or 
+            // since we added companyCode to findByVendor_CompanyIdOrderByIdDesc we can use that fallback.
+            if (companyCode != null) {
+                pos = pos.stream().filter(p -> companyCode.equals(p.getCompanyCode())).collect(Collectors.toList());
+            }
             return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
         } else {
             // Fallback just in case bpNo is not set
-            List<PortalPurchaseOrder> pos = poRepository.findByVendor_CompanyIdOrderByIdDesc(vendorId);
+            List<PortalPurchaseOrder> pos = poRepository.findByVendor_CompanyIdOrderByIdDesc(vendorId, companyCode);
             return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
         }
     }
 
     @Override
+    @Transactional
     public PortalPurchaseOrderResponse getPODetailsForVendor(Long poId, Long vendorId) {
-        PortalPurchaseOrder po = poRepository.findByIdAndVendor_CompanyId(poId, vendorId)
-                .orElseThrow(() -> new RuntimeException("Purchase Order not found or unauthorized for ID: " + poId));
+        PortalPurchaseOrder po = poRepository.findById(poId)
+                .orElseThrow(() -> new RuntimeException("Purchase Order not found for ID: " + poId));
+
+        String bpNo = companyDetailsRepository.findById(vendorId)
+                .map(com.example.multimedia.file_upload_api.entity.CompanyDetails::getCompanyCode)
+                .orElse(null);
+
+        boolean authorized = false;
+        if (po.getVendor() != null) {
+            if (po.getVendor().getCompanyId().equals(vendorId)) {
+                authorized = true;
+            } else if (bpNo != null && bpNo.equals(po.getVendor().getCompanyCode())) {
+                authorized = true;
+            }
+        }
+
+        if (!authorized) {
+            throw new RuntimeException("Purchase Order not found or unauthorized for ID: " + poId);
+        }
 
         return mapToResponse(po);
     }
@@ -381,9 +407,24 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
     public void acknowledgePO(Long poId, Long vendorId) {
         PortalPurchaseOrder po = poRepository.findById(poId)
                 .orElseThrow(() -> new RuntimeException("Purchase Order not found with ID: " + poId));
-        if (po.getVendor() == null || !po.getVendor().getCompanyId().equals(vendorId)) {
+        
+        String bpNo = companyDetailsRepository.findById(vendorId)
+                .map(com.example.multimedia.file_upload_api.entity.CompanyDetails::getCompanyCode)
+                .orElse(null);
+
+        boolean authorized = false;
+        if (po.getVendor() != null) {
+            if (po.getVendor().getCompanyId().equals(vendorId)) {
+                authorized = true;
+            } else if (bpNo != null && bpNo.equals(po.getVendor().getCompanyCode())) {
+                authorized = true;
+            }
+        }
+
+        if (!authorized) {
             throw new RuntimeException("Unauthorized: You do not have permission to acknowledge this PO (Vendor not assigned or mismatch)");
         }
+
         if (!"RELEASED".equalsIgnoreCase(po.getStatus()) && !"CREATED".equalsIgnoreCase(po.getStatus()) && !"APPROVED".equalsIgnoreCase(po.getStatus())) {
             throw new RuntimeException("Purchase Order is not in a valid state to be acknowledged. Current state: " + po.getStatus());
         }

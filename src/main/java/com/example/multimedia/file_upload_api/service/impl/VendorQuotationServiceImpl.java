@@ -57,6 +57,7 @@ public class VendorQuotationServiceImpl implements VendorQuotationService {
         VendorQuotation quotation = new VendorQuotation();
         quotation.setPurchaseRequisition(pr);
         quotation.setVendor(vendor);
+        quotation.setCompanyCode(pr.getCompanyCode());
 
         if (request.getQuotationHeader() != null) {
             quotation.setQuotationNumber(request.getQuotationHeader().getQuotationNumber());
@@ -167,8 +168,8 @@ public class VendorQuotationServiceImpl implements VendorQuotationService {
     }
 
     @Override
-    public List<VendorQuotationResponse> getQuotationsByVendorId(Long vendorId) {
-        return quotationRepository.findByVendor_CompanyId(vendorId).stream()
+    public List<VendorQuotationResponse> getQuotationsByVendorId(Long vendorId, String companyCode) {
+        return quotationRepository.findByVendor_CompanyId(vendorId, companyCode).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
@@ -216,7 +217,7 @@ public class VendorQuotationServiceImpl implements VendorQuotationService {
 
     @Override
     public List<VendorQuotationResponse> getAllQuotationsByVendorIdForAdmin(Long vendorId) {
-        return quotationRepository.findByVendor_CompanyId(vendorId).stream()
+        return quotationRepository.findByVendor_CompanyId(vendorId, null).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }

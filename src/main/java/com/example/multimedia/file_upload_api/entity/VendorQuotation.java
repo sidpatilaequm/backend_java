@@ -89,6 +89,9 @@ public class VendorQuotation {
     @Column(name = "status")
     private String status;
 
+    @Column(name = "company_code")
+    private String companyCode;
+
     @Column(name = "subtotal_amount")
     private BigDecimal subtotalAmount;
 
