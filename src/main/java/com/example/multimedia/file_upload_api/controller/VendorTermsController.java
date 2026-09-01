@@ -29,6 +29,9 @@ public class VendorTermsController {
     @Autowired
     private CurrentUserService currentUserService;
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.service.AuditLogService auditLogService;
+
     private SuperAdmin validateCurrentSuperAdmin() {
         try {
             SuperAdmin currentSuperAdmin = currentUserService.getCurrentSuperAdmin();
@@ -76,8 +79,11 @@ public class VendorTermsController {
         vendorTermsDTO.setDeliveryTermsFile(deliveryTermsFile);
         vendorTermsDTO.setUserId(userId);
         vendorTermsDTO.setCompanyId(companyId);
-        
-        return new ResponseEntity<>(vendorTermsService.createVendorTerms(vendorTermsDTO), HttpStatus.CREATED);
+
+        VendorTermsResponseDTO result = vendorTermsService.createVendorTerms(vendorTermsDTO);
+        auditLogService.recordGeneric("VENDOR_TERMS_CREATED", "Company #" + companyId,
+                changedFileFields(paymentTermsFile, incotermsFile, deliveryTermsFile));
+        return new ResponseEntity<>(result, HttpStatus.CREATED);
     }
 
     @GetMapping("/{id}")
@@ -113,7 +119,27 @@ public class VendorTermsController {
         vendorTermsDTO.setIncotermsFile(incotermsFile);
         vendorTermsDTO.setDeliveryTermsFile(deliveryTermsFile);
 
-        return ResponseEntity.ok(vendorTermsService.updateVendorTerms(id, vendorTermsDTO, currentSuperAdmin.getSuperAdminId()));
+        VendorTermsResponseDTO result = vendorTermsService.updateVendorTerms(id, vendorTermsDTO, currentSuperAdmin.getSuperAdminId());
+        auditLogService.recordGeneric("VENDOR_TERMS_UPDATED", "Vendor terms #" + id,
+                changedFileFields(paymentTermsFile, incotermsFile, deliveryTermsFile));
+        return ResponseEntity.ok(result);
+    }
+
+    // Records which of the three file slots were actually re-uploaded on this call — no values
+    // (they're binary files), just field names, same treatment platform credentials get.
+    private java.util.List<com.example.multimedia.file_upload_api.service.AuditLogService.FieldChange> changedFileFields(
+            MultipartFile paymentTermsFile, MultipartFile incotermsFile, MultipartFile deliveryTermsFile) {
+        java.util.List<com.example.multimedia.file_upload_api.service.AuditLogService.FieldChange> changes = new java.util.ArrayList<>();
+        if (paymentTermsFile != null && !paymentTermsFile.isEmpty()) {
+            changes.add(new com.example.multimedia.file_upload_api.service.AuditLogService.FieldChange("paymentTermsFile", null, null));
+        }
+        if (incotermsFile != null && !incotermsFile.isEmpty()) {
+            changes.add(new com.example.multimedia.file_upload_api.service.AuditLogService.FieldChange("incotermsFile", null, null));
+        }
+        if (deliveryTermsFile != null && !deliveryTermsFile.isEmpty()) {
+            changes.add(new com.example.multimedia.file_upload_api.service.AuditLogService.FieldChange("deliveryTermsFile", null, null));
+        }
+        return changes;
     }
 
     @DeleteMapping("/{id}")

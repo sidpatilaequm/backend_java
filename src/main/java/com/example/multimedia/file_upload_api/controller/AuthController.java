@@ -65,6 +65,9 @@ public class AuthController {
     @Autowired
     private com.example.multimedia.file_upload_api.repository.SuperAdminRepository superAdminRepository;
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.service.LoginAttemptService loginAttemptService;
+
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
         try {
@@ -74,6 +77,8 @@ public class AuthController {
             SecurityContextHolder.getContext().setAuthentication(authentication);
             UserDetails userDetails = (UserDetails) authentication.getPrincipal();
             String jwt = jwtUtil.generateToken(userDetails);
+
+            loginAttemptService.record(loginRequest.getEmail(), "PASSWORD", true, null);
 
             LoginResponse response = buildLoginResponse(userDetails, jwt);
 
@@ -104,10 +109,12 @@ public class AuthController {
             // never be reached; AuthenticationManager throws this before BadCredentialsException
             // would ever apply, so it needs its own explicit response rather than falling through
             // to "Invalid email or password" (misleading — the password may be entirely correct).
+            loginAttemptService.record(loginRequest.getEmail(), "PASSWORD", false, "account_disabled");
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("message", "This account has been deactivated.");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
         } catch (BadCredentialsException e) {
+            loginAttemptService.record(loginRequest.getEmail(), "PASSWORD", false, "bad_credentials");
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("message", "Invalid email or password");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
