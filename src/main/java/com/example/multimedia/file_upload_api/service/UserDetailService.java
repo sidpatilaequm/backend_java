@@ -58,6 +58,9 @@ public class UserDetailService {
     @Autowired
     private EmailService emailService;
 
+    @Autowired
+    private AuditLogService auditLogService;
+
     private void requireAdmin() {
         if (!adminAuthChecker.isAdmin()) {
             throw new SecurityException("Admin access required for this action.");
@@ -183,6 +186,11 @@ public class UserDetailService {
         
         employeeRepository.save(employee);
 
+        auditLogService.record(currentSuperAdmin, "USER_CREATED", userDetail, List.of(
+                new AuditLogService.FieldChange("email", null, dto.getEmail()),
+                new AuditLogService.FieldChange("role", null, userType.name())
+        ), false);
+
         // The generated password used to only ever reach the admin who created this account, in
         // the API response — never the actual user. sendSimpleEmailToUserId already existed
         // (used for other notifications) but was never called from account creation.
@@ -296,6 +304,11 @@ public class UserDetailService {
         userAuthenticationRepository.save(userAuth);
 
         if (isNewUser) {
+            auditLogService.record(superAdmin, "USER_CREATED", userDetail, List.of(
+                    new AuditLogService.FieldChange("email", null, userDetail.getEmail()),
+                    new AuditLogService.FieldChange("role", null, authorization.getAuthName())
+            ), false);
+
             try {
                 emailService.sendSimpleEmailToUserId(userDetail.getUserId(),
                         "Your account was created",
@@ -307,6 +320,10 @@ public class UserDetailService {
             } catch (Exception e) {
                 // Don't fail account creation over a delivery problem.
             }
+        } else {
+            auditLogService.record(superAdmin, "ROLE_ASSIGNED", userDetail, List.of(
+                    new AuditLogService.FieldChange("role", null, authorization.getAuthName())
+            ), false);
         }
 
         // Response
@@ -349,13 +366,21 @@ public class UserDetailService {
         UserDetail existingUser = findByIdRaw(userId);
         assertSameTenant(existingUser);
 
-        if (userDetailDTO.getFirstName() != null) {
+        // Captured before mutation, and only turned into a logged diff if the new value actually
+        // differs — the DTO field being non-null doesn't mean the value changed (e.g. the form
+        // resubmits the existing phone number unchanged), and logging every no-op call would fill
+        // the audit trail with noise like "phone: 987654 -> 987654".
+        java.util.List<AuditLogService.FieldChange> changes = new java.util.ArrayList<>();
+        if (userDetailDTO.getFirstName() != null && !userDetailDTO.getFirstName().equals(existingUser.getFirstName())) {
+            changes.add(new AuditLogService.FieldChange("firstName", existingUser.getFirstName(), userDetailDTO.getFirstName()));
             existingUser.setFirstName(userDetailDTO.getFirstName());
         }
-        if (userDetailDTO.getLastName() != null) {
+        if (userDetailDTO.getLastName() != null && !userDetailDTO.getLastName().equals(existingUser.getLastName())) {
+            changes.add(new AuditLogService.FieldChange("lastName", existingUser.getLastName(), userDetailDTO.getLastName()));
             existingUser.setLastName(userDetailDTO.getLastName());
         }
-        if (userDetailDTO.getPhoneNumber() != null) {
+        if (userDetailDTO.getPhoneNumber() != null && !userDetailDTO.getPhoneNumber().equals(existingUser.getPhoneNumber())) {
+            changes.add(new AuditLogService.FieldChange("phoneNumber", existingUser.getPhoneNumber(), userDetailDTO.getPhoneNumber()));
             existingUser.setPhoneNumber(userDetailDTO.getPhoneNumber());
         }
 
@@ -365,6 +390,10 @@ public class UserDetailService {
         }
 
         existingUser = userDetailRepository.save(existingUser);
+
+        if (!changes.isEmpty() || passwordReset) {
+            auditLogService.record(getEffectiveSuperAdmin(), "USER_UPDATED", existingUser, changes, passwordReset);
+        }
 
         // This is now also where "reset a user's password" happens (the old, unauthenticated
         // /forgot-password endpoint — any logged-in user could reset anyone's password just by
@@ -396,6 +425,10 @@ public class UserDetailService {
         assertSameTenant(user);
         user.setIsActive(false);
         userDetailRepository.save(user);
+
+        auditLogService.record(getEffectiveSuperAdmin(), "USER_DEACTIVATED", user, List.of(
+                new AuditLogService.FieldChange("isActive", "true", "false")
+        ), false);
     }
 
     private void assertSameTenant(UserDetail target) {

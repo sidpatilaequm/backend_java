@@ -40,6 +40,7 @@ public class SecurityConfig {
                         // callback lands on afterwards) stays behind the existing
                         // "/api/users/**".authenticated() rule below, unchanged.
                         .requestMatchers("/api/auth/microsoft/**").permitAll()
+                        .requestMatchers("/api/auth/google/**").permitAll()
                         .requestMatchers("/api/super-admin/**").permitAll()
                         .requestMatchers("/api/v1/bom/master/**").hasAuthority("super_admin")
                         .requestMatchers("/api/business-card/**").permitAll()

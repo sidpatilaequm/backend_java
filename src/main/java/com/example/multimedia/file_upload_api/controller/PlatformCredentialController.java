@@ -62,6 +62,10 @@ public class PlatformCredentialController {
         m.put("azure.tenant_id", new String[]{"azure", "Tenant ID"});
         m.put("azure.client_id", new String[]{"azure", "Client ID"});
         m.put("azure.client_secret", new String[]{"azure", "Client secret"});
+        // Consumed by GoogleAuthService — same reasoning as azure.* above.
+        m.put("google.client_id", new String[]{"google", "Client ID"});
+        m.put("google.client_secret", new String[]{"google", "Client secret"});
+        m.put("google.hosted_domain", new String[]{"google", "Workspace domain (optional)"});
         return m;
     }
 
