@@ -4,6 +4,7 @@ import com.example.multimedia.file_upload_api.dto.RolePermissionDTO;
 import com.example.multimedia.file_upload_api.dto.RolePermissionUpdateRequest;
 import com.example.multimedia.file_upload_api.dto.ServiceResponse;
 import com.example.multimedia.file_upload_api.enums.UserType;
+import com.example.multimedia.file_upload_api.service.AuditLogService;
 import com.example.multimedia.file_upload_api.service.RolePermissionService;
 import com.example.multimedia.file_upload_api.utils.ServiceControllerUtils;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ public class RolePermissionController {
 
     private final RolePermissionService rolePermissionService;
     private final ServiceControllerUtils serviceControllerUtils;
+    private final AuditLogService auditLogService;
 
     @GetMapping("/roles")
     public ResponseEntity<ServiceResponse> getAllRoles() {
@@ -57,6 +59,9 @@ public class RolePermissionController {
         ServiceResponse response = new ServiceResponse();
         try {
             rolePermissionService.saveRolePermissions(request);
+            auditLogService.recordGeneric("ROLE_PERMISSIONS_UPDATED", request.getRole().name(), List.of(
+                    new AuditLogService.FieldChange("permissionsUpdated", null, String.valueOf(request.getPermissions().size()))
+            ));
             return ResponseEntity.ok(serviceControllerUtils.prepareMobileResponseSuccessStatus(
                     response, "200", "Role permissions updated successfully"));
         } catch (Exception e) {

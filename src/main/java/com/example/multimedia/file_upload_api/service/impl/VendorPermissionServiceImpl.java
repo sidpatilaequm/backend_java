@@ -39,6 +39,9 @@ public class VendorPermissionServiceImpl implements VendorPermissionService {
     @Autowired
     private CurrentUserService currentUserService;
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.service.AuditLogService auditLogService;
+
     @Override
     @Transactional
     public void saveVendorPermissions(VendorPermissionRequestDto requestDto) {
@@ -68,6 +71,11 @@ public class VendorPermissionServiceImpl implements VendorPermissionService {
 
             vendorPermissionRepository.save(vp);
         }
+
+        auditLogService.recordGeneric("VENDOR_PERMISSIONS_UPDATED", company.getCompanyName(), java.util.List.of(
+                new com.example.multimedia.file_upload_api.service.AuditLogService.FieldChange(
+                        "permissionsUpdated", null, String.valueOf(requestDto.getPermissions().size()))
+        ));
     }
 
     @Override

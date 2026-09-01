@@ -85,17 +85,20 @@ public class PlatformCredentialController {
     private final UserDetailRepository userDetailRepository;
     private final UserAuthenticationRepository userAuthenticationRepository;
     private final AuthorizationRepository authorizationRepository;
+    private final com.example.multimedia.file_upload_api.service.AuditLogService auditLogService;
 
     public PlatformCredentialController(PlatformCredentialService credentials,
                                          SuperAdminRepository superAdminRepository,
                                          UserDetailRepository userDetailRepository,
                                          UserAuthenticationRepository userAuthenticationRepository,
-                                         AuthorizationRepository authorizationRepository) {
+                                         AuthorizationRepository authorizationRepository,
+                                         com.example.multimedia.file_upload_api.service.AuditLogService auditLogService) {
         this.credentials = credentials;
         this.superAdminRepository = superAdminRepository;
         this.userDetailRepository = userDetailRepository;
         this.userAuthenticationRepository = userAuthenticationRepository;
         this.authorizationRepository = authorizationRepository;
+        this.auditLogService = auditLogService;
     }
 
     @GetMapping
@@ -130,6 +133,18 @@ public class PlatformCredentialController {
             }
         }
         payload.forEach((key, value) -> credentials.set(key, value, email));
+
+        // Never logs a value, changed or not — these are secrets. Just which keys were touched.
+        String groupLabel = payload.keySet().stream()
+                .map(k -> k.substring(0, k.indexOf('.')))
+                .distinct()
+                .collect(java.util.stream.Collectors.joining(", "));
+        java.util.List<com.example.multimedia.file_upload_api.service.AuditLogService.FieldChange> changes =
+                payload.keySet().stream()
+                        .map(k -> new com.example.multimedia.file_upload_api.service.AuditLogService.FieldChange(k, null, null))
+                        .toList();
+        auditLogService.recordGeneric("PLATFORM_CREDENTIAL_UPDATED", groupLabel, changes);
+
         return ResponseEntity.ok(Map.of("saved", payload.keySet()));
     }
 
