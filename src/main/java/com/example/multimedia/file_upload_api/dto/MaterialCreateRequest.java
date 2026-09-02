@@ -11,15 +11,12 @@ public class MaterialCreateRequest {
     private Boolean blocked;
     private String type;
     private String baseUnitOfMeasure;
-    private Long subcategoryId;
-    private Long itemCategoryId;
+
     private String hsnCode;
     private String sku;
     private String purchasingCode;
     private Boolean variantMandatory;
-    private String itemCategoryCode;
-    private String subcategoryName;
-    private List<MaterialAttributeDTO> attributes;
+
     private List<GeneralAttributeRequest> generalAttributes;
     // Add other fields as needed
     private Long superAdminId;

@@ -40,9 +40,7 @@ public class CatalogPdfService {
     private static final Logger logger = LoggerFactory.getLogger(CatalogPdfService.class);
 
 
-    @Autowired
-    private MaterialImageService materialImageService;
-    
+
     @Autowired
     private CompanyCoverPhotoService companyCoverPhotoService;
 
@@ -317,49 +315,10 @@ public class CatalogPdfService {
         cardCell.setHeight(200);
         cardCell.setVerticalAlignment(VerticalAlignment.TOP);
         
-        // Product image (if available) - make it clickable
-        if (product.getMaterialId() != null && product.getImageName() != null) {
-            try {
-                // Fetch image from database
-                Optional<byte[]> imageData = materialImageService.getImageData(
-                    product.getMaterialId(), 
-                    product.getImageName()
-                );
-                
-                if (imageData.isPresent()) {
-                    // Create image from database bytes
-                    Image productImage = new Image(ImageDataFactory.create(imageData.get()));
-                    productImage.setWidth(80).setHeight(80);
-                    productImage.setHorizontalAlignment(HorizontalAlignment.CENTER);
-                    
-                    // Add image (clickable functionality will be handled by the button below)
-                    cardCell.add(productImage);
-                    
-                    logger.debug("Image added successfully from database: materialId={}, imageName={}", 
-                        product.getMaterialId(), product.getImageName());
-                } else {
-                    // Image not found in database, add placeholder
-                    Paragraph noImage = new Paragraph("No image").setFontSize(8);
-                    noImage.setTextAlignment(TextAlignment.CENTER);
-                    cardCell.add(noImage);
-                    logger.warn("Image not found in database: materialId={}, imageName={}", 
-                        product.getMaterialId(), product.getImageName());
-                }
-                
-            } catch (Exception e) {
-                logger.error("Error processing image from database: materialId={}, imageName={}, error={}", 
-                    product.getMaterialId(), product.getImageName(), e.getMessage());
-                // Image processing failed, add placeholder
-                Paragraph noImage = new Paragraph("No image").setFontSize(8);
-                noImage.setTextAlignment(TextAlignment.CENTER);
-                cardCell.add(noImage);
-            }
-        } else {
-            // No materialId or imageName provided, add placeholder
-            Paragraph noImage = new Paragraph("No image").setFontSize(8);
-            noImage.setTextAlignment(TextAlignment.CENTER);
-            cardCell.add(noImage);
-        }
+        // Product image functionality removed since MaterialImage is deleted
+        Paragraph noImage = new Paragraph("No image").setFontSize(8);
+        noImage.setTextAlignment(TextAlignment.CENTER);
+        cardCell.add(noImage);
         
         // Product name
         Paragraph productName = new Paragraph(product.getProductName()).setFontSize(10).setBold();

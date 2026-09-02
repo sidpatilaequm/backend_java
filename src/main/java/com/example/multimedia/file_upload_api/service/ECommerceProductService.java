@@ -10,7 +10,6 @@ public interface ECommerceProductService {
 
     ProductResponseDTO getProductDetails(Long productId, Long superAdminId);
 
-    List<Material> getProductsByCategory(Long categoryId);
 
     ProductResponseDTO getProductByChannel(Long productId, Long channelId, Long companyId);
 }

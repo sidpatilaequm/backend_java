@@ -7,7 +7,7 @@ import com.example.multimedia.file_upload_api.entity.ChannelCategory;
 import com.example.multimedia.file_upload_api.repository.CategoryChannelMappingRepository;
 import com.example.multimedia.file_upload_api.repository.ChannelCategoryRepository;
 import com.example.multimedia.file_upload_api.repository.ChannelRepository;
-import com.example.multimedia.file_upload_api.repository.MaterialChannelListingRepository;
+
 import com.example.multimedia.file_upload_api.service.ChannelCategoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,7 +23,7 @@ public class ChannelCategoryServiceImpl implements ChannelCategoryService {
 
     private final ChannelCategoryRepository categoryRepository;
     private final ChannelRepository channelRepository;
-    private final MaterialChannelListingRepository listingRepository;
+
     private final CategoryChannelMappingRepository mappingRepository;
 
     @Override
@@ -134,7 +134,7 @@ public class ChannelCategoryServiceImpl implements ChannelCategoryService {
         }
 
         // 3. Clean up associated data for THIS category
-        listingRepository.deleteByChannelCategory_CategoryId(category.getCategoryId());
+
         mappingRepository.deleteByChannelCategory_CategoryId(category.getCategoryId());
 
         // 4. Finally delete the category itself

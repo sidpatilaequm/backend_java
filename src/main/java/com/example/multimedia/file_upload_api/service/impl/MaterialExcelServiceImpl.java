@@ -32,8 +32,6 @@ import java.util.Map;
 public class MaterialExcelServiceImpl implements MaterialExcelService {
 
     private final MaterialRepository materialRepository;
-    private final ItemCategoryRepository itemCategoryRepository;
-    private final ItemSubcategoryRepository itemSubcategoryRepository;
     private final SuperAdminRepository superAdminRepository;
     private final LocationRepository locationRepository;
 
@@ -54,8 +52,7 @@ public class MaterialExcelServiceImpl implements MaterialExcelService {
             Sheet sheet = workbook.getSheetAt(0);
 
             // Fetch defaults to prevent foreign key null constraint errors
-            ItemCategory defaultCategory = itemCategoryRepository.findAll().stream().findFirst().orElse(null);
-            ItemSubcategory defaultSubcategory = itemSubcategoryRepository.findAll().stream().findFirst().orElse(null);
+
             SuperAdmin defaultSuperAdmin = superAdminRepository.findAll().stream().findFirst().orElse(null);
             Location defaultLocation = locationRepository.findAll().stream().findFirst().orElse(null);
 
@@ -109,13 +106,7 @@ public class MaterialExcelServiceImpl implements MaterialExcelService {
                         material.setVariantMandatory(false);
                         
                         // Set foreign keys to avoid null constraints
-                        if (defaultCategory != null) material.setItemCategory(defaultCategory);
-                        if (defaultSubcategory != null) {
-                            material.setSubcategory(defaultSubcategory);
-                            material.setSubcategoryL1(defaultSubcategory);
-                            material.setSubcategoryL2(defaultSubcategory);
-                            material.setSubcategoryL3(defaultSubcategory);
-                        }
+
                         if (defaultSuperAdmin != null) material.setSuperAdmin(defaultSuperAdmin);
                         if (defaultLocation != null) material.setLocation(defaultLocation);
                     }

@@ -27,10 +27,6 @@ public class ECommerceProductController {
         return ResponseEntity.ok(eCommerceProductService.getProductDetails(id, adminId));
     }
 
-    @GetMapping("/category/{categoryId}")
-    public ResponseEntity<List<Material>> getByCategory(@PathVariable Long categoryId) {
-        return ResponseEntity.ok(eCommerceProductService.getProductsByCategory(categoryId));
-    }
 
     @GetMapping("/{id}/channel/{channelId}")
     public ResponseEntity<ProductResponseDTO> getByChannel(

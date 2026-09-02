@@ -10,7 +10,6 @@ public class FullProductCreateRequest {
     private Material product;
     private Double initialQty;
     private BigDecimal price;
-    private Long categoryId;
     private Long locationId;
     private Long superAdminId;
 }

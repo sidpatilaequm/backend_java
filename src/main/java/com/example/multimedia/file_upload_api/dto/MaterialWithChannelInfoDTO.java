@@ -28,7 +28,6 @@ public class MaterialWithChannelInfoDTO {
     
     // Image information
     private byte[] barcodeImage;
-    private List<MaterialImageDTO> materialImages;
     
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdDate;

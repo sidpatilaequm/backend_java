@@ -29,7 +29,7 @@ public class ECommerceInventoryServiceImpl implements ECommerceInventoryService 
                 .orElseThrow(() -> new RuntimeException("Location not found"));
 
         Inventory inventory = inventoryRepository
-                .findByMaterialAndLocationAndVariantIsNullAndSuperAdmin_SuperAdminIdAndIsActiveTrue(
+                .findByMaterialAndLocationAndSuperAdmin_SuperAdminIdAndIsActiveTrue(
                         material, location, superAdminId)
                 .orElseGet(() -> {
                     Inventory newInv = new Inventory();

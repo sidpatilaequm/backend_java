@@ -114,7 +114,7 @@ public class PortalPurchaseOrderController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping({"/api/vendor/asns/history/{poNumber}", "/api/vendor/purchase-orders/{poNumber}/asns"})
+    @GetMapping({"/api/vendor/asns/history/{poNumber}", "/api/vendor/purchase-orders/{poNumber}/asns", "/api/purchase-orders/{poNumber}/asns"})
     public ResponseEntity<?> getAsnsForPo(@PathVariable String poNumber) {
         return ResponseEntity.ok(asnService.getAsnsByPoNumber(poNumber));
     }

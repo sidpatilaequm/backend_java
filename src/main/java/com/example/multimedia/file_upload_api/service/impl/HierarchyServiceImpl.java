@@ -230,13 +230,7 @@ public class HierarchyServiceImpl implements HierarchyService {
     public ServiceResponse deleteCategory(Long categoryId) {
         ServiceResponse response = new ServiceResponse();
         try {
-            if (materialRepository.existsByItemCategory_ItemCategoryId(categoryId)) {
-                response.setStatus("400");
-                response.setStatusMsg("Cannot delete category as it is associated with products");
-                response.setErrorCode("1");
-                return response;
-            }
-            
+
             if (subcategoryRepository.countByItemCategory_ItemCategoryId(categoryId) > 0) {
                 response.setStatus("400");
                 response.setStatusMsg("Cannot delete category as it contains subcategories");
@@ -261,18 +255,6 @@ public class HierarchyServiceImpl implements HierarchyService {
     public ServiceResponse deleteSubcategory(Long subcategoryId) {
         ServiceResponse response = new ServiceResponse();
         try {
-            // Check all 3 levels and the generic subcategory field
-            if (materialRepository.existsBySubcategory_ItemSubcategoryId(subcategoryId) ||
-                materialRepository.existsBySubcategoryL1_ItemSubcategoryId(subcategoryId) ||
-                materialRepository.existsBySubcategoryL2_ItemSubcategoryId(subcategoryId) ||
-                materialRepository.existsBySubcategoryL3_ItemSubcategoryId(subcategoryId)) {
-                
-                response.setStatus("400");
-                response.setStatusMsg("Cannot delete subcategory as it is associated with products");
-                response.setErrorCode("1");
-                return response;
-            }
-
             if (subcategoryRepository.findByParentSubcategory_ItemSubcategoryId(subcategoryId).size() > 0) {
                 response.setStatus("400");
                 response.setStatusMsg("Cannot delete subcategory as it has children");

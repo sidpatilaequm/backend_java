@@ -22,17 +22,8 @@ public class BulkMaterialCreateRequest {
         private String purchasingCode;
         private Boolean variantMandatory;
         private Long locationId;
-        private List<MaterialAttributeDTO> attributes;
-        private List<GeneralAttributeRequest> generalAttributes;
         
         // Image data as base64 strings for JSON API
         private String barcodeImageBase64;
-        private List<String> materialImagesBase64;
-        
-        @Data
-        public static class GeneralAttributeRequest {
-            private Long attributeId;
-            private String type; // Should be "GENERAL"
-        }
     }
 }

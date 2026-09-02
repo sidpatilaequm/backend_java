@@ -38,26 +38,6 @@ public class Material {
     @Column(name = "base_unit_of_measure", nullable = false)
     private String baseUnitOfMeasure;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "item_subcategory_id", nullable = true)
-    private ItemSubcategory subcategory;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "subcategory_l1_id", nullable = true)
-    private ItemSubcategory subcategoryL1;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "subcategory_l2_id", nullable = true)
-    private ItemSubcategory subcategoryL2;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "subcategory_l3_id", nullable = true)
-    private ItemSubcategory subcategoryL3;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "item_category_id")
-    private ItemCategory itemCategory;
-
     @Column(name = "hsn_code", nullable = false)
     private String hsnCode;
 
@@ -102,12 +82,7 @@ public class Material {
     @Column(name = "vendor_id")
     private Long vendorId;
 
-    @OneToMany(mappedBy = "material", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("sequenceOrder ASC")
-    private List<MaterialImage> materialImages;
 
-    @OneToMany(mappedBy = "material", cascade = CascadeType.ALL, orphanRemoval = true)
-    private Set<MaterialVariant> variants;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "super_admin_id", nullable = false)
@@ -127,8 +102,7 @@ public class Material {
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime modifiedDate;
 
-    @OneToMany(mappedBy = "material", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<MaterialAttribute> generalAttributes;
+
 
     // --- SAP Master Data Fields Start ---
 

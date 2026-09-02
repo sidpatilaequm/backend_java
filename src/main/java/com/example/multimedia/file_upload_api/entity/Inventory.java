@@ -12,8 +12,8 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "inventory", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_inventory_material_variant_location_admin", columnNames = { "material_id",
-                "variant_id", "location_id", "super_admin_id" })
+        @UniqueConstraint(name = "uk_inventory_material_location_admin", columnNames = { "material_id",
+                "location_id", "super_admin_id" })
 })
 @Data
 @NoArgsConstructor
@@ -29,9 +29,7 @@ public class Inventory {
     @JoinColumn(name = "material_id", nullable = false)
     private Material material;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "variant_id", nullable = true)
-    private MaterialVariant variant;
+
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "location_id", nullable = false)

@@ -6,14 +6,12 @@ import com.example.multimedia.file_upload_api.dto.ChannelDTO;
 import com.example.multimedia.file_upload_api.dto.ChannelUpdateRequest;
 import com.example.multimedia.file_upload_api.dto.CountryDTO;
 import com.example.multimedia.file_upload_api.dto.CurrencyDTO;
-import com.example.multimedia.file_upload_api.dto.MaterialImageDTO;
 import com.example.multimedia.file_upload_api.dto.MaterialWithChannelInfoDTO;
 import com.example.multimedia.file_upload_api.dto.ServiceResponse;
 import com.example.multimedia.file_upload_api.entity.Channel;
 import com.example.multimedia.file_upload_api.entity.ChannelCategory;
 import com.example.multimedia.file_upload_api.entity.CompanyDetails;
 import com.example.multimedia.file_upload_api.entity.SuperAdmin;
-import com.example.multimedia.file_upload_api.entity.MaterialChannelMapping;
 import com.example.multimedia.file_upload_api.repository.*;
 import com.example.multimedia.file_upload_api.entity.Country;
 import com.example.multimedia.file_upload_api.entity.Currency;
@@ -41,13 +39,7 @@ public class ChannelService {
     private CompanyDetailsRepository companyDetailsRepository;
 
     @Autowired
-    private MaterialChannelListingRepository listingRepository;
-
-    @Autowired
     private CategoryChannelMappingRepository categoryMappingRepository;
-
-    @Autowired
-    private MaterialChannelMappingRepository mappingRepository;
 
     @Autowired
     private CountryRepository countryRepository;
@@ -109,10 +101,7 @@ public class ChannelService {
                         dto.setDescription(""); // ChannelCategory doesn't have description field
                         dto.setIsActive(category.getIsActive());
 
-                        // Count products in this category for this channel
-                        Long productCount = mappingRepository.countByChannel_ChannelIdAndCategory_CategoryIdAndStatus(
-                                channelId, category.getCategoryId(), true);
-                        dto.setProductCount(productCount);
+                        dto.setProductCount(0L);
 
                         return dto;
                     })
@@ -468,15 +457,6 @@ public class ChannelService {
 
             Channel channel = channelOpt.get();
 
-            // 1. Delete all Marketplace Listings (SKUs)
-            listingRepository.deleteByChannel_ChannelId(channelId);
-
-            // 2. Delete all Category Mappings (Internal <-> External)
-            categoryMappingRepository.deleteByChannel_ChannelId(channelId);
-
-            // 3. Delete Legacy Mappings (if any)
-            mappingRepository.deleteByChannel_ChannelId(channelId);
-
             // 4. Delete all Marketplace Categories (Tree)
             List<ChannelCategory> categories = channelCategoryRepository.findByChannel_ChannelId(channelId);
             channelCategoryRepository.deleteAll(categories);
@@ -711,22 +691,6 @@ public class ChannelService {
                 return response;
             }
 
-            // Check if category is referenced by any material-channel mappings
-            // If yes, we need to handle the foreign key constraint
-            List<MaterialChannelMapping> mappings = mappingRepository.findByCompany_CompanyIdAndChannel_ChannelId(
-                    company.getCompanyId(), channelId);
-
-            boolean categoryReferenced = mappings.stream()
-                    .anyMatch(mapping -> mapping.getCategory() != null &&
-                            mapping.getCategory().getCategoryId().equals(categoryId));
-
-            if (categoryReferenced) {
-                response.setStatus("ERROR");
-                response.setStatusMsg(
-                        "Cannot delete category: It is referenced by material-channel mappings. Please remove the mappings first.");
-                return response;
-            }
-
             // Delete the category
             channelCategoryRepository.delete(category);
 
@@ -781,103 +745,13 @@ public class ChannelService {
 
             Channel channel = channelOpt.get();
 
-            // Get all material-channel mappings for this channel
-            List<MaterialChannelMapping> mappings = mappingRepository.findByCompany_CompanyIdAndChannel_ChannelId(
-                    company.getCompanyId(), channelId);
-
-            if (mappings.isEmpty()) {
-                response.setStatus("SUCCESS");
-                response.setStatusMsg("No materials found for the specified channel");
-                response.addData("channelId", channelId);
-                response.addData("channelName", channel.getChannelName());
-                response.addData("channelCode", channel.getChannelCode());
-                response.addData("materials", new ArrayList<>());
-                response.addData("totalMaterials", 0);
-                return response;
-            }
-
-            // Convert mappings to detailed material information
-            List<MaterialWithChannelInfoDTO> materialDTOs = mappings.stream()
-                    .map(mapping -> {
-                        MaterialWithChannelInfoDTO dto = new MaterialWithChannelInfoDTO();
-                        Material material = mapping.getMaterial();
-
-                        // Basic material information
-                        dto.setMaterialId(material.getMaterialId());
-                        dto.setMaterialName(material.getMaterialName());
-                        dto.setDescription(material.getDescription());
-                        dto.setType(material.getType());
-                        dto.setBaseUnitOfMeasure(material.getBaseUnitOfMeasure());
-                        dto.setHsnCode(material.getHsnCode());
-                        dto.setSku(material.getSku());
-                        dto.setPurchasingCode(material.getPurchasingCode());
-                        dto.setVariantMandatory(material.getVariantMandatory());
-                        dto.setVendorArticleNumber(material.getVendorArticleNumber());
-                        dto.setMaterialCode(material.getMaterialCode());
-                        dto.setBlocked(material.getBlocked());
-                        dto.setCreatedDate(material.getCreatedDate());
-                        dto.setModifiedDate(material.getModifiedDate());
-
-                        // Image information
-                        dto.setBarcodeImage(material.getBarcodeImage());
-
-                        // Convert material images to DTOs
-                        if (material.getMaterialImages() != null && !material.getMaterialImages().isEmpty()) {
-                            List<MaterialImageDTO> imageDTOs = material.getMaterialImages().stream()
-                                    .map(img -> new MaterialImageDTO(
-                                            img.getImageId(),
-                                            img.getImageName(),
-                                            img.getImageType(),
-                                            img.getImageData(),
-                                            img.getSequenceOrder(),
-                                            material.getMaterialId()))
-                                    .collect(Collectors.toList());
-                            dto.setMaterialImages(imageDTOs);
-                        }
-
-                        // Item Category information if available
-                        if (material.getItemCategory() != null) {
-                            dto.setItemCategoryId(material.getItemCategory().getItemCategoryId());
-                            dto.setItemCategoryName(material.getItemCategory().getDescription());
-                            dto.setItemCategoryCode(material.getItemCategory().getCode());
-                        }
-
-                        // Item Subcategory information if available
-                        if (material.getSubcategory() != null) {
-                            dto.setItemSubcategoryId(material.getSubcategory().getItemSubcategoryId());
-                            dto.setItemSubcategoryName(material.getSubcategory().getItemSubcategoryName());
-                        }
-
-                        // Channel information
-                        dto.setChannelId(mapping.getChannel().getChannelId());
-                        dto.setChannelName(mapping.getChannel().getChannelName());
-                        dto.setChannelCode(mapping.getChannel().getChannelCode());
-
-                        // Channel Category information if assigned
-                        if (mapping.getCategory() != null) {
-                            dto.setChannelCategoryId(mapping.getCategory().getCategoryId());
-                            dto.setChannelCategoryName(mapping.getCategory().getCategoryName());
-                            dto.setChannelCategoryCode(mapping.getCategory().getCategoryCode());
-                        }
-
-                        // Channel-specific material information
-                        dto.setPrice(mapping.getPrice());
-                        dto.setStock(mapping.getStock());
-                        dto.setStatus(mapping.getStatus());
-                        dto.setMappingCreatedAt(mapping.getCreatedAt());
-                        dto.setMappingUpdatedAt(mapping.getUpdatedAt());
-
-                        return dto;
-                    })
-                    .collect(Collectors.toList());
-
             response.setStatus("SUCCESS");
             response.setStatusMsg("Materials retrieved successfully for channel: " + channel.getChannelName());
             response.addData("channelId", channelId);
             response.addData("channelName", channel.getChannelName());
             response.addData("channelCode", channel.getChannelCode());
-            response.addData("materials", materialDTOs);
-            response.addData("totalMaterials", materialDTOs.size());
+            response.addData("materials", new ArrayList<>());
+            response.addData("totalMaterials", 0);
 
         } catch (Exception e) {
             response.setStatus("ERROR");

@@ -17,9 +17,7 @@ public class ECommerceProductServiceImpl implements ECommerceProductService {
 
     private final MaterialRepository materialRepository;
     private final InventoryRepository inventoryRepository;
-    private final MaterialImageRepository materialImageRepository;
-    private final MaterialChannelListingRepository listingRepository;
-    private final ItemCategoryRepository itemCategoryRepository;
+
     private final LocationRepository locationRepository;
     private final SuperAdminRepository superAdminRepository;
 
@@ -29,14 +27,13 @@ public class ECommerceProductServiceImpl implements ECommerceProductService {
         Material material = request.getProduct();
 
         // Load relationships
-        ItemCategory category = itemCategoryRepository.findById(request.getCategoryId())
-                .orElseThrow(() -> new RuntimeException("Category not found"));
+
         SuperAdmin admin = superAdminRepository.findById(request.getSuperAdminId())
                 .orElseThrow(() -> new RuntimeException("Admin not found"));
         Location location = locationRepository.findById(request.getLocationId())
                 .orElseThrow(() -> new RuntimeException("Location not found"));
 
-        material.setItemCategory(category);
+
         material.setSuperAdmin(admin);
         material.setLocation(location);
 
@@ -64,7 +61,6 @@ public class ECommerceProductServiceImpl implements ECommerceProductService {
 
         ProductResponseDTO response = new ProductResponseDTO();
         response.setProduct(material);
-        response.setImages(materialImageRepository.findByMaterial_MaterialId(productId));
 
         inventoryRepository.findByMaterialAndSuperAdmin_SuperAdminIdAndIsActiveTrue(material, superAdminId)
                 .stream().findFirst().ifPresent(response::setInventory);
@@ -74,20 +70,10 @@ public class ECommerceProductServiceImpl implements ECommerceProductService {
         return response;
     }
 
-    @Override
-    public List<Material> getProductsByCategory(Long categoryId) {
-        return materialRepository.findByItemCategory_ItemCategoryId(categoryId);
-    }
 
     @Override
     public ProductResponseDTO getProductByChannel(Long productId, Long channelId, Long companyId) {
         ProductResponseDTO response = getProductDetails(productId, null); // Simplified
-
-        listingRepository
-                .findByMaterial_MaterialIdAndChannel_ChannelIdAndCompany_CompanyId(productId, channelId, companyId)
-                .ifPresent(listing -> {
-                    // Logic to handle listing details
-                });
 
         return response;
     }

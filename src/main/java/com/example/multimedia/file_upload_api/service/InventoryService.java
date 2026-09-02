@@ -29,8 +29,7 @@ public class InventoryService {
     @Autowired
     private MaterialRepository materialRepository;
 
-    @Autowired
-    private MaterialVariantRepository materialVariantRepository;
+
 
     @Autowired
     private LocationService locationService;
@@ -69,9 +68,7 @@ public class InventoryService {
                 
                 // Create a map of material ID to inventory for quick lookup
                 for (Inventory inv : existingInventories) {
-                    if (inv.getVariant() == null) { // Only material-level inventory for now
-                        inventoryMap.put(inv.getMaterial().getMaterialId(), inv);
-                    }
+                    inventoryMap.put(inv.getMaterial().getMaterialId(), inv);
                 }
                 
                 // Create DTOs for all materials
@@ -108,10 +105,8 @@ public class InventoryService {
                 // Create map of (materialId, locationId) -> Inventory
                 Map<String, Inventory> inventoryLocationMap = new java.util.HashMap<>();
                 for (Inventory inv : allInventories) {
-                    if (inv.getVariant() == null) {
-                        String key = inv.getMaterial().getMaterialId() + "_" + inv.getLocation().getLocationId();
-                        inventoryLocationMap.put(key, inv);
-                    }
+                    String key = inv.getMaterial().getMaterialId() + "_" + inv.getLocation().getLocationId();
+                    inventoryLocationMap.put(key, inv);
                 }
                 
                 // Get all materials for all locations
@@ -193,7 +188,7 @@ public class InventoryService {
             
             // Find or create inventory
             Inventory inventory = inventoryRepository
-                .findByMaterialAndLocationAndVariantIsNullAndSuperAdmin_SuperAdminIdAndIsActiveTrue(
+                .findByMaterialAndLocationAndSuperAdmin_SuperAdminIdAndIsActiveTrue(
                     material, location, superAdmin.getSuperAdminId())
                 .orElseGet(() -> {
                     Inventory newInventory = new Inventory();
@@ -279,44 +274,19 @@ public class InventoryService {
                     Location location = locationService.getLocationEntityByName(locationName.trim(), superAdmin);
                     
                     Inventory inventory;
-                    if (variantCode != null && !variantCode.trim().isEmpty()) {
-                        // Variant-based inventory
-                        MaterialVariant variant = materialVariantRepository.findByMaterialAndVariantCode(material, variantCode)
-                            .orElse(null);
-                        
-                        if (variant == null) {
-                            failureCount++;
-                            continue;
-                        }
-                        
-                        inventory = inventoryRepository
-                            .findByMaterialAndVariantAndLocationAndSuperAdmin_SuperAdminIdAndIsActiveTrue(
-                                material, variant, location, superAdmin.getSuperAdminId())
-                            .orElseGet(() -> {
-                                Inventory newInventory = new Inventory();
-                                newInventory.setMaterial(material);
-                                newInventory.setVariant(variant);
-                                newInventory.setLocation(location);
-                                newInventory.setSuperAdmin(superAdmin);
-                                newInventory.setStockQuantity(0);
-                                newInventory.setIsActive(true);
-                                return newInventory;
-                            });
-                    } else {
-                        // Material-level inventory
-                        inventory = inventoryRepository
-                            .findByMaterialAndLocationAndVariantIsNullAndSuperAdmin_SuperAdminIdAndIsActiveTrue(
-                                material, location, superAdmin.getSuperAdminId())
-                            .orElseGet(() -> {
-                                Inventory newInventory = new Inventory();
-                                newInventory.setMaterial(material);
-                                newInventory.setLocation(location);
-                                newInventory.setSuperAdmin(superAdmin);
-                                newInventory.setStockQuantity(0);
-                                newInventory.setIsActive(true);
-                                return newInventory;
-                            });
-                    }
+                    // Material-level inventory
+                    inventory = inventoryRepository
+                        .findByMaterialAndLocationAndSuperAdmin_SuperAdminIdAndIsActiveTrue(
+                            material, location, superAdmin.getSuperAdminId())
+                        .orElseGet(() -> {
+                            Inventory newInventory = new Inventory();
+                            newInventory.setMaterial(material);
+                            newInventory.setLocation(location);
+                            newInventory.setSuperAdmin(superAdmin);
+                            newInventory.setStockQuantity(0);
+                            newInventory.setIsActive(true);
+                            return newInventory;
+                        });
                     
                     // Update stock and price
                     if (stockQuantity != null) {
@@ -367,7 +337,7 @@ public class InventoryService {
     public void initializeInventory(Material material, Location location, SuperAdmin superAdmin) {
         try {
             // Check if inventory already exists
-            boolean exists = inventoryRepository.existsByMaterialAndLocationAndVariantIsNullAndSuperAdmin_SuperAdminIdAndIsActiveTrue(
+            boolean exists = inventoryRepository.existsByMaterialAndLocationAndSuperAdmin_SuperAdminIdAndIsActiveTrue(
                 material, location, superAdmin.getSuperAdminId());
             
             if (!exists) {
@@ -417,10 +387,7 @@ public class InventoryService {
         dto.setMaterialName(inventory.getMaterial().getMaterialName());
         dto.setSku(inventory.getMaterial().getSku());
         
-        if (inventory.getVariant() != null) {
-            dto.setVariantId(inventory.getVariant().getId());
-            dto.setVariantCode(inventory.getVariant().getVariantCode());
-        }
+
         
         dto.setLocationId(inventory.getLocation().getLocationId());
         dto.setLocationName(inventory.getLocation().getLocationName());

@@ -6,7 +6,6 @@ import lombok.AllArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -38,9 +37,7 @@ public class PublicMaterialDetailsDTO {
     private Boolean channelIsActive;
     
     // Images
-    private List<MaterialImageDTO> materialImages;
     private byte[] barcodeImage;
-    private String firstImageBase64; // Base64 encoded first image data
     
     // Timestamps
     private LocalDateTime createdDate;
@@ -50,17 +47,4 @@ public class PublicMaterialDetailsDTO {
     private String channelSpecificDescription;
     private BigDecimal channelSpecificPrice;
     private String channelSpecificFeatures;
-    
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class MaterialImageDTO {
-        private Long imageId;
-        private String imageName;
-        private String imageType;
-        private String imageUrl;
-        private String imageBase64; // Base64 encoded image data
-        private Boolean isPrimary;
-        private Integer sequenceOrder;
-    }
 }
