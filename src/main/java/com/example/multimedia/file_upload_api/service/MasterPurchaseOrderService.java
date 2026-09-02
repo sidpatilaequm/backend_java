@@ -50,16 +50,16 @@ public class MasterPurchaseOrderService {
         this.vendorQuotationRepo = vendorQuotationRepo;
     }
 
-    // portal_purchase_orders.pr_id/quotation_id are NOT NULL — every portal PO has to trace back
-    // to the quotation (and, through it, the PR) it was awarded from, same as the app's own
-    // quotation-acceptance flow guarantees. The SAP export's "Reference Quotation" column (refQuot)
-    // is exactly what's meant to supply that link; it was being parsed and silently discarded
-    // before, which is why every import here failed on the pr_id NOT NULL constraint. Thrown as an
-    // IllegalStateException with the row's own PO number and reference so the sync response is
-    // actionable instead of a raw Hibernate constraint error.
+    // portal_purchase_orders.pr_id/quotation_id are nullable — confirmed some POs genuinely never
+    // go through an internal RFQ/quotation (legacy or directly-created in SAP), so a missing
+    // Reference Quotation in the export is a real, expected case, not an error: leave both
+    // unlinked and move on. A reference that IS present but doesn't match any quotation in the
+    // portal is different — that's a real data mismatch worth flagging rather than silently
+    // importing an orphaned link, so that case still throws, with the row's own PO number and
+    // reference so the sync response is actionable instead of a raw Hibernate error.
     private void linkQuotationAndPr(PortalPurchaseOrder po, String poNumber, String refQuot) {
         if (refQuot == null || refQuot.trim().isEmpty()) {
-            throw new IllegalStateException("PO " + poNumber + " has no Reference Quotation in the export — cannot import without one.");
+            return;
         }
         var quotation = vendorQuotationRepo.findByQuotationNumber(refQuot.trim())
                 .orElseThrow(() -> new IllegalStateException("PO " + poNumber + " references quotation " + refQuot + ", which doesn't exist in the portal."));
