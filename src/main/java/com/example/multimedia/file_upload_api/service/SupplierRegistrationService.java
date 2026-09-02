@@ -55,6 +55,7 @@ public class SupplierRegistrationService {
     private final VendorChangeRequestService vendorChangeRequestService;
     private final SupplierRegistrationDocumentTypeRepository documentTypeSelectionRepository;
     private final DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository;
+    private final DocumentTypeRepository documentTypeRepository;
 
     @Value("${workflow.api.base-url:http://localhost:8000}")
     private String workflowBaseUrl;
@@ -84,7 +85,8 @@ public class SupplierRegistrationService {
                                         VendorChangeRequestService vendorChangeRequestService,
                                         WorkflowEmailClient workflowEmailClient,
                                         SupplierRegistrationDocumentTypeRepository documentTypeSelectionRepository,
-                                        DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository) {
+                                        DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository,
+                                        DocumentTypeRepository documentTypeRepository) {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
         this.attachmentRepository = attachmentRepository;
@@ -106,6 +108,7 @@ public class SupplierRegistrationService {
         this.workflowEmailClient = workflowEmailClient;
         this.documentTypeSelectionRepository = documentTypeSelectionRepository;
         this.documentTypeCompanyCodeRepository = documentTypeCompanyCodeRepository;
+        this.documentTypeRepository = documentTypeRepository;
     }
 
     // ── Document upload + OCR + FolderIt storage ────────────────────────────
@@ -801,8 +804,20 @@ public class SupplierRegistrationService {
             docsOut.add(docOut);
         }
         data.put("documents", docsOut);
-        data.put("documentTypeSelections", documentTypeSelectionRepository.findByRegistrationId(reg.getId()).stream()
-                .map(s -> Map.of("companyCode", s.getCompanyCode(), "docTypeCode", s.getDocTypeCode()))
+        // classification is embedded here so the vendor-facing dashboard (which tab to show for a
+        // selected company code) doesn't need a second reference-data round trip beyond my-profile.
+        List<SupplierRegistrationDocumentType> docTypeSelections = documentTypeSelectionRepository.findByRegistrationId(reg.getId());
+        Map<String, String> classificationByCode = documentTypeRepository.findAllById(
+                docTypeSelections.stream().map(SupplierRegistrationDocumentType::getDocTypeCode).distinct().toList()
+        ).stream().collect(java.util.stream.Collectors.toMap(DocumentType::getCode, DocumentType::getClassification));
+        data.put("documentTypeSelections", docTypeSelections.stream()
+                .map(s -> {
+                    Map<String, String> m = new HashMap<>();
+                    m.put("companyCode", s.getCompanyCode());
+                    m.put("docTypeCode", s.getDocTypeCode());
+                    m.put("classification", classificationByCode.get(s.getDocTypeCode()));
+                    return m;
+                })
                 .toList());
         data.put("attachments", buildAttachmentsOut(reg.getId(), true));
         data.put("dynamicAnswers", questionnaireService.getAnswersForReview(reg.getFormStudioResponseId(), reg.getId()).toList());
