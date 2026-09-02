@@ -11,7 +11,7 @@ import java.util.List;
 @Data
 public class BudgetVersion {
     @Id
-    @Column(name = "version_code", length = 20, nullable = false)
+    @Column(name = "version_code", nullable = false)
     private String versionCode;
 
     @Column(name = "fiscal_year")
