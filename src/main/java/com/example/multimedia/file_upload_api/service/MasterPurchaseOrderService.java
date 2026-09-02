@@ -39,13 +39,32 @@ public class MasterPurchaseOrderService {
     private final MasterPurchaseOrderRepository masterPoRepo;
     private final PortalPurchaseOrderRepository portalPoRepo;
     private final com.example.multimedia.file_upload_api.repository.VendorMasterRepository vendorMasterRepo;
+    private final com.example.multimedia.file_upload_api.repository.VendorQuotationRepository vendorQuotationRepo;
 
     @Autowired
-    public MasterPurchaseOrderService(CompanyDetailsRepository companyRepo, MasterPurchaseOrderRepository masterPoRepo, PortalPurchaseOrderRepository portalPoRepo, com.example.multimedia.file_upload_api.repository.VendorMasterRepository vendorMasterRepo) {
+    public MasterPurchaseOrderService(CompanyDetailsRepository companyRepo, MasterPurchaseOrderRepository masterPoRepo, PortalPurchaseOrderRepository portalPoRepo, com.example.multimedia.file_upload_api.repository.VendorMasterRepository vendorMasterRepo, com.example.multimedia.file_upload_api.repository.VendorQuotationRepository vendorQuotationRepo) {
         this.companyRepo = companyRepo;
         this.masterPoRepo = masterPoRepo;
         this.portalPoRepo = portalPoRepo;
         this.vendorMasterRepo = vendorMasterRepo;
+        this.vendorQuotationRepo = vendorQuotationRepo;
+    }
+
+    // portal_purchase_orders.pr_id/quotation_id are NOT NULL — every portal PO has to trace back
+    // to the quotation (and, through it, the PR) it was awarded from, same as the app's own
+    // quotation-acceptance flow guarantees. The SAP export's "Reference Quotation" column (refQuot)
+    // is exactly what's meant to supply that link; it was being parsed and silently discarded
+    // before, which is why every import here failed on the pr_id NOT NULL constraint. Thrown as an
+    // IllegalStateException with the row's own PO number and reference so the sync response is
+    // actionable instead of a raw Hibernate constraint error.
+    private void linkQuotationAndPr(PortalPurchaseOrder po, String poNumber, String refQuot) {
+        if (refQuot == null || refQuot.trim().isEmpty()) {
+            throw new IllegalStateException("PO " + poNumber + " has no Reference Quotation in the export — cannot import without one.");
+        }
+        var quotation = vendorQuotationRepo.findByQuotationNumber(refQuot.trim())
+                .orElseThrow(() -> new IllegalStateException("PO " + poNumber + " references quotation " + refQuot + ", which doesn't exist in the portal."));
+        po.setQuotation(quotation);
+        po.setPurchaseRequisition(quotation.getPurchaseRequisition());
     }
 
     @Transactional
@@ -110,13 +129,14 @@ public class MasterPurchaseOrderService {
                     po.setPoNumber(poNumber);
                     po.setCompanyCode(coCode);
                     po.setPurchasingDocType(poType);
-                    
+                    linkQuotationAndPr(po, poNumber, refQuot);
+
                     try {
                         po.setPoDate(LocalDate.parse(dateStr, formatter));
                     } catch (Exception e) {
                         po.setPoDate(LocalDate.now());
                     }
-                    
+
                     if (vendorNo != null && !vendorNo.isEmpty()) {
                         vendorMasterRepo.findByBpNo(vendorNo.trim()).ifPresentOrElse(
                             vendorMaster -> {
@@ -134,7 +154,7 @@ public class MasterPurchaseOrderService {
                             }
                         );
                     }
-                    
+
                     po.setLanguageKey("EN");
                     po.setPurchasingOrganization(purchOrg);
                     po.setPurchasingGroup(purchGrp);
@@ -347,12 +367,13 @@ public class MasterPurchaseOrderService {
                     po.setPoNumber(poNumber);
                     po.setCompanyCode(coCode);
                     po.setPurchasingDocType(poType);
+                    linkQuotationAndPr(po, poNumber, refQuot);
                     try {
                         po.setPoDate(LocalDate.parse(dateStr, formatter));
                     } catch (Exception e) {
                         po.setPoDate(LocalDate.now());
                     }
-                    
+
                     if (vendorNo != null && !vendorNo.isEmpty()) {
                         vendorMasterRepo.findByBpNo(vendorNo.trim()).ifPresentOrElse(
                             vendorMaster -> {
