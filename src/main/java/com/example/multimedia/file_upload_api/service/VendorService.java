@@ -43,6 +43,12 @@ public class VendorService {
     @Autowired
     private SupplierRegistrationRepository supplierRegistrationRepository;
 
+    @Autowired
+    private SupplierRegistrationDocumentTypeRepository documentTypeSelectionRepository;
+
+    @Autowired
+    private DocumentTypeRepository documentTypeRepository;
+
     @Transactional
     public ServiceResponse getAllVendors() {
         ServiceResponse response = new ServiceResponse();
@@ -106,8 +112,27 @@ public class VendorService {
                 // already falls back to "Location not specified" when it's absent.
 
                 // Product/Service/Scheduling agreement/Sub-contracting, set by an approver during
-                // Become-a-Supplier review.
+                // Become-a-Supplier review. Superseded by documentTypeSelections below for
+                // registrations decided under the newer per-company-code flow, but left populated
+                // for whichever old registrations still only have this.
                 vendorData.put("vendorCategory", reg.getVendorCategory());
+
+                // Per-company document type codes (e.g. company 1000 -> NB, ZNB, ZCAP) the
+                // approver actually granted this vendor — see AdminWorkflows' Document Types
+                // picker and SupplierRegistrationService.setVendorDocumentTypes.
+                List<SupplierRegistrationDocumentType> docTypeSelections = documentTypeSelectionRepository.findByRegistrationId(reg.getId());
+                Map<String, String> classificationByCode = documentTypeRepository.findAllById(
+                        docTypeSelections.stream().map(SupplierRegistrationDocumentType::getDocTypeCode).distinct().toList()
+                ).stream().collect(Collectors.toMap(DocumentType::getCode, DocumentType::getClassification));
+                vendorData.put("documentTypeSelections", docTypeSelections.stream()
+                        .map(s -> {
+                            Map<String, String> m = new HashMap<>();
+                            m.put("companyCode", s.getCompanyCode());
+                            m.put("docTypeCode", s.getDocTypeCode());
+                            m.put("classification", classificationByCode.get(s.getDocTypeCode()));
+                            return m;
+                        })
+                        .toList());
 
                 vendorList.add(vendorData);
             }
