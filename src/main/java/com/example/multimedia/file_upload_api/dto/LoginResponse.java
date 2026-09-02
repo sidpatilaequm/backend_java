@@ -15,6 +15,12 @@ public class LoginResponse {
     private Object permissions; // Hierarchical tree of permissions
     private Boolean isDocumentsPresent;
     private String redirectUrl;
+    // The real VendorMaster.vendor_id — deliberately separate from permissions.vendorId, which is
+    // actually CompanyDetails.company_id (correct for permission-scoping, but a different ID
+    // space). PR/RFQ/ASN/quotation assignment all key off this one; conflating the two silently
+    // broke vendor-side visibility for any account where the two IDs differ, which is effectively
+    // always since they're separate auto-increment sequences.
+    private Long vendorMasterId;
 
     public LoginResponse(String token, String email, Long userId, String firstname, String lastname, String phoneNumber) {
         this.token = token;

@@ -68,6 +68,9 @@ public class AuthController {
     @Autowired
     private com.example.multimedia.file_upload_api.service.LoginAttemptService loginAttemptService;
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.repository.VendorMasterRepository vendorMasterRepository;
+
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
         try {
@@ -157,6 +160,12 @@ public class AuthController {
             response.setAuthId(auth.getAuthId());
             response.setAuthName(auth.getAuthName());
             response.setIsDocumentsPresent(checkDocumentsPresent(user.getCompany(), user.getEmail()));
+
+            if (user.getUserType() == UserType.VENDOR) {
+                vendorMasterRepository.findBySupplierRegistration_Email(user.getEmail()).stream()
+                        .findFirst()
+                        .ifPresent(vm -> response.setVendorMasterId(vm.getVendorId()));
+            }
 
             // Fetch permissions based on role type
             if (user.getUserType() == UserType.VENDOR || user.getUserType() == UserType.SUPER_ADMIN || user.getUserType() == null) {
