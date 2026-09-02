@@ -8,4 +8,5 @@ import java.util.List;
 public interface DocumentTypeCompanyCodeRepository
         extends JpaRepository<DocumentTypeCompanyCode, DocumentTypeCompanyCode.Pk> {
     List<DocumentTypeCompanyCode> findByDocTypeCode(String docTypeCode);
+    boolean existsByDocTypeCodeAndCompanyCode(String docTypeCode, String companyCode);
 }

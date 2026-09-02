@@ -9,6 +9,7 @@ import com.example.multimedia.file_upload_api.repository.AuthorizationRepository
 import com.example.multimedia.file_upload_api.repository.SuperAdminRepository;
 import com.example.multimedia.file_upload_api.repository.UserAuthenticationRepository;
 import com.example.multimedia.file_upload_api.repository.UserDetailRepository;
+import com.example.multimedia.file_upload_api.service.PurchaseRoleService;
 import com.example.multimedia.file_upload_api.service.QuestionnaireService;
 import com.example.multimedia.file_upload_api.service.SupplierRegistrationService;
 import com.example.multimedia.file_upload_api.service.VendorChangeRequestService;
@@ -40,6 +41,7 @@ public class SupplierRegistrationController {
     private final UserDetailRepository userDetailRepository;
     private final UserAuthenticationRepository userAuthenticationRepository;
     private final AuthorizationRepository authorizationRepository;
+    private final PurchaseRoleService purchaseRoleService;
 
     @Value("${workflow.webhook.secret:}")
     private String webhookSecret;
@@ -50,7 +52,8 @@ public class SupplierRegistrationController {
                                            SuperAdminRepository superAdminRepository,
                                            UserDetailRepository userDetailRepository,
                                            UserAuthenticationRepository userAuthenticationRepository,
-                                           AuthorizationRepository authorizationRepository) {
+                                           AuthorizationRepository authorizationRepository,
+                                           PurchaseRoleService purchaseRoleService) {
         this.service = service;
         this.questionnaireService = questionnaireService;
         this.vendorChangeRequestService = vendorChangeRequestService;
@@ -58,6 +61,7 @@ public class SupplierRegistrationController {
         this.userDetailRepository = userDetailRepository;
         this.userAuthenticationRepository = userAuthenticationRepository;
         this.authorizationRepository = authorizationRepository;
+        this.purchaseRoleService = purchaseRoleService;
     }
 
     private boolean isAdmin() {
@@ -215,6 +219,46 @@ public class SupplierRegistrationController {
                 ? list.stream().map(String::valueOf).toList()
                 : java.util.List.of();
         ServiceResponse response = service.setVendorCategory(registrationId, categories);
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.badRequest().body(response);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Reference menu for the document-type picker below — same underlying data as the Purchasing
+     * Roles admin screen (PurchaseRoleReferenceController), but without that endpoint's isAdmin()
+     * gate: an EMPLOYEE/PURCHASE_DEPT approver reviewing a vendor_registration request needs this
+     * too, and isAdmin() here explicitly excludes those roles.
+     */
+    @GetMapping("/api/supplier-registration/document-types")
+    public ResponseEntity<?> listDocumentTypesForReview(@RequestParam(required = false) java.util.List<String> companyCode) {
+        if (currentUserEmail() == null) return ResponseEntity.status(403).build();
+        return ResponseEntity.ok(purchaseRoleService.listDocumentTypes(companyCode));
+    }
+
+    /**
+     * The deciding approver's per-company-code document type picks — replaces the classification
+     * endpoint above for vendor_registration requests. Every vendor is assigned to both company
+     * codes 1000 and 2000 for now, so the frontend shows both and lets the approver multi-select
+     * document types within each; call this right before the actual WorkFlow approval action.
+     * Only the first approver to call it actually sets the value (see
+     * SupplierRegistrationService.setVendorDocumentTypes); the frontend shows the picker only when
+     * getForReview's documentTypeSelections is still empty.
+     */
+    @PostMapping("/api/supplier-registration/{registrationId}/document-types")
+    public ResponseEntity<ServiceResponse> setVendorDocumentTypes(@PathVariable Long registrationId, @RequestBody java.util.Map<String, Object> body) {
+        Object raw = body.get("selections");
+        java.util.List<java.util.Map<String, String>> selections = new java.util.ArrayList<>();
+        if (raw instanceof java.util.List<?> list) {
+            for (Object o : list) {
+                if (o instanceof java.util.Map<?, ?> m) {
+                    java.util.Map<String, String> sel = new java.util.HashMap<>();
+                    if (m.get("companyCode") != null) sel.put("companyCode", String.valueOf(m.get("companyCode")));
+                    if (m.get("docTypeCode") != null) sel.put("docTypeCode", String.valueOf(m.get("docTypeCode")));
+                    selections.add(sel);
+                }
+            }
+        }
+        ServiceResponse response = service.setVendorDocumentTypes(registrationId, selections);
         if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.badRequest().body(response);
         return ResponseEntity.ok(response);
     }
