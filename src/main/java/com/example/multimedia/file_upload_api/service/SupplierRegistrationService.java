@@ -12,6 +12,7 @@ import com.example.multimedia.file_upload_api.utils.AppConstants;
 import com.example.multimedia.file_upload_api.utils.PasswordUtils;
 import com.example.multimedia.file_upload_api.utils.ServiceControllerUtils;
 import org.json.JSONObject;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -52,6 +53,8 @@ public class SupplierRegistrationService {
     private final ServiceControllerUtils serviceControllerUtils;
     private final QuestionnaireService questionnaireService;
     private final VendorChangeRequestService vendorChangeRequestService;
+    private final SupplierRegistrationDocumentTypeRepository documentTypeSelectionRepository;
+    private final DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository;
 
     @Value("${workflow.api.base-url:http://localhost:8000}")
     private String workflowBaseUrl;
@@ -79,7 +82,9 @@ public class SupplierRegistrationService {
                                         ServiceControllerUtils serviceControllerUtils,
                                         QuestionnaireService questionnaireService,
                                         VendorChangeRequestService vendorChangeRequestService,
-                                        WorkflowEmailClient workflowEmailClient) {
+                                        WorkflowEmailClient workflowEmailClient,
+                                        SupplierRegistrationDocumentTypeRepository documentTypeSelectionRepository,
+                                        DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository) {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
         this.attachmentRepository = attachmentRepository;
@@ -99,6 +104,8 @@ public class SupplierRegistrationService {
         this.questionnaireService = questionnaireService;
         this.vendorChangeRequestService = vendorChangeRequestService;
         this.workflowEmailClient = workflowEmailClient;
+        this.documentTypeSelectionRepository = documentTypeSelectionRepository;
+        this.documentTypeCompanyCodeRepository = documentTypeCompanyCodeRepository;
     }
 
     // ── Document upload + OCR + FolderIt storage ────────────────────────────
@@ -659,6 +666,68 @@ public class SupplierRegistrationService {
     }
 
     /**
+     * Replaces the flat vendorCategory pick above for the (company code, document type) model —
+     * every vendor is assigned to both company codes 1000 and 2000 for now, and the deciding
+     * approver picks which document types the vendor may transact under, per company code. Each
+     * (docTypeCode, companyCode) pair must already exist in document_type_company_code — the same
+     * real SAP reference data the Purchasing Roles feature seeds — so an approver can't grant a
+     * document type that was never assigned to that company.
+     *
+     * Same "first approver wins" semantics as setVendorCategory, but there's no single nullable
+     * column to atomically claim here (this is a set of rows, not a scalar). Instead: if rows
+     * already exist for this registration, this call is a no-op that just returns them. If not,
+     * this inserts the caller's picks and relies on the composite primary key to reject a
+     * concurrent duplicate insert — caught below and treated as having lost the race, same
+     * outcome as the atomic UPDATE elsewhere.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ServiceResponse setVendorDocumentTypes(Long registrationId, List<Map<String, String>> selections) {
+        ServiceResponse response = new ServiceResponse();
+        if (registrationRepository.findById(registrationId).isEmpty()) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
+        }
+
+        List<SupplierRegistrationDocumentType> existing = documentTypeSelectionRepository.findByRegistrationId(registrationId);
+        boolean decidedByYou = false;
+
+        if (existing.isEmpty()) {
+            java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+            List<SupplierRegistrationDocumentType> toSave = new ArrayList<>();
+            for (Map<String, String> sel : (selections == null ? List.<Map<String, String>>of() : selections)) {
+                String companyCode = sel == null ? null : sel.get("companyCode");
+                String docTypeCode = sel == null ? null : sel.get("docTypeCode");
+                if (companyCode == null || docTypeCode == null || companyCode.isBlank() || docTypeCode.isBlank()) continue;
+                String key = companyCode + "|" + docTypeCode;
+                if (!seen.add(key)) continue;
+                if (!documentTypeCompanyCodeRepository.existsByDocTypeCodeAndCompanyCode(docTypeCode, companyCode)) {
+                    return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
+                            "Document type " + docTypeCode + " is not assigned to company code " + companyCode);
+                }
+                toSave.add(new SupplierRegistrationDocumentType(registrationId, companyCode, docTypeCode));
+            }
+            if (toSave.isEmpty()) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
+                        "Pick at least one document type before approving.");
+            }
+            try {
+                existing = documentTypeSelectionRepository.saveAll(toSave);
+                decidedByYou = true;
+            } catch (DataIntegrityViolationException e) {
+                // Someone else's picks landed first — fall through and return the truth below.
+                existing = documentTypeSelectionRepository.findByRegistrationId(registrationId);
+            }
+        }
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("documentTypeSelections", existing.stream()
+                .map(s -> Map.of("companyCode", s.getCompanyCode(), "docTypeCode", s.getDocTypeCode()))
+                .toList());
+        data.put("decidedByYou", decidedByYou);
+        response.addData("result", data);
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Document types recorded");
+    }
+
+    /**
      * Same shape as getRegistrationForReview, for the approved vendor themselves rather than an
      * admin/employee reviewer — resolved from their own JWT login email (SupplierRegistration.email
      * is unique and is exactly the address provisionVendorAccount created their login under), not
@@ -732,6 +801,9 @@ public class SupplierRegistrationService {
             docsOut.add(docOut);
         }
         data.put("documents", docsOut);
+        data.put("documentTypeSelections", documentTypeSelectionRepository.findByRegistrationId(reg.getId()).stream()
+                .map(s -> Map.of("companyCode", s.getCompanyCode(), "docTypeCode", s.getDocTypeCode()))
+                .toList());
         data.put("attachments", buildAttachmentsOut(reg.getId(), true));
         data.put("dynamicAnswers", questionnaireService.getAnswersForReview(reg.getFormStudioResponseId(), reg.getId()).toList());
         return data;
