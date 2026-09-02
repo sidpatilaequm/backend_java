@@ -242,6 +242,18 @@ public class AsnServiceImpl implements AsnService {
 
     @Override
     @Transactional(readOnly = true)
+    public ServiceResponse getAsnsByVendorId(Long vendorId, String companyCode) {
+        ServiceResponse response = new ServiceResponse();
+        List<Asn> asns = asnRepository.findByVendorId(vendorId, companyCode);
+        List<com.example.multimedia.file_upload_api.dto.AsnResponseDto> dtos = asns.stream().map(this::mapToDto).collect(java.util.stream.Collectors.toList());
+        response.addData("asns", dtos);
+        response.setStatus("SUCCESS");
+        response.setStatusMsg("Fetched ASNs successfully");
+        return response;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public ServiceResponse getAllAsns() {
         ServiceResponse response = new ServiceResponse();
         List<Asn> asns = asnRepository.findAll();

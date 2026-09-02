@@ -22,6 +22,9 @@ public class AsnController {
     @Autowired
     private AsnService asnService;
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.util.SecurityContextUtils securityContextUtils;
+
     @PostMapping(value = "", consumes = {MediaType.MULTIPART_FORM_DATA_VALUE})
     public ResponseEntity<ServiceResponse> createAsn(
             @RequestPart("asnData") String asnDataJson,
@@ -71,7 +74,18 @@ public class AsnController {
             if (vendorBpno != null && !vendorBpno.trim().isEmpty()) {
                 serviceResponse = asnService.getAsnsByVendorBpno(vendorBpno, companyCode);
             } else {
-                serviceResponse = asnService.getAllAsns();
+                Long vendorId = null;
+                try {
+                    vendorId = securityContextUtils.getCurrentVendorId();
+                } catch (Exception e) {
+                    // Ignore if not authenticated as vendor
+                }
+                
+                if (vendorId != null) {
+                    serviceResponse = asnService.getAsnsByVendorId(vendorId, companyCode);
+                } else {
+                    serviceResponse = asnService.getAllAsns();
+                }
             }
 
             if ("SUCCESS".equalsIgnoreCase(serviceResponse.getStatus()) || "200".equals(serviceResponse.getStatus())) {
