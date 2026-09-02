@@ -4,6 +4,7 @@ import com.example.multimedia.file_upload_api.entity.MasterPurchaseOrder;
 import com.example.multimedia.file_upload_api.entity.PortalPurchaseOrder;
 import com.example.multimedia.file_upload_api.entity.PortalPurchaseOrderItem;
 import com.example.multimedia.file_upload_api.entity.CompanyDetails;
+import com.example.multimedia.file_upload_api.entity.UserDetail;
 import com.example.multimedia.file_upload_api.repository.MasterPurchaseOrderRepository;
 import com.example.multimedia.file_upload_api.repository.PortalPurchaseOrderRepository;
 import com.example.multimedia.file_upload_api.repository.CompanyDetailsRepository;
@@ -40,14 +41,16 @@ public class MasterPurchaseOrderService {
     private final PortalPurchaseOrderRepository portalPoRepo;
     private final com.example.multimedia.file_upload_api.repository.VendorMasterRepository vendorMasterRepo;
     private final com.example.multimedia.file_upload_api.repository.VendorQuotationRepository vendorQuotationRepo;
+    private final com.example.multimedia.file_upload_api.repository.UserDetailRepository userDetailRepo;
 
     @Autowired
-    public MasterPurchaseOrderService(CompanyDetailsRepository companyRepo, MasterPurchaseOrderRepository masterPoRepo, PortalPurchaseOrderRepository portalPoRepo, com.example.multimedia.file_upload_api.repository.VendorMasterRepository vendorMasterRepo, com.example.multimedia.file_upload_api.repository.VendorQuotationRepository vendorQuotationRepo) {
+    public MasterPurchaseOrderService(CompanyDetailsRepository companyRepo, MasterPurchaseOrderRepository masterPoRepo, PortalPurchaseOrderRepository portalPoRepo, com.example.multimedia.file_upload_api.repository.VendorMasterRepository vendorMasterRepo, com.example.multimedia.file_upload_api.repository.VendorQuotationRepository vendorQuotationRepo, com.example.multimedia.file_upload_api.repository.UserDetailRepository userDetailRepo) {
         this.companyRepo = companyRepo;
         this.masterPoRepo = masterPoRepo;
         this.portalPoRepo = portalPoRepo;
         this.vendorMasterRepo = vendorMasterRepo;
         this.vendorQuotationRepo = vendorQuotationRepo;
+        this.userDetailRepo = userDetailRepo;
     }
 
     // portal_purchase_orders.pr_id/quotation_id are nullable — confirmed some POs genuinely never
@@ -65,6 +68,47 @@ public class MasterPurchaseOrderService {
                 .orElseThrow(() -> new IllegalStateException("PO " + poNumber + " references quotation " + refQuot + ", which doesn't exist in the portal."));
         po.setQuotation(quotation);
         po.setPurchaseRequisition(quotation.getPurchaseRequisition());
+    }
+
+    // portal_purchase_orders.vendor_id is NOT NULL and FKs to company_details.company_id — NOT
+    // VendorMaster.vendor_id, a separate ID space (same confusion fixed in AuthController's login
+    // response: see vendorMasterId there). The old version of this method looked up
+    // companyRepo.findById(vendorMaster.getVendorId()), which searches CompanyDetails using a
+    // VendorMaster id — usually finds nothing, or worse, coincidentally finds an unrelated
+    // company. The real link from a VendorMaster to its CompanyDetails is via the shared email on
+    // its linked SupplierRegistration.
+    private void resolveVendor(PortalPurchaseOrder po, String poNumber, String vendorNo) {
+        if (vendorNo == null || vendorNo.trim().isEmpty()) {
+            throw new IllegalStateException("PO " + poNumber + " has no vendor number in the export — cannot import without one.");
+        }
+        String trimmed = vendorNo.trim();
+
+        var byBpNo = vendorMasterRepo.findByBpNo(trimmed);
+        if (byBpNo.isPresent()) {
+            String email = byBpNo.get().getSupplierRegistration() != null ? byBpNo.get().getSupplierRegistration().getEmail() : null;
+            var company = email != null ? userDetailRepo.findByEmail(email).map(UserDetail::getCompany) : Optional.<CompanyDetails>empty();
+            if (company.isPresent()) {
+                po.setVendor(company.get());
+                return;
+            }
+        }
+
+        List<CompanyDetails> byCode = companyRepo.findByCompanyCode(trimmed);
+        if (!byCode.isEmpty()) {
+            po.setVendor(byCode.get(0));
+            return;
+        }
+
+        try {
+            Long vId = Long.parseLong(trimmed);
+            var byId = companyRepo.findById(vId);
+            if (byId.isPresent()) {
+                po.setVendor(byId.get());
+                return;
+            }
+        } catch (NumberFormatException ignored) {}
+
+        throw new IllegalStateException("PO " + poNumber + " references vendor " + vendorNo + ", which doesn't match any vendor in the portal.");
     }
 
     @Transactional
@@ -137,23 +181,7 @@ public class MasterPurchaseOrderService {
                         po.setPoDate(LocalDate.now());
                     }
 
-                    if (vendorNo != null && !vendorNo.isEmpty()) {
-                        vendorMasterRepo.findByBpNo(vendorNo.trim()).ifPresentOrElse(
-                            vendorMaster -> {
-                                companyRepo.findById(vendorMaster.getVendorId()).ifPresent(po::setVendor);
-                            },
-                            () -> {
-                                List<CompanyDetails> vendors = companyRepo.findByCompanyCode(vendorNo.trim());
-                                if (!vendors.isEmpty()) po.setVendor(vendors.get(0));
-                                else {
-                                     try {
-                                         Long vId = Long.parseLong(vendorNo.trim());
-                                         companyRepo.findById(vId).ifPresent(po::setVendor);
-                                     } catch (NumberFormatException ignored) {}
-                                }
-                            }
-                        );
-                    }
+                    resolveVendor(po, poNumber, vendorNo);
 
                     po.setLanguageKey("EN");
                     po.setPurchasingOrganization(purchOrg);
@@ -374,17 +402,7 @@ public class MasterPurchaseOrderService {
                         po.setPoDate(LocalDate.now());
                     }
 
-                    if (vendorNo != null && !vendorNo.isEmpty()) {
-                        vendorMasterRepo.findByBpNo(vendorNo.trim()).ifPresentOrElse(
-                            vendorMaster -> {
-                                companyRepo.findById(vendorMaster.getVendorId()).ifPresent(po::setVendor);
-                            },
-                            () -> {
-                                List<CompanyDetails> vendors = companyRepo.findByCompanyCode(vendorNo.trim());
-                                if (!vendors.isEmpty()) po.setVendor(vendors.get(0));
-                            }
-                        );
-                    }
+                    resolveVendor(po, poNumber, vendorNo);
                     po.setLanguageKey("EN");
                     po.setPurchasingOrganization(purchOrg);
                     po.setPurchasingGroup(purchGrp);
