@@ -318,6 +318,18 @@ public class SupplierRegistrationController {
     }
 
     /**
+     * Which "Procure to pay" tiles the logged-in vendor sees on their dashboard for one company
+     * code — split out from my-profile (which pulls documents/attachments/questionnaire/change
+     * requests too) so the dashboard can fetch just this and render a skeleton in the meantime.
+     */
+    @GetMapping("/api/supplier-registration/my-dashboard-tiles")
+    public ResponseEntity<?> getMyDashboardTiles(@RequestParam(required = false) String companyCode) {
+        String email = currentUserEmail();
+        if (email == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(java.util.Map.of("tiles", service.getMyDashboardTiles(email, companyCode)));
+    }
+
+    /**
      * A vendor requesting a change to one already-approved document, attachment, or questionnaire
      * answer. itemType is "document" (itemKey = docType e.g. "gst"), "attachment" (itemKey =
      * attachment id) or "answer" (itemKey = questionId). file is required for document/attachment;

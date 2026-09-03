@@ -737,6 +737,48 @@ public class SupplierRegistrationService {
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Document types recorded");
     }
 
+    // A picked document type's classification -> which "Procure to pay" tile(s) it grants on the
+    // vendor dashboard. Mirrors DashboardHome.jsx's CLASSIFICATION_TILES exactly — moving this
+    // server-side (see getMyDashboardTiles below) means the frontend no longer has to fetch the
+    // whole my-profile payload (documents, attachments, questionnaire, change requests) just to
+    // resolve 4 booleans, and no longer has to duplicate this mapping.
+    private static final Map<String, List<String>> CLASSIFICATION_TILES = Map.of(
+            "PRODUCTS", List.of("products"),
+            "SERVICE", List.of("services"),
+            "SUBCONTRACTING", List.of("subcontracting"),
+            "SCHEDULING_AGREEMENT", List.of("scheduling"),
+            "RAW_MATERIAL", List.of("products"),
+            "CAPITAL_EXPENDITURE", List.of("products", "services"));
+    private static final List<String> ALL_PROCURE_TILES = List.of("products", "services", "subcontracting", "scheduling");
+
+    /**
+     * Which "Procure to pay" tiles the logged-in vendor should see for one company code — a small,
+     * purpose-built response so the dashboard can render a skeleton and swap it for the real tile
+     * set the moment this resolves, instead of deriving it client-side from the much heavier
+     * my-profile response. Same fallback rule as before: no picks recorded yet for this company
+     * (predates this feature, or truly not yet decided) shows every tile rather than none.
+     */
+    public List<String> getMyDashboardTiles(String email, String companyCode) {
+        SupplierRegistration reg = registrationRepository.findByEmail(email).orElse(null);
+        if (reg == null) return ALL_PROCURE_TILES;
+
+        List<SupplierRegistrationDocumentType> picks = documentTypeSelectionRepository.findByRegistrationId(reg.getId());
+        List<SupplierRegistrationDocumentType> picksForCompany = companyCode == null
+                ? picks
+                : picks.stream().filter(p -> companyCode.equals(p.getCompanyCode())).toList();
+        if (picksForCompany.isEmpty()) return ALL_PROCURE_TILES;
+
+        Map<String, String> classificationByCode = documentTypeRepository.findAllById(
+                picksForCompany.stream().map(SupplierRegistrationDocumentType::getDocTypeCode).distinct().toList()
+        ).stream().collect(java.util.stream.Collectors.toMap(DocumentType::getCode, DocumentType::getClassification));
+
+        java.util.LinkedHashSet<String> tiles = new java.util.LinkedHashSet<>();
+        for (SupplierRegistrationDocumentType p : picksForCompany) {
+            tiles.addAll(CLASSIFICATION_TILES.getOrDefault(classificationByCode.get(p.getDocTypeCode()), List.of()));
+        }
+        return List.copyOf(tiles);
+    }
+
     /**
      * Same shape as getRegistrationForReview, for the approved vendor themselves rather than an
      * admin/employee reviewer — resolved from their own JWT login email (SupplierRegistration.email
