@@ -67,6 +67,52 @@ public class PrLifecycleService {
         PurchaseRequisition pr = prRepo.findByPrNumber(prNumber)
                 .orElseThrow(() -> new NotFoundException("No PR found with number " + prNumber));
 
+        List<Map<String, Object>> events = buildEvents(pr);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("prNumber", pr.getPrNumber());
+        result.put("prStatus", pr.getStatus().name());
+        result.put("requestedBy", resolveUserName(pr.getRequestedBy()));
+        result.put("createdAt", toInstant(pr.getCreatedAt()));
+        result.put("events", events);
+        return result;
+    }
+
+    /**
+     * Flat, cross-PR feed for the tab's default (no-search) view — same event shape as
+     * getLifecycle, with prNumber attached to each event, across the most recently active PRs.
+     * Pulls the N most recently created PRs (small real-world scale today — a handful of dozens,
+     * not thousands — so per-PR aggregation here is cheap; revisit with a real cross-table query
+     * if that stops being true) rather than paginating the underlying tables independently, so the
+     * result stays one true chronological feed instead of 8 separately-paginated streams.
+     */
+    public Map<String, Object> getFeed(int page, int size) {
+        int cappedSize = Math.min(Math.max(size, 1), 200);
+        List<PurchaseRequisition> recentPrs = prRepo.findTop100ByOrderByCreatedAtDesc();
+
+        List<Map<String, Object>> allEvents = new ArrayList<>();
+        for (PurchaseRequisition pr : recentPrs) {
+            for (Map<String, Object> e : buildEvents(pr)) {
+                e.put("prNumber", pr.getPrNumber());
+                allEvents.add(e);
+            }
+        }
+        allEvents.sort(Comparator.comparing(
+                (Map<String, Object> e) -> (Instant) e.get("timestamp"),
+                Comparator.nullsLast(Comparator.reverseOrder())));
+
+        int from = Math.min(page * cappedSize, allEvents.size());
+        int to = Math.min(from + cappedSize, allEvents.size());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("events", allEvents.subList(from, to));
+        result.put("page", page);
+        result.put("totalPages", (int) Math.ceil(allEvents.size() / (double) cappedSize));
+        result.put("totalElements", allEvents.size());
+        return result;
+    }
+
+    private List<Map<String, Object>> buildEvents(PurchaseRequisition pr) {
         List<Map<String, Object>> events = new ArrayList<>();
 
         events.add(event("PR_CREATED", "PR Created", null,
@@ -147,13 +193,7 @@ public class PrLifecycleService {
                 (Map<String, Object> e) -> (Instant) e.get("timestamp"),
                 Comparator.nullsLast(Comparator.naturalOrder())));
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("prNumber", pr.getPrNumber());
-        result.put("prStatus", pr.getStatus().name());
-        result.put("requestedBy", resolveUserName(pr.getRequestedBy()));
-        result.put("createdAt", toInstant(pr.getCreatedAt()));
-        result.put("events", events);
-        return result;
+        return events;
     }
 
     /** PR numbers matching a search string — backs the tab's typeahead. */

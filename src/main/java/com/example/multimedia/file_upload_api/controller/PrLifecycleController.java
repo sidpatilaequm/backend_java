@@ -47,4 +47,14 @@ public class PrLifecycleController {
         }
         return ResponseEntity.ok(Map.of("prNumbers", service.searchPrNumbers(q, 20)));
     }
+
+    /** Default (no PR picked yet) view: a flat, paginated feed across the most recently active PRs. */
+    @GetMapping("/feed")
+    public ResponseEntity<?> getFeed(@RequestParam(defaultValue = "0") int page,
+                                      @RequestParam(defaultValue = "50") int size) {
+        if (!adminAuthChecker.isAdmin()) {
+            return ResponseEntity.status(403).body(Map.of("detail", "Admin access required for this account."));
+        }
+        return ResponseEntity.ok(service.getFeed(Math.max(page, 0), size));
+    }
 }

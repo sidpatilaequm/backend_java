@@ -27,6 +27,9 @@ public interface PurchaseRequisitionRepository extends JpaRepository<PurchaseReq
     // browsing the audit trail needs to find any PR, not just their own.
     List<PurchaseRequisition> findTop20ByPrNumberContainingIgnoreCaseOrderByCreatedAtDesc(String search);
 
+    // Backs the PR Lifecycle tab's default cross-PR feed — see PrLifecycleService.getFeed.
+    List<PurchaseRequisition> findTop100ByOrderByCreatedAtDesc();
+
     @Query("SELECT p FROM PurchaseRequisition p WHERE p.requestedBy = :requestedBy " +
             "AND (:locationId IS NULL OR p.locationId = :locationId) " +
             "AND (:status IS NULL OR p.status = :status) " +
