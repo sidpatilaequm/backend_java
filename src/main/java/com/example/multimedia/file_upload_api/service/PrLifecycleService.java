@@ -116,13 +116,15 @@ public class PrLifecycleService {
         List<Map<String, Object>> events = new ArrayList<>();
 
         events.add(event("PR_CREATED", "PR Created", null,
-                toInstant(pr.getCreatedAt()), resolveUserName(pr.getRequestedBy()), pr.getStatus().name(), pr.getPrNumber()));
+                toInstant(pr.getCreatedAt()), resolveUserName(pr.getRequestedBy()), pr.getStatus().name(), pr.getPrNumber(),
+                prDetails(pr)));
 
         if (pr.getWorkflowRequestId() != null) {
             workflowRequestRepo.findById(pr.getWorkflowRequestId().intValue()).ifPresent(wf -> {
                 String submitterName = wf.getSubmitter() != null ? fullName(wf.getSubmitter()) : null;
                 events.add(event("WORKFLOW_SUBMITTED", "Workflow Approval Submitted", null,
-                        toInstant(wf.getSubmittedAt()), submitterName, wf.getStatus(), wf.getTitle()));
+                        toInstant(wf.getSubmittedAt()), submitterName, wf.getStatus(), wf.getTitle(),
+                        workflowDetails(wf)));
 
                 for (ApprovalActionRO aa : approvalActionRepo.findByWorkflowRequestId(wf.getId())) {
                     String approverName = aa.getApprover() != null ? fullName(aa.getApprover()) : null;
@@ -132,12 +134,14 @@ public class PrLifecycleService {
                         detail = (detail == null ? "" : detail + " — ") + "delegated to " + delegatedToName;
                     }
                     events.add(event("WORKFLOW_ACTION", "Workflow Approval", approverName,
-                            toInstant(aa.getActedAt()), approverName, aa.getDecision(), detail));
+                            toInstant(aa.getActedAt()), approverName, aa.getDecision(), detail,
+                            approvalActionDetails(aa)));
                 }
 
                 if (wf.getResolvedAt() != null) {
                     events.add(event("WORKFLOW_RESOLVED", "Workflow Approval Completed", null,
-                            toInstant(wf.getResolvedAt()), null, wf.getStatus(), null));
+                            toInstant(wf.getResolvedAt()), null, wf.getStatus(), null,
+                            workflowDetails(wf)));
                 }
             });
         }
@@ -146,44 +150,51 @@ public class PrLifecycleService {
             String vendorName = resolveVendorMasterName(rv.getVendorId());
             events.add(event("RFQ_SENT", "RFQ Sent", vendorName,
                     toInstant(rv.getSentAt()), null, "SENT",
-                    rv.getPurchaseRequisitionItem() != null ? "Item " + rv.getPurchaseRequisitionItem().getId() : null));
+                    rv.getPurchaseRequisitionItem() != null ? "Item " + rv.getPurchaseRequisitionItem().getId() : null,
+                    rfqVendorDetails(rv, vendorName)));
             if (rv.getRespondedAt() != null) {
                 events.add(event("QUOTATION_ACK", "Quotation Acknowledged", vendorName,
-                        toInstant(rv.getRespondedAt()), null, rv.getStatus(), null));
+                        toInstant(rv.getRespondedAt()), null, rv.getStatus(), null,
+                        rfqVendorDetails(rv, vendorName)));
             }
         }
 
         for (VendorQuotation q : quotationRepo.findByPurchaseRequisition_Id(pr.getId())) {
             String vendorName = q.getVendor() != null ? q.getVendor().getCompanyName() : null;
+            Map<String, Object> qDetails = quotationDetails(q);
             events.add(event("QUOTATION_SUBMITTED", "Quotation Sent to Company", vendorName,
-                    toInstant(q.getCreatedDate()), null, q.getStatus(), q.getQuotationNumber()));
+                    toInstant(q.getCreatedDate()), null, q.getStatus(), q.getQuotationNumber(), qDetails));
             if ("AWARDED".equalsIgnoreCase(q.getStatus())) {
                 events.add(event("QUOTATION_AWARDED", "Quotation Awarded", vendorName,
-                        toInstant(q.getModifiedDate()), null, q.getStatus(), q.getQuotationNumber()));
+                        toInstant(q.getModifiedDate()), null, q.getStatus(), q.getQuotationNumber(), qDetails));
             }
         }
 
         for (PortalPurchaseOrder po : poRepo.findByPurchaseRequisition_Id(pr.getId())) {
             String vendorName = po.getVendor() != null ? po.getVendor().getCompanyName() : null;
+            Map<String, Object> poDetails = poDetails(po);
             events.add(event("PO_GENERATED", "PO Generated", vendorName,
-                    toInstant(po.getCreatedDate()), null, po.getStatus(), po.getPoNumber()));
+                    toInstant(po.getCreatedDate()), null, po.getStatus(), po.getPoNumber(), poDetails));
             if (po.getAcknowledgedAt() != null) {
                 events.add(event("PO_ACK", "PO Acknowledged", vendorName,
-                        toInstant(po.getAcknowledgedAt()), null, po.getStatus(), po.getPoNumber()));
+                        toInstant(po.getAcknowledgedAt()), null, po.getStatus(), po.getPoNumber(), poDetails));
             }
 
             for (Asn asn : asnRepo.findByPurchaseOrder_Id(po.getId())) {
                 events.add(event("ASN_SENT", "ASN Sent", vendorName,
-                        toInstant(asn.getCreatedDate()), null, asn.getStatus(), asn.getInvoiceNumber()));
+                        toInstant(asn.getCreatedDate()), null, asn.getStatus(), asn.getInvoiceNumber(),
+                        asnDetails(asn)));
 
                 for (GateEntry ge : gateEntryRepo.findByAsnId(asn.getId())) {
                     events.add(event("GATE_ENTRY", "Gate Entry Created", vendorName,
-                            toInstant(ge.getCreatedDate()), ge.getProcessedBy(), ge.getDecision(), ge.getGatePassNumber()));
+                            toInstant(ge.getCreatedDate()), ge.getProcessedBy(), ge.getDecision(), ge.getGatePassNumber(),
+                            gateEntryDetails(ge)));
 
                     goodsReceiptRepo.findByGateEntryId(ge.getId()).ifPresent(gr -> {
                         String detail = gr.getGrnNumber() != null ? gr.getGrnNumber() : gr.getRtvNumber();
                         events.add(event("MATERIAL_INWARD", "Material Inward", vendorName,
-                                toInstant(gr.getCreatedDate()), gr.getProcessedBy(), gr.getDecision(), detail));
+                                toInstant(gr.getCreatedDate()), gr.getProcessedBy(), gr.getDecision(), detail,
+                                goodsReceiptDetails(gr)));
                     });
                 }
             }
@@ -194,6 +205,219 @@ public class PrLifecycleService {
                 Comparator.nullsLast(Comparator.naturalOrder())));
 
         return events;
+    }
+
+    // ── Per-stage "everything there is to know about this" detail maps, shown when a step/chip
+    // is clicked in the PR Lifecycle UI. Every field here already lives on the entity in hand —
+    // this is purely a read-time projection, no extra queries beyond item lists.
+
+    private Map<String, Object> prDetails(PurchaseRequisition pr) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("PR Number", pr.getPrNumber());
+        m.put("Status", pr.getStatus().name());
+        m.put("Requested By", resolveUserName(pr.getRequestedBy()));
+        m.put("Company Code", pr.getCompanyCode());
+        m.put("Location ID", pr.getLocationId());
+        m.put("Required Date", pr.getRequiredDate());
+        m.put("Total Amount", pr.getTotalAmount());
+        m.put("Remarks", pr.getRemarks());
+        m.put("Created At", toInstant(pr.getCreatedAt()));
+        m.put("Updated At", toInstant(pr.getUpdatedAt()));
+        m.put("Line Items", pr.getItems() == null ? List.of() : pr.getItems().stream().map(i -> {
+            Map<String, Object> im = new LinkedHashMap<>();
+            im.put("Material ID", i.getMaterialId());
+            im.put("SKU", i.getSku());
+            im.put("Quantity", i.getQuantity());
+            im.put("UOM", i.getUom());
+            im.put("Estimated Price", i.getEstimatedPrice());
+            im.put("Total Price", i.getTotalPrice());
+            im.put("Status", i.getStatus());
+            return im;
+        }).toList());
+        return m;
+    }
+
+    private Map<String, Object> workflowDetails(com.example.multimedia.file_upload_api.entity.workflow.WorkflowRequestRO wf) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("Title", wf.getTitle());
+        m.put("Workflow", wf.getWorkflow() != null ? wf.getWorkflow().getName() : null);
+        m.put("Department", wf.getDepartment());
+        m.put("Request Type", wf.getRequestType());
+        m.put("Amount", wf.getAmount());
+        m.put("Status", wf.getStatus());
+        m.put("Submitted By", wf.getSubmitter() != null ? fullName(wf.getSubmitter()) : null);
+        m.put("Submitted At", toInstant(wf.getSubmittedAt()));
+        m.put("Resolved At", toInstant(wf.getResolvedAt()));
+        return m;
+    }
+
+    private Map<String, Object> approvalActionDetails(ApprovalActionRO aa) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("Approver", aa.getApprover() != null ? fullName(aa.getApprover()) : null);
+        m.put("Approver Email", aa.getApprover() != null ? aa.getApprover().getEmail() : null);
+        m.put("Decision", aa.getDecision());
+        m.put("Comment", aa.getComment());
+        m.put("Delegated To", aa.getDelegatedTo() != null ? fullName(aa.getDelegatedTo()) : null);
+        m.put("Acted At", toInstant(aa.getActedAt()));
+        m.put("Stage Order", aa.getRequestStage() != null ? aa.getRequestStage().getStageOrder() : null);
+        return m;
+    }
+
+    private Map<String, Object> rfqVendorDetails(PurchaseRequisitionItemVendor rv, String vendorName) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("Vendor", vendorName);
+        m.put("BP No", rv.getBpNo());
+        m.put("Status", rv.getStatus());
+        m.put("Item ID", rv.getPurchaseRequisitionItem() != null ? rv.getPurchaseRequisitionItem().getId() : null);
+        m.put("Sent At", toInstant(rv.getSentAt()));
+        m.put("Responded At", toInstant(rv.getRespondedAt()));
+        return m;
+    }
+
+    private Map<String, Object> quotationDetails(VendorQuotation q) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("Quotation Number", q.getQuotationNumber());
+        m.put("Vendor", q.getVendor() != null ? q.getVendor().getCompanyName() : null);
+        m.put("Vendor Reference No", q.getVendorReferenceNo());
+        m.put("Status", q.getStatus());
+        m.put("Quotation Date", q.getQuotationDate());
+        m.put("Valid Until", q.getValidUntil());
+        m.put("Validity Days", q.getValidityDays());
+        m.put("Currency", q.getCurrency());
+        m.put("Incoterm", q.getIncoterm());
+        m.put("Named Place", q.getNamedPlace());
+        m.put("Quoted Delivery Date", q.getQuotedDeliveryDate());
+        m.put("Lead Time (days)", q.getLeadTimeDays());
+        m.put("Shipping Mode", q.getShippingMode());
+        m.put("Freight Charge Type", q.getFreightChargeType());
+        m.put("Freight Amount", q.getFreightAmount());
+        m.put("Advance Required %", q.getAdvanceRequiredPercent());
+        m.put("Bank Guarantee Required", q.getBankGuaranteeRequired());
+        m.put("Subtotal", q.getSubtotalAmount());
+        m.put("GST Total", q.getGstTotalAmount());
+        m.put("Grand Total", q.getGrandTotalAmount());
+        m.put("Cover Note", q.getCoverNote());
+        m.put("Internal Notes", q.getInternalNotes());
+        m.put("Created At", toInstant(q.getCreatedDate()));
+        m.put("Modified At", toInstant(q.getModifiedDate()));
+        m.put("Line Items", q.getItems() == null ? List.of() : q.getItems().stream().map(i -> {
+            Map<String, Object> im = new LinkedHashMap<>();
+            im.put("Item Code", i.getItemCode());
+            im.put("Description", i.getDescription());
+            im.put("PR Qty", i.getPrQty());
+            im.put("Quoted Qty", i.getQuotedQty());
+            im.put("UOM", i.getUom());
+            im.put("Unit Price", i.getUnitPrice());
+            im.put("GST %", i.getGstPercent());
+            im.put("GST Amount", i.getGstAmount());
+            im.put("Line Total", i.getLineTotal());
+            im.put("Delivery Date", i.getDeliveryDate());
+            return im;
+        }).toList());
+        return m;
+    }
+
+    private Map<String, Object> poDetails(PortalPurchaseOrder po) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("PO Number", po.getPoNumber());
+        m.put("Vendor", po.getVendor() != null ? po.getVendor().getCompanyName() : null);
+        m.put("Status", po.getStatus());
+        m.put("PO Date", po.getPoDate());
+        m.put("Company Code", po.getCompanyCode());
+        m.put("Purchasing Doc Type", po.getPurchasingDocType());
+        m.put("Purchasing Organization", po.getPurchasingOrganization());
+        m.put("Purchasing Group", po.getPurchasingGroup());
+        m.put("Currency", po.getCurrency());
+        m.put("Incoterms", po.getIncoterms());
+        m.put("Incoterms Part 2", po.getIncotermsPart2());
+        m.put("Delivery Address", po.getDeliveryAddress());
+        m.put("Requested Delivery Date", po.getRequestedDeliveryDate());
+        m.put("Confirmed Delivery Date", po.getConfirmedDeliveryDate());
+        m.put("Shipping Instructions", po.getShippingInstructions());
+        m.put("Subtotal", po.getSubtotal());
+        m.put("Freight Total", po.getFreightTotal());
+        m.put("GST Total", po.getGstTotal());
+        m.put("Grand Total", po.getGrandTotal());
+        m.put("Remarks", po.getRemarks());
+        m.put("Created By", po.getCreatedBy());
+        m.put("Created At", toInstant(po.getCreatedDate()));
+        m.put("Modified At", toInstant(po.getModifiedDate()));
+        m.put("Acknowledged At", toInstant(po.getAcknowledgedAt()));
+        m.put("Line Items", po.getItems() == null ? List.of() : po.getItems().stream().map(i -> {
+            Map<String, Object> im = new LinkedHashMap<>();
+            im.put("Line Number", i.getLineNumber());
+            im.put("Material Number", i.getMaterialNumber());
+            im.put("Material Description", i.getMaterialDescription());
+            im.put("HSN Code", i.getHsnCode());
+            im.put("Quantity", i.getQuantity());
+            im.put("Shipped Quantity", i.getShippedQuantity());
+            im.put("UOM", i.getUom());
+            im.put("Unit Price", i.getUnitPrice());
+            im.put("Net Value", i.getNetValue());
+            im.put("Tax %", i.getTaxPercent());
+            im.put("Tax Amount", i.getTaxAmount());
+            im.put("Total Value", i.getTotalValue());
+            return im;
+        }).toList());
+        return m;
+    }
+
+    private Map<String, Object> asnDetails(Asn asn) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("Status", asn.getStatus());
+        m.put("Gate Status", asn.getGateStatus());
+        m.put("Gate Pass Number", asn.getGatePassNumber());
+        m.put("Vendor BP No", asn.getVendorBpno());
+        m.put("Company Code", asn.getCompanyCode());
+        m.put("Invoice Number", asn.getInvoiceNumber());
+        m.put("Invoice Date", asn.getInvoiceDate());
+        m.put("Eway Bill", asn.getEwayBill());
+        m.put("Eway Bill Valid To", asn.getEwbValidTo());
+        m.put("Vehicle Number", asn.getVehicleNumber());
+        m.put("Transporter Code", asn.getTransporterCode());
+        m.put("Dispatch Date", asn.getDispatchDate());
+        m.put("Expected Delivery", asn.getExpectedDelivery());
+        m.put("Packaging", asn.getPackaging());
+        m.put("No. of Packages", asn.getNoOfPackages());
+        m.put("Created At", toInstant(asn.getCreatedDate()));
+        m.put("Modified At", toInstant(asn.getModifiedDate()));
+        m.put("Line Items", asn.getItems() == null ? List.of() : asn.getItems().stream().map(i -> {
+            Map<String, Object> im = new LinkedHashMap<>();
+            im.put("Part Number", i.getPartNumber());
+            im.put("Quantity Shipped", i.getQuantityShipped());
+            im.put("Batch/Heat Number", i.getBatchHeatNumber());
+            return im;
+        }).toList());
+        return m;
+    }
+
+    private Map<String, Object> gateEntryDetails(GateEntry ge) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("Gate Pass Number", ge.getGatePassNumber());
+        m.put("Company Code", ge.getCompanyCode());
+        m.put("Decision", ge.getDecision());
+        m.put("Declared Packages", ge.getDeclaredPackages());
+        m.put("Counted Packages", ge.getCountedPackages());
+        m.put("Package Remark", ge.getPackageRemark());
+        m.put("Hold Reason", ge.getHoldReason());
+        m.put("In Time", ge.getInTime());
+        m.put("Processed By", ge.getProcessedBy());
+        m.put("Supervisor Remark", ge.getSupervisorRemark());
+        m.put("Created At", toInstant(ge.getCreatedDate()));
+        m.put("Modified At", toInstant(ge.getModifiedDate()));
+        return m;
+    }
+
+    private Map<String, Object> goodsReceiptDetails(GoodsReceipt gr) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("Decision", gr.getDecision());
+        m.put("GRN Number", gr.getGrnNumber());
+        m.put("RTV Number", gr.getRtvNumber());
+        m.put("Processed By", gr.getProcessedBy());
+        m.put("Remarks", gr.getRemarks());
+        m.put("Created At", toInstant(gr.getCreatedDate()));
+        m.put("Modified At", toInstant(gr.getModifiedDate()));
+        return m;
     }
 
     /** PR numbers matching a search string — backs the tab's typeahead. */
@@ -207,6 +431,12 @@ public class PrLifecycleService {
 
     private Map<String, Object> event(String stage, String stageLabel, String branchKey,
                                        Instant timestamp, String actorName, String status, String detail) {
+        return event(stage, stageLabel, branchKey, timestamp, actorName, status, detail, null);
+    }
+
+    private Map<String, Object> event(String stage, String stageLabel, String branchKey,
+                                       Instant timestamp, String actorName, String status, String detail,
+                                       Map<String, Object> details) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("stage", stage);
         m.put("stageLabel", stageLabel);
@@ -215,6 +445,7 @@ public class PrLifecycleService {
         m.put("actorName", actorName);
         m.put("status", status);
         m.put("detail", detail);
+        m.put("details", details);
         return m;
     }
 
