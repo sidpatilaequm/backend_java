@@ -159,9 +159,10 @@ public class PrLifecycleService {
     /** PR numbers matching a search string — backs the tab's typeahead. */
     public List<String> searchPrNumbers(String q, int limit) {
         if (q == null || q.trim().isEmpty()) return List.of();
-        return prRepo.findWithFilters(null, null, null, q.trim(),
-                        org.springframework.data.domain.PageRequest.of(0, Math.min(Math.max(limit, 1), 20)))
-                .getContent().stream().map(PurchaseRequisition::getPrNumber).toList();
+        return prRepo.findTop20ByPrNumberContainingIgnoreCaseOrderByCreatedAtDesc(q.trim()).stream()
+                .limit(Math.min(Math.max(limit, 1), 20))
+                .map(PurchaseRequisition::getPrNumber)
+                .toList();
     }
 
     private Map<String, Object> event(String stage, String stageLabel, String branchKey,
