@@ -14,4 +14,5 @@ public interface GateEntryRepository extends JpaRepository<GateEntry, Long> {
     List<GateEntry> findByDecision(String decision);
     Optional<GateEntry> findByGatePassNumber(String gatePassNumber);
     Optional<GateEntry> findFirstByAsnIdOrderByCreatedDateDesc(Long asnId);
+    List<GateEntry> findByAsnId(Long asnId);
 }

@@ -61,6 +61,7 @@ public class VendorChangeRequestService {
     private Long changeRequestWorkflowId;
 
     private final WorkflowEmailClient workflowEmailClient;
+    private final AuditLogService auditLogService;
 
     public VendorChangeRequestService(SupplierChangeRequestRepository changeRequestRepository,
                                        SupplierRegistrationRepository registrationRepository,
@@ -71,7 +72,8 @@ public class VendorChangeRequestService {
                                        OpenAiVisionOcrService ocrService,
                                        RestTemplate restTemplate,
                                        ServiceControllerUtils serviceControllerUtils,
-                                       WorkflowEmailClient workflowEmailClient) {
+                                       WorkflowEmailClient workflowEmailClient,
+                                       AuditLogService auditLogService) {
         this.changeRequestRepository = changeRequestRepository;
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
@@ -82,6 +84,7 @@ public class VendorChangeRequestService {
         this.restTemplate = restTemplate;
         this.serviceControllerUtils = serviceControllerUtils;
         this.workflowEmailClient = workflowEmailClient;
+        this.auditLogService = auditLogService;
     }
 
     /**
@@ -395,6 +398,10 @@ public class VendorChangeRequestService {
         if (cr.getNewFolderItFileUid() == null) {
             throw new RuntimeException("This change request has no proposed file");
         }
-        return folderItService.downloadFileBytes(cr.getNewFolderItFileUid());
+        FolderItService.DownloadedFile file = folderItService.downloadFileBytes(cr.getNewFolderItFileUid());
+        String vendorName = cr.getRegistration() != null ? cr.getRegistration().getVendorName() : null;
+        auditLogService.recordGeneric("DOCUMENT_VIEWED",
+                (vendorName != null ? vendorName + " — " : "") + cr.getNewFileName(), java.util.List.of());
+        return file;
     }
 }

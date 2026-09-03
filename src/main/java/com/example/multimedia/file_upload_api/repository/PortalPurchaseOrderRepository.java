@@ -40,4 +40,6 @@ public interface PortalPurchaseOrderRepository extends JpaRepository<PortalPurch
         @org.springframework.data.repository.query.Param("requestedByIds") java.util.Collection<Long> requestedByIds,
         @org.springframework.data.repository.query.Param("createdByList") java.util.Collection<String> createdByList
     );
+
+    List<PortalPurchaseOrder> findByPurchaseRequisition_Id(Long prId);
 }

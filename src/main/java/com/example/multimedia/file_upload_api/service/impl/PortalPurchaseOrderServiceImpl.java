@@ -453,6 +453,7 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
             throw new RuntimeException("Purchase Order is not in a valid state to be acknowledged. Current state: " + po.getStatus());
         }
         po.setStatus("ACKNOWLEDGED");
+        po.setAcknowledgedAt(java.time.LocalDateTime.now());
         poRepository.save(po);
     }
 }

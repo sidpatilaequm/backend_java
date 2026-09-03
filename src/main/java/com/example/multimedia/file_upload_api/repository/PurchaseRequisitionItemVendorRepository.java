@@ -22,4 +22,8 @@ public interface PurchaseRequisitionItemVendorRepository extends JpaRepository<P
 
     @Query("SELECT v FROM PurchaseRequisitionItemVendor v WHERE v.vendorId = :vendorId AND v.purchaseRequisitionItem.purchaseRequisition.id = :prId")
     List<PurchaseRequisitionItemVendor> findByVendorIdAndPrId(@Param("vendorId") Long vendorId, @Param("prId") Long prId);
+
+    // Every RFQ-sent/response row for a PR, across all vendors and items — for the PR Lifecycle tab.
+    @Query("SELECT v FROM PurchaseRequisitionItemVendor v WHERE v.purchaseRequisitionItem.purchaseRequisition.id = :prId ORDER BY v.sentAt ASC")
+    List<PurchaseRequisitionItemVendor> findByPurchaseRequisitionItem_PurchaseRequisition_Id(@Param("prId") Long prId);
 }

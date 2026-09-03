@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -20,6 +21,14 @@ public interface PurchaseRequisitionRepository extends JpaRepository<PurchaseReq
     Optional<PurchaseRequisition> findTopByOrderByIdDesc();
 
     Optional<PurchaseRequisition> findByPrNumber(String prNumber);
+
+    // Unrestricted PR-number search for the Audit Log's PR Lifecycle tab — unlike
+    // findWithFilters/findWithFiltersIn below, this isn't scoped to a submitter, since an admin
+    // browsing the audit trail needs to find any PR, not just their own.
+    List<PurchaseRequisition> findTop20ByPrNumberContainingIgnoreCaseOrderByCreatedAtDesc(String search);
+
+    // Backs the PR Lifecycle tab's default cross-PR feed — see PrLifecycleService.getFeed.
+    List<PurchaseRequisition> findTop100ByOrderByCreatedAtDesc();
 
     @Query("SELECT p FROM PurchaseRequisition p WHERE p.requestedBy = :requestedBy " +
             "AND (:locationId IS NULL OR p.locationId = :locationId) " +

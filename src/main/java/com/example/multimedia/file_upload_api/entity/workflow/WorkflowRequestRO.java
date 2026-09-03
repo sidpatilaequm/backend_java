@@ -35,6 +35,12 @@ public class WorkflowRequestRO {
     @Column(name = "submitted_at")
     private LocalDateTime submittedAt;
 
+    // Overall completion time (approved/rejected/cancelled) — not mapped before this, even though
+    // the column already exists (see PR Lifecycle tab, which needs it to know when approval
+    // actually finished, not just when it started).
+    @Column(name = "resolved_at")
+    private LocalDateTime resolvedAt;
+
     public Integer getId() { return id; }
     public String getTitle() { return title; }
     public String getDepartment() { return department; }
@@ -44,4 +50,5 @@ public class WorkflowRequestRO {
     public WorkflowRO getWorkflow() { return workflow; }
     public UserDetail getSubmitter() { return submitter; }
     public LocalDateTime getSubmittedAt() { return submittedAt; }
+    public LocalDateTime getResolvedAt() { return resolvedAt; }
 }

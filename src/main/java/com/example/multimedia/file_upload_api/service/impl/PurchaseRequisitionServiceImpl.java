@@ -750,8 +750,10 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
             throw new IllegalArgumentException("Invalid action: " + action + ". Allowed values are ACCEPT or REJECT.");
         }
 
+        java.sql.Timestamp now = new java.sql.Timestamp(System.currentTimeMillis());
         for (PurchaseRequisitionItemVendor assignment : assignments) {
             assignment.setStatus(newStatus);
+            assignment.setRespondedAt(now);
         }
         vendorRepository.saveAll(assignments);
     }

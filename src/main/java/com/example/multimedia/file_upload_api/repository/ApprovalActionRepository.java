@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 /**
  * Deliberately extends the bare `Repository<T, ID>` marker interface, not `JpaRepository` — this
  * repository must never expose save()/delete(), since ApprovalActionRO maps onto a table the
@@ -21,4 +23,11 @@ public interface ApprovalActionRepository extends Repository<ApprovalActionRO, I
         ORDER BY aa.actedAt DESC
         """)
     Page<ApprovalActionRO> findApprovalsForTenant(@Param("tenantId") Long tenantId, Pageable pageable);
+
+    @Query("""
+        SELECT aa FROM ApprovalActionRO aa
+        WHERE aa.requestStage.workflowRequest.id = :workflowRequestId
+        ORDER BY aa.actedAt ASC
+        """)
+    List<ApprovalActionRO> findByWorkflowRequestId(@Param("workflowRequestId") Integer workflowRequestId);
 }
