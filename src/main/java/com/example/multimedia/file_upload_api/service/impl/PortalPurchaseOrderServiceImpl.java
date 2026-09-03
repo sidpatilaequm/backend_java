@@ -193,7 +193,7 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
             }
 
             java.util.List<String> createdByList = allowedUserIds.stream().map(String::valueOf).collect(java.util.stream.Collectors.toList());
-            List<PortalPurchaseOrder> pos = poRepository.findByPurchaseRequisition_RequestedByInOrCreatedByIn(allowedUserIds, createdByList);
+            List<PortalPurchaseOrder> pos = poRepository.findEmployeePOs(user.getSuperAdmin().getSuperAdminId(), allowedUserIds, createdByList);
             return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
         }
     }
@@ -211,7 +211,6 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
             }
         } else {
             UserDetail user = currentUserService.getCurrentUser();
-            Long requestedById = po.getPurchaseRequisition().getRequestedBy();
             List<Long> allowedUserIds = new java.util.ArrayList<>();
             allowedUserIds.add(user.getUserId());
 
@@ -228,7 +227,22 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
                 }
             }
 
-            if (!allowedUserIds.contains(requestedById)) {
+            boolean authorized = false;
+            if (po.getPurchaseRequisition() != null && allowedUserIds.contains(po.getPurchaseRequisition().getRequestedBy())) {
+                authorized = true;
+            }
+            if (po.getCreatedBy() != null) {
+                try {
+                    if (allowedUserIds.contains(Long.parseLong(po.getCreatedBy()))) {
+                        authorized = true;
+                    }
+                } catch (NumberFormatException ignored) {}
+            } else if (po.getVendor() != null && po.getVendor().getSuperAdmin() != null && 
+                       po.getVendor().getSuperAdmin().getSuperAdminId().equals(user.getSuperAdmin().getSuperAdminId())) {
+                authorized = true;
+            }
+
+            if (!authorized) {
                 throw new SecurityException("Unauthorized to view this Purchase Order.");
             }
         }
@@ -249,8 +263,18 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
             }
         } else {
             UserDetail user = currentUserService.getCurrentUser();
-            Long requestedById = po.getPurchaseRequisition().getRequestedBy();
-            if (!user.getUserId().equals(requestedById)) {
+            boolean authorized = false;
+            if (po.getPurchaseRequisition() != null && user.getUserId().equals(po.getPurchaseRequisition().getRequestedBy())) {
+                authorized = true;
+            }
+            if (po.getCreatedBy() != null) {
+                try {
+                    if (user.getUserId().equals(Long.parseLong(po.getCreatedBy()))) {
+                        authorized = true;
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+            if (!authorized) {
                 throw new SecurityException("Unauthorized to cancel this Purchase Order.");
             }
         }
