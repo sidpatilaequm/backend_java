@@ -7,16 +7,20 @@ import com.example.multimedia.file_upload_api.repository.AuditLogRepository;
 import com.example.multimedia.file_upload_api.repository.SuperAdminRepository;
 import com.example.multimedia.file_upload_api.repository.UserDetailRepository;
 import com.example.multimedia.file_upload_api.security.AdminAuthChecker;
+import com.example.multimedia.file_upload_api.service.AuditLogService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -34,15 +38,35 @@ public class AuditLogController {
     private final AdminAuthChecker adminAuthChecker;
     private final SuperAdminRepository superAdminRepository;
     private final UserDetailRepository userDetailRepository;
+    private final AuditLogService auditLogService;
 
     public AuditLogController(AuditLogRepository auditLogRepository,
                                AdminAuthChecker adminAuthChecker,
                                SuperAdminRepository superAdminRepository,
-                               UserDetailRepository userDetailRepository) {
+                               UserDetailRepository userDetailRepository,
+                               AuditLogService auditLogService) {
         this.auditLogRepository = auditLogRepository;
         this.adminAuthChecker = adminAuthChecker;
         this.superAdminRepository = superAdminRepository;
         this.userDetailRepository = userDetailRepository;
+        this.auditLogService = auditLogService;
+    }
+
+    /**
+     * Logs a client-side data export (PR/PO/quotation Excel, vendor document bundle, etc.) — these
+     * are generated entirely in the browser (XLSX/jsPDF) with no server round-trip otherwise, so
+     * there's nothing else to hook for tracking. Open to any authenticated user, not just admins —
+     * an employee's own export should show up here too, same as their PR/RFQ/approval activity does
+     * in the PR Lifecycle tab.
+     */
+    @PostMapping("/track-export")
+    public ResponseEntity<?> trackExport(@RequestBody Map<String, String> body) {
+        String documentType = body.getOrDefault("documentType", "Document");
+        String label = body.get("label");
+        auditLogService.recordGeneric("DATA_EXPORTED",
+                label != null && !label.isBlank() ? documentType + " — " + label : documentType,
+                List.of());
+        return ResponseEntity.ok(Map.of("status", "logged"));
     }
 
     @GetMapping

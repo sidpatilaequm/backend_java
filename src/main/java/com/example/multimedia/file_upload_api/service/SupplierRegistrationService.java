@@ -56,6 +56,7 @@ public class SupplierRegistrationService {
     private final SupplierRegistrationDocumentTypeRepository documentTypeSelectionRepository;
     private final DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository;
     private final DocumentTypeRepository documentTypeRepository;
+    private final AuditLogService auditLogService;
 
     @Value("${workflow.api.base-url:http://localhost:8000}")
     private String workflowBaseUrl;
@@ -86,7 +87,8 @@ public class SupplierRegistrationService {
                                         WorkflowEmailClient workflowEmailClient,
                                         SupplierRegistrationDocumentTypeRepository documentTypeSelectionRepository,
                                         DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository,
-                                        DocumentTypeRepository documentTypeRepository) {
+                                        DocumentTypeRepository documentTypeRepository,
+                                        AuditLogService auditLogService) {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
         this.attachmentRepository = attachmentRepository;
@@ -109,6 +111,7 @@ public class SupplierRegistrationService {
         this.documentTypeSelectionRepository = documentTypeSelectionRepository;
         this.documentTypeCompanyCodeRepository = documentTypeCompanyCodeRepository;
         this.documentTypeRepository = documentTypeRepository;
+        this.auditLogService = auditLogService;
     }
 
     // ── Document upload + OCR + FolderIt storage ────────────────────────────
@@ -261,7 +264,11 @@ public class SupplierRegistrationService {
     public FolderItService.DownloadedFile getAttachmentPreviewFile(Long attachmentId) throws java.io.IOException {
         SupplierRegistrationAttachment attachment = attachmentRepository.findById(attachmentId)
                 .orElseThrow(() -> new RuntimeException("Attachment not found"));
-        return folderItService.downloadFileBytes(attachment.getFolderItFileUid());
+        FolderItService.DownloadedFile file = folderItService.downloadFileBytes(attachment.getFolderItFileUid());
+        String vendorName = attachment.getRegistration() != null ? attachment.getRegistration().getVendorName() : null;
+        auditLogService.recordGeneric("DOCUMENT_VIEWED",
+                (vendorName != null ? vendorName + " — " : "") + attachment.getFileName(), List.of());
+        return file;
     }
 
     /**
@@ -833,7 +840,11 @@ public class SupplierRegistrationService {
         if (doc.getFolderItFileUid() == null) {
             throw new RuntimeException("No file uploaded for this document");
         }
-        return folderItService.downloadFileBytes(doc.getFolderItFileUid());
+        FolderItService.DownloadedFile file = folderItService.downloadFileBytes(doc.getFolderItFileUid());
+        String vendorName = doc.getRegistration() != null ? doc.getRegistration().getVendorName() : null;
+        auditLogService.recordGeneric("DOCUMENT_VIEWED",
+                (vendorName != null ? vendorName + " — " : "") + doc.getDocType(), List.of());
+        return file;
     }
 
     // ── Submit into WorkFlow's "Vendor Approval" workflow ────────────────
