@@ -33,4 +33,6 @@ public interface PortalPurchaseOrderRepository extends JpaRepository<PortalPurch
 
     @org.springframework.data.jpa.repository.Query("SELECT p FROM PortalPurchaseOrder p LEFT JOIN p.purchaseRequisition pr WHERE pr.requestedBy IN :requestedByIds OR p.createdBy IN :createdByList ORDER BY p.createdDate DESC")
     List<PortalPurchaseOrder> findByPurchaseRequisition_RequestedByInOrCreatedByIn(@org.springframework.data.repository.query.Param("requestedByIds") java.util.Collection<Long> requestedByIds, @org.springframework.data.repository.query.Param("createdByList") java.util.Collection<String> createdByList);
+
+    List<PortalPurchaseOrder> findByPurchaseRequisition_Id(Long prId);
 }

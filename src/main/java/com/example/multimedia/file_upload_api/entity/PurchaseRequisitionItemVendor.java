@@ -30,6 +30,11 @@ public class PurchaseRequisitionItemVendor {
     @Column(updatable = false)
     private Timestamp sentAt;
 
+    // Set when the vendor actually responds (ACCEPTED or REJECTED) — see
+    // PurchaseRequisitionServiceImpl.respondToPurchaseRequisition. Null while status is still SENT.
+    @Column(name = "responded_at")
+    private Timestamp respondedAt;
+
     public Long getId() {
         return id;
     }
@@ -76,5 +81,13 @@ public class PurchaseRequisitionItemVendor {
 
     public void setSentAt(Timestamp sentAt) {
         this.sentAt = sentAt;
+    }
+
+    public Timestamp getRespondedAt() {
+        return respondedAt;
+    }
+
+    public void setRespondedAt(Timestamp respondedAt) {
+        this.respondedAt = respondedAt;
     }
 }

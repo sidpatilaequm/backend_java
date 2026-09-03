@@ -62,6 +62,11 @@ public class PortalPurchaseOrder {
     @Column(name = "status", nullable = false, length = 50)
     private String status = "RELEASED";
 
+    // Set when the vendor acknowledges the PO — see PortalPurchaseOrderServiceImpl.acknowledgePO.
+    // Null until then; not reused for any other status change, unlike modifiedDate.
+    @Column(name = "acknowledged_at")
+    private LocalDateTime acknowledgedAt;
+
     @Column(name = "company_code", length = 10)
     private String companyCode;
 
