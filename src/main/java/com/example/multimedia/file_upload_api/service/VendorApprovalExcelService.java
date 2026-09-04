@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -272,12 +273,22 @@ public class VendorApprovalExcelService {
             (("table".equals(a.optString("questionType", ""))) ? tables : flat).add(a);
         }
 
-        if (!flat.isEmpty()) {
-            Sheet sheet = wb.createSheet("Questionnaire Answers");
+        Set<String> usedSheetNames = new HashSet<>();
+
+        // One sheet per questionnaire section (Form Studio's own grouping — sections.title via
+        // questions.section_id) rather than one giant "Questionnaire Answers" sheet — same flat
+        // one-row-per-vendor shape as before, just split so each sheet only has one section's
+        // questions as columns.
+        Map<String, List<JSONObject>> flatBySection = new LinkedHashMap<>();
+        for (JSONObject a : flat) {
+            flatBySection.computeIfAbsent(a.optString("sectionTitle", "Other"), k -> new ArrayList<>()).add(a);
+        }
+        for (Map.Entry<String, List<JSONObject>> entry : flatBySection.entrySet()) {
+            Sheet sheet = wb.createSheet(uniqueSheetName(usedSheetNames, entry.getKey()));
             Row header = sheet.createRow(0);
             Row data = sheet.createRow(1);
             int col = 0;
-            for (JSONObject a : flat) {
+            for (JSONObject a : entry.getValue()) {
                 setHeaderCell(header, col, a.optString("prompt", ""), headerStyle);
                 data.createCell(col).setCellValue(answerText(a));
                 col++;
@@ -294,7 +305,6 @@ public class VendorApprovalExcelService {
             autoSize(sheet, col);
         }
 
-        Set<String> usedSheetNames = new HashSet<>();
         for (JSONObject a : tables) {
             JSONArray columnLabels = a.optJSONArray("columnLabels");
             List<String> cols = new ArrayList<>();

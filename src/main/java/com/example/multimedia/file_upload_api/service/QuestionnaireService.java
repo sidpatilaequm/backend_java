@@ -618,6 +618,10 @@ public class QuestionnaireService {
         List<Integer> questionIds = answers.stream().map(QSAnswer::getQuestionId).collect(Collectors.toList());
         Map<Integer, QSQuestion> questionsById = questionRepository.findAllById(questionIds).stream()
                 .collect(Collectors.toMap(QSQuestion::getId, q -> q));
+        Set<Integer> sectionIds = questionsById.values().stream().map(QSQuestion::getSectionId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Integer, String> sectionTitleById = sectionIds.isEmpty() ? Map.of() :
+                sectionRepository.findAllById(sectionIds).stream().collect(Collectors.toMap(QSSection::getId, QSSection::getTitle));
         List<QSQuestionColumn> reviewColumns = questionIds.isEmpty() ? List.of() : columnRepository.findByQuestionIdInOrderByPosition(questionIds);
         Map<Integer, List<QSQuestionColumn>> reviewColumnsByQuestion = reviewColumns.stream()
                 .collect(Collectors.groupingBy(QSQuestionColumn::getQuestionId, LinkedHashMap::new, Collectors.toList()));
@@ -637,6 +641,7 @@ public class QuestionnaireService {
             out1.put("questionId", q.getId());
             out1.put("prompt", q.getPrompt());
             out1.put("questionType", q.getQuestionType());
+            out1.put("sectionTitle", sectionTitleById.getOrDefault(q.getSectionId(), "Other"));
             out1.put("textValue", a.getTextValue());
             Long attachmentId = attachmentIdByQuestionId.get(q.getId());
             if (attachmentId != null) {
