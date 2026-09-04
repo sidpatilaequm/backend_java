@@ -21,6 +21,7 @@ public interface UserAuthenticationRepository extends JpaRepository<UserAuthenti
     @Query("SELECT CASE WHEN COUNT(ua) > 0 THEN true ELSE false END FROM UserAuthentication ua WHERE ua.userId = :#{#user.userId} AND ua.authKey = :#{#authorization.authId.toString()}")
     boolean existsByUserIdAndAuthKey(@Param("user") UserDetail user, @Param("authorization") Authorization authorization);
     Optional<UserAuthentication> findByUserId(Long userId);
+    List<UserAuthentication> findByUserIdIn(List<Long> userIds);
     @Query("SELECT ua FROM UserAuthentication ua WHERE ua.authKey = :authKey AND ua.isActive = true")
     List<UserAuthentication> findByAuthKey(@Param("authKey") String authKey);
 

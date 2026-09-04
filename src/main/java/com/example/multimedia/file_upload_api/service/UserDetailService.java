@@ -93,7 +93,18 @@ public class UserDetailService {
         requireAdmin();
         SuperAdmin currentSuperAdmin = getEffectiveSuperAdmin();
         List<UserDetail> users = userDetailRepository.findBySuperAdmin(currentSuperAdmin);
-        
+
+        // The real, access-governing role (what AdminAuthChecker and every permission check
+        // actually use) lives in UserAuthentication -> Authorization, keyed by auth_id stored as
+        // a string. UserDetail.userType is a separate, independently-set descriptive field that
+        // can drift out of sync with it (confirmed happening for real accounts) — resolve the
+        // real one here instead of trusting userType, batched to avoid one query per user.
+        List<Long> userIds = users.stream().map(UserDetail::getUserId).toList();
+        Map<Long, String> authKeyByUserId = userAuthenticationRepository.findByUserIdIn(userIds).stream()
+                .collect(Collectors.toMap(UserAuthentication::getUserId, UserAuthentication::getAuthKey, (a, b) -> a));
+        Map<String, String> roleByAuthId = authorizationRepository.findAll().stream()
+                .collect(Collectors.toMap(a -> String.valueOf(a.getAuthId()), a -> a.getAuthKey().toUpperCase()));
+
         return users.stream().map(u -> {
             Map<String, Object> map = new HashMap<>();
             map.put("userId", u.getUserId());
@@ -102,8 +113,11 @@ public class UserDetailService {
             map.put("lastName", u.getLastName());
             map.put("phoneNumber", u.getPhoneNumber());
             map.put("isActive", u.getIsActive());
-            map.put("role", u.getUserType() != null ? u.getUserType().name() : "EMPLOYEE");
-            
+
+            String authKey = authKeyByUserId.get(u.getUserId());
+            String realRole = authKey != null ? roleByAuthId.get(authKey) : null;
+            map.put("role", realRole != null ? realRole : (u.getUserType() != null ? u.getUserType().name() : "EMPLOYEE"));
+
             // Check if employee exists
             Optional<Employee> empOpt = employeeRepository.findByUserDetail_UserId(u.getUserId());
             if (empOpt.isPresent()) {
