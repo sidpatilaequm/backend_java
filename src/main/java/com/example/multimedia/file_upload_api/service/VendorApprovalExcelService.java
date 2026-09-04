@@ -13,7 +13,9 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Builds the one-workbook snapshot of an approved vendor's Become-a-Supplier application —
@@ -39,7 +41,7 @@ public class VendorApprovalExcelService {
             buildDirectorsSheet(workbook, reg, headerStyle);
             buildMachinerySheet(workbook, reg, headerStyle);
             buildDocumentsSheet(workbook, docs, attachments, headerStyle, folderItAccountUid);
-            buildQuestionnaireSheet(workbook, dynamicAnswers, headerStyle);
+            buildQuestionnaireSheet(workbook, dynamicAnswers, attachments, headerStyle, folderItAccountUid);
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             workbook.write(out);
@@ -210,10 +212,20 @@ public class VendorApprovalExcelService {
 
     // ── Sheet 5: dynamic questionnaire answers (QuestionnaireService.getAnswersForReview shape) ──
 
-    private void buildQuestionnaireSheet(Workbook wb, JSONArray answers, CellStyle headerStyle) {
+    private void buildQuestionnaireSheet(Workbook wb, JSONArray answers, List<SupplierRegistrationAttachment> attachments,
+                                          CellStyle headerStyle, String folderItAccountUid) {
         if (answers == null || answers.isEmpty()) return;
+        // A file_upload question's answer is answered by an attachment carrying that questionId
+        // (see SupplierRegistrationAttachment.questionId) — same lookup QuestionnaireService.
+        // getAnswersForReview uses to build previewUrl, but we want the FolderIt reference here
+        // instead of our own app's proxy link.
+        Map<Integer, SupplierRegistrationAttachment> attachmentByQuestionId = new HashMap<>();
+        for (SupplierRegistrationAttachment a : attachments) {
+            if (a.getQuestionId() != null) attachmentByQuestionId.put(a.getQuestionId(), a);
+        }
+
         Sheet sheet = wb.createSheet("Questionnaire Answers");
-        String[] cols = {"Question", "Answer"};
+        String[] cols = {"Question", "Answer", "FolderIt File UID", "FolderIt API Reference"};
         headerRow(sheet, headerStyle, cols);
         int r = 1;
         for (int i = 0; i < answers.length(); i++) {
@@ -221,6 +233,11 @@ public class VendorApprovalExcelService {
             Row row = sheet.createRow(r++);
             row.createCell(0).setCellValue(a.optString("prompt", ""));
             row.createCell(1).setCellValue(answerText(a));
+            SupplierRegistrationAttachment att = attachmentByQuestionId.get(a.optInt("questionId", -1));
+            if (att != null && att.getFolderItFileUid() != null) {
+                row.createCell(2).setCellValue(att.getFolderItFileUid());
+                row.createCell(3).setCellValue(folderItReference(att.getFolderItFileUid(), folderItAccountUid));
+            }
         }
         autoSize(sheet, cols.length);
     }
