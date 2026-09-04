@@ -23,6 +23,19 @@ public class SecurityContextUtils {
     @Autowired
     private com.example.multimedia.file_upload_api.repository.UserAuthenticationRepository userAuthenticationRepository;
 
+    public boolean isCurrentUserVendor() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        String email = authentication.getName();
+        Optional<UserDetail> userOpt = userDetailRepository.findByEmail(email);
+        if (userOpt.isPresent()) {
+            return userOpt.get().getUserType() == com.example.multimedia.file_upload_api.enums.UserType.VENDOR;
+        }
+        return false;
+    }
+
     public Long getCurrentVendorId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {

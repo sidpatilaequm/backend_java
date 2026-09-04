@@ -76,7 +76,9 @@ public class AsnController {
             } else {
                 Long vendorId = null;
                 try {
-                    vendorId = securityContextUtils.getCurrentVendorId();
+                    if (securityContextUtils.isCurrentUserVendor()) {
+                        vendorId = securityContextUtils.getCurrentVendorId();
+                    }
                 } catch (Exception e) {
                     // Ignore if not authenticated as vendor
                 }
