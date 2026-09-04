@@ -81,6 +81,9 @@ public class PurchaseRequisitionController {
         responseMap.put("plantCode", response.getPlantCode());
         responseMap.put("slocId", response.getSlocId());
         responseMap.put("storageLocationLabel", response.getStorageLocationLabel());
+        responseMap.put("docTypeCode", response.getDocTypeCode());
+        responseMap.put("docTypeDescription", response.getDocTypeDescription());
+        responseMap.put("rawMaterial", response.getRawMaterial());
         responseMap.put("requestedBy", response.getRequestedBy());
         responseMap.put("requiredDate", response.getRequiredDate());
         responseMap.put("remarks", response.getRemarks());
