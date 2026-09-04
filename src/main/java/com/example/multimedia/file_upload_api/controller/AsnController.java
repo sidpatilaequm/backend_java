@@ -84,7 +84,7 @@ public class AsnController {
                 if (vendorId != null) {
                     serviceResponse = asnService.getAsnsByVendorId(vendorId, companyCode);
                 } else {
-                    serviceResponse = asnService.getAllAsns();
+                    serviceResponse = asnService.getAllAsns(companyCode);
                 }
             }
 

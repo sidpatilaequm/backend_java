@@ -15,7 +15,7 @@ public interface AsnService {
     
     ServiceResponse getAsnsByVendorId(Long vendorId, String companyCode);
 
-    ServiceResponse getAllAsns();
+    ServiceResponse getAllAsns(String companyCode);
 
     ServiceResponse getAsnsByPoNumber(String poNumber);
 

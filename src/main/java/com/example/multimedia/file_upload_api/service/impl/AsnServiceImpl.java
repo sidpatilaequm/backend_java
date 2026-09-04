@@ -254,9 +254,14 @@ public class AsnServiceImpl implements AsnService {
 
     @Override
     @Transactional(readOnly = true)
-    public ServiceResponse getAllAsns() {
+    public ServiceResponse getAllAsns(String companyCode) {
         ServiceResponse response = new ServiceResponse();
-        List<Asn> asns = asnRepository.findAll();
+        List<Asn> asns;
+        if (companyCode != null && !companyCode.trim().isEmpty()) {
+            asns = asnRepository.findByCompanyCodeOrderByIdDesc(companyCode);
+        } else {
+            asns = asnRepository.findAll();
+        }
         List<com.example.multimedia.file_upload_api.dto.AsnResponseDto> dtos = asns.stream().map(this::mapToDto).collect(java.util.stream.Collectors.toList());
         response.addData("asns", dtos);
         response.setStatus("SUCCESS");
