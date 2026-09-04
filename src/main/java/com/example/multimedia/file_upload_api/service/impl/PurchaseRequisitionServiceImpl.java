@@ -99,15 +99,11 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
             requestedById = user.getUserId();
         }
 
-        StorageLocation.Pk slocKey = new StorageLocation.Pk();
-        slocKey.setPlantCode(request.getPlantCode());
-        slocKey.setSlocId(request.getSlocId());
-        storageLocationRepository.findById(slocKey)
-                .orElseThrow(() -> new IllegalArgumentException("Invalid plant/storage location"));
+        plantRepository.findById(request.getPlantCode())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid plant"));
 
         PurchaseRequisition pr = new PurchaseRequisition();
         pr.setPlantCode(request.getPlantCode());
-        pr.setSlocId(request.getSlocId());
         pr.setRequiredDate(request.getRequiredDate());
         pr.setRemarks(request.getRemarks());
         pr.setCompanyCode(request.getCompanyCode());
@@ -309,14 +305,10 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
             throw new IllegalStateException("Cannot modify a Purchase Requisition that has already been dispatched to vendors.");
         }
 
-        StorageLocation.Pk slocKey = new StorageLocation.Pk();
-        slocKey.setPlantCode(request.getPlantCode());
-        slocKey.setSlocId(request.getSlocId());
-        storageLocationRepository.findById(slocKey)
-                .orElseThrow(() -> new IllegalArgumentException("Invalid plant/storage location"));
+        plantRepository.findById(request.getPlantCode())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid plant"));
 
         pr.setPlantCode(request.getPlantCode());
-        pr.setSlocId(request.getSlocId());
         pr.setRequiredDate(request.getRequiredDate());
         pr.setRemarks(request.getRemarks());
         pr.setCompanyCode(request.getCompanyCode());
@@ -662,15 +654,19 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
         return "ID: " + requestedById;
     }
 
-    // e.g. "AAPL Manufacturing Unit — Main Store (1100/1100)" — resolved fresh each time rather
-    // than denormalized onto the PR row, since plant/storage-location names can change after the
-    // PR was created.
+    // e.g. "AAPL Manufacturing Unit (1100)", or "AAPL Manufacturing Unit — Main Store (1100/1100)"
+    // for the older PRs created back when this also carried a storage location. Resolved fresh
+    // each time rather than denormalized onto the PR row, since plant/storage-location names can
+    // change after the PR was created.
     private String resolveStorageLocationLabel(PurchaseRequisition pr) {
-        if (pr.getPlantCode() == null || pr.getSlocId() == null) {
+        if (pr.getPlantCode() == null) {
             return null;
         }
         String plantName = plantRepository.findById(pr.getPlantCode())
                 .map(Plant::getPlantName).orElse(pr.getPlantCode());
+        if (pr.getSlocId() == null) {
+            return plantName + " (" + pr.getPlantCode() + ")";
+        }
         StorageLocation.Pk slocKey = new StorageLocation.Pk();
         slocKey.setPlantCode(pr.getPlantCode());
         slocKey.setSlocId(pr.getSlocId());

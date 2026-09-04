@@ -13,7 +13,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import com.example.multimedia.file_upload_api.repository.StorageLocationRepository;
 import com.example.multimedia.file_upload_api.repository.PlantRepository;
 import com.example.multimedia.file_upload_api.repository.MaterialRepository;
 
@@ -28,9 +27,6 @@ public class PurchaseRequisitionController {
     private PurchaseRequisitionService prService;
 
     @Autowired
-    private StorageLocationRepository storageLocationRepository;
-
-    @Autowired
     private PlantRepository plantRepository;
 
     @Autowired
@@ -39,15 +35,12 @@ public class PurchaseRequisitionController {
     @GetMapping("/create-pr-options")
     public ResponseEntity<Map<String, Object>> getCreatePrOptions() {
         Map<String, Object> response = new HashMap<>();
-        response.put("storageLocations", storageLocationRepository.findAll().stream()
-                .map(sl -> {
+        response.put("plants", plantRepository.findAll().stream()
+                .map(p -> {
                     Map<String, Object> m = new HashMap<>();
-                    m.put("plantCode", sl.getPlantCode());
-                    m.put("slocId", sl.getSlocId());
-                    m.put("description", sl.getDescription());
-                    m.put("plantName", plantRepository.findById(sl.getPlantCode())
-                            .map(com.example.multimedia.file_upload_api.entity.Plant::getPlantName)
-                            .orElse(sl.getPlantCode()));
+                    m.put("plantCode", p.getPlantCode());
+                    m.put("plantName", p.getPlantName());
+                    m.put("companyCode", p.getCompany() != null ? p.getCompany().getCompanyCode() : null);
                     return m;
                 }).toList());
         response.put("materials", materialRepository.findAll());
