@@ -24,7 +24,14 @@ public class MaterialInwardDetailDto {
     private String invoiceDate;
     
     private String destination;
-    
+
+    // Drives whether the frontend's putaway step shows a warehouse/bin picker at all — see
+    // PurchaseRequisitionServiceImpl.isRawMaterial. Only doc types ending in "RM" (today just
+    // ZFRM) need a real warehouse + bin; everything else is location-only.
+    private String docTypeCode;
+    private String docTypeDescription;
+    private Boolean rawMaterial;
+
     private List<BoxDto> boxes;
     
     @Data

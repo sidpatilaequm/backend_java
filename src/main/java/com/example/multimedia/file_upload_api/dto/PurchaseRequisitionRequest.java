@@ -7,6 +7,7 @@ import java.util.List;
 public class PurchaseRequisitionRequest {
     private String plantCode;
     private String slocId;
+    private String docTypeCode;
     private LocalDate requiredDate;
     private String remarks;
     private String companyCode;
@@ -27,6 +28,14 @@ public class PurchaseRequisitionRequest {
 
     public void setSlocId(String slocId) {
         this.slocId = slocId;
+    }
+
+    public String getDocTypeCode() {
+        return docTypeCode;
+    }
+
+    public void setDocTypeCode(String docTypeCode) {
+        this.docTypeCode = docTypeCode;
     }
 
     public LocalDate getRequiredDate() {

@@ -12,6 +12,9 @@ public class PurchaseRequisitionResponse {
     private String plantCode;
     private String slocId;
     private String storageLocationLabel;
+    private String docTypeCode;
+    private String docTypeDescription;
+    private Boolean rawMaterial;
     private String requestedBy;
     private LocalDate requiredDate;
     private String remarks;
@@ -63,6 +66,30 @@ public class PurchaseRequisitionResponse {
 
     public void setStorageLocationLabel(String storageLocationLabel) {
         this.storageLocationLabel = storageLocationLabel;
+    }
+
+    public String getDocTypeCode() {
+        return docTypeCode;
+    }
+
+    public void setDocTypeCode(String docTypeCode) {
+        this.docTypeCode = docTypeCode;
+    }
+
+    public String getDocTypeDescription() {
+        return docTypeDescription;
+    }
+
+    public void setDocTypeDescription(String docTypeDescription) {
+        this.docTypeDescription = docTypeDescription;
+    }
+
+    public Boolean getRawMaterial() {
+        return rawMaterial;
+    }
+
+    public void setRawMaterial(Boolean rawMaterial) {
+        this.rawMaterial = rawMaterial;
     }
 
     public String getRequestedBy() {

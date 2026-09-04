@@ -24,6 +24,9 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
     @Autowired
     private AsnRepository asnRepository;
 
+    @Autowired
+    private DocumentTypeRepository documentTypeRepository;
+
     @Override
     public List<MaterialInwardQueueDto> getQueue() {
         // Fetch gate entries that are ALLOWED
@@ -78,6 +81,19 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
                 dto.setPoReference(po.getPoNumber());
                 dto.setPoDate(po.getPoDate() != null ? po.getPoDate().toString() : "N/A");
                 dto.setDestination("WH1 — Main Warehouse");
+
+                // The founder's rule: only a doc type ending in "RM" (today just ZFRM) needs a
+                // real warehouse + bin at putaway — everything else is location-only. Resolved
+                // fresh from the PR each time rather than copied forward onto the ASN/PO.
+                if (po.getPurchaseRequisition() != null) {
+                    String docTypeCode = po.getPurchaseRequisition().getDocTypeCode();
+                    dto.setDocTypeCode(docTypeCode);
+                    dto.setRawMaterial(docTypeCode != null && docTypeCode.endsWith("RM"));
+                    if (docTypeCode != null) {
+                        documentTypeRepository.findById(docTypeCode)
+                                .ifPresent(dt -> dto.setDocTypeDescription(dt.getDescription()));
+                    }
+                }
             }
             
             // Map packages (boxes) and items (lines)

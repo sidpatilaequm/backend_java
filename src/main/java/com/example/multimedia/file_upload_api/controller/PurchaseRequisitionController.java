@@ -15,6 +15,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.example.multimedia.file_upload_api.repository.PlantRepository;
 import com.example.multimedia.file_upload_api.repository.MaterialRepository;
+import com.example.multimedia.file_upload_api.repository.DocumentTypeCompanyCodeRepository;
+import com.example.multimedia.file_upload_api.repository.DocumentTypeRepository;
+import com.example.multimedia.file_upload_api.entity.DocumentType;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -32,6 +35,12 @@ public class PurchaseRequisitionController {
     @Autowired
     private MaterialRepository materialRepository;
 
+    @Autowired
+    private DocumentTypeRepository documentTypeRepository;
+
+    @Autowired
+    private DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository;
+
     @GetMapping("/create-pr-options")
     public ResponseEntity<Map<String, Object>> getCreatePrOptions() {
         Map<String, Object> response = new HashMap<>();
@@ -41,6 +50,18 @@ public class PurchaseRequisitionController {
                     m.put("plantCode", p.getPlantCode());
                     m.put("plantName", p.getPlantName());
                     m.put("companyCode", p.getCompany() != null ? p.getCompany().getCompanyCode() : null);
+                    return m;
+                }).toList());
+        Map<String, DocumentType> byCode = documentTypeRepository.findByIsActiveTrueOrderByCode().stream()
+                .collect(java.util.stream.Collectors.toMap(DocumentType::getCode, dt -> dt));
+        response.put("documentTypes", documentTypeCompanyCodeRepository.findAll().stream()
+                .map(dtc -> {
+                    DocumentType dt = byCode.get(dtc.getDocTypeCode());
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("docTypeCode", dtc.getDocTypeCode());
+                    m.put("companyCode", dtc.getCompanyCode());
+                    m.put("description", dt != null ? dt.getDescription() : dtc.getDocTypeCode());
+                    m.put("classification", dt != null ? dt.getClassification() : null);
                     return m;
                 }).toList());
         response.put("materials", materialRepository.findAll());

@@ -16,6 +16,9 @@ import com.example.multimedia.file_upload_api.dto.VendorPurchaseRequisitionItemR
 import com.example.multimedia.file_upload_api.repository.PurchaseRequisitionItemVendorRepository;
 import com.example.multimedia.file_upload_api.repository.StorageLocationRepository;
 import com.example.multimedia.file_upload_api.repository.PlantRepository;
+import com.example.multimedia.file_upload_api.repository.DocumentTypeRepository;
+import com.example.multimedia.file_upload_api.repository.DocumentTypeCompanyCodeRepository;
+import com.example.multimedia.file_upload_api.entity.DocumentType;
 import com.example.multimedia.file_upload_api.repository.CompanyDetailsRepository;
 import com.example.multimedia.file_upload_api.repository.MaterialRepository;
 import com.example.multimedia.file_upload_api.repository.FinancialTermsRepository;
@@ -54,6 +57,12 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
 
     @Autowired
     private PlantRepository plantRepository;
+
+    @Autowired
+    private DocumentTypeRepository documentTypeRepository;
+
+    @Autowired
+    private DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository;
 
     @Autowired
     private PurchaseRequisitionItemVendorRepository vendorRepository;
@@ -101,9 +110,14 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
 
         plantRepository.findById(request.getPlantCode())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid plant"));
+        if (request.getDocTypeCode() != null
+                && !documentTypeCompanyCodeRepository.existsByDocTypeCodeAndCompanyCode(request.getDocTypeCode(), request.getCompanyCode())) {
+            throw new IllegalArgumentException("Document type " + request.getDocTypeCode() + " is not assigned to company code " + request.getCompanyCode());
+        }
 
         PurchaseRequisition pr = new PurchaseRequisition();
         pr.setPlantCode(request.getPlantCode());
+        pr.setDocTypeCode(request.getDocTypeCode());
         pr.setRequiredDate(request.getRequiredDate());
         pr.setRemarks(request.getRemarks());
         pr.setCompanyCode(request.getCompanyCode());
@@ -307,8 +321,13 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
 
         plantRepository.findById(request.getPlantCode())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid plant"));
+        if (request.getDocTypeCode() != null
+                && !documentTypeCompanyCodeRepository.existsByDocTypeCodeAndCompanyCode(request.getDocTypeCode(), request.getCompanyCode())) {
+            throw new IllegalArgumentException("Document type " + request.getDocTypeCode() + " is not assigned to company code " + request.getCompanyCode());
+        }
 
         pr.setPlantCode(request.getPlantCode());
+        pr.setDocTypeCode(request.getDocTypeCode());
         pr.setRequiredDate(request.getRequiredDate());
         pr.setRemarks(request.getRemarks());
         pr.setCompanyCode(request.getCompanyCode());
@@ -675,6 +694,14 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
         return plantName + " — " + slocDescription + " (" + pr.getPlantCode() + "/" + pr.getSlocId() + ")";
     }
 
+    // The founder's rule: a doc type code ending in "RM" (today just ZFRM) means the goods need
+    // real Warehouse Management (storage location -> warehouse -> bin) at putaway. Every other
+    // doc type is location-only — no warehouse, no bin. See MaterialInwardService for where this
+    // is actually consumed.
+    private static boolean isRawMaterial(String docTypeCode) {
+        return docTypeCode != null && docTypeCode.endsWith("RM");
+    }
+
     private PurchaseRequisitionResponse mapToResponse(PurchaseRequisition pr) {
         PurchaseRequisitionResponse response = new PurchaseRequisitionResponse();
         response.setId(pr.getId());
@@ -682,6 +709,10 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
         response.setPlantCode(pr.getPlantCode());
         response.setSlocId(pr.getSlocId());
         response.setStorageLocationLabel(resolveStorageLocationLabel(pr));
+        response.setDocTypeCode(pr.getDocTypeCode());
+        response.setDocTypeDescription(documentTypeRepository.findById(pr.getDocTypeCode() == null ? "" : pr.getDocTypeCode())
+                .map(DocumentType::getDescription).orElse(null));
+        response.setRawMaterial(isRawMaterial(pr.getDocTypeCode()));
 
         response.setRequestedBy(resolveRequestedByName(pr.getRequestedBy()));
         response.setRequiredDate(pr.getRequiredDate());
@@ -733,6 +764,10 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
         response.setPlantCode(pr.getPlantCode());
         response.setSlocId(pr.getSlocId());
         response.setStorageLocationLabel(resolveStorageLocationLabel(pr));
+        response.setDocTypeCode(pr.getDocTypeCode());
+        response.setDocTypeDescription(documentTypeRepository.findById(pr.getDocTypeCode() == null ? "" : pr.getDocTypeCode())
+                .map(DocumentType::getDescription).orElse(null));
+        response.setRawMaterial(isRawMaterial(pr.getDocTypeCode()));
 
         response.setRequestedBy(resolveRequestedByName(pr.getRequestedBy()));
         response.setRequiredDate(pr.getRequiredDate());

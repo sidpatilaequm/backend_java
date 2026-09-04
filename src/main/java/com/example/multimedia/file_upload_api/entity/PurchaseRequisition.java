@@ -35,6 +35,12 @@ public class PurchaseRequisition {
     @Column(name = "sloc_id", length = 4)
     private String slocId;
 
+    // The SAP purchasing document type (document_type.code — NB, ZFRM, ZSEV, ...). Drives whether
+    // Material Inward requires a real warehouse/bin at putaway (raw material types only) or is
+    // location-only for everything else — see MaterialInwardService.
+    @Column(name = "doc_type_code", length = 4)
+    private String docTypeCode;
+
     @Column(nullable = false)
     private Long requestedBy;
 
@@ -106,6 +112,14 @@ public class PurchaseRequisition {
 
     public void setSlocId(String slocId) {
         this.slocId = slocId;
+    }
+
+    public String getDocTypeCode() {
+        return docTypeCode;
+    }
+
+    public void setDocTypeCode(String docTypeCode) {
+        this.docTypeCode = docTypeCode;
     }
 
     public Long getRequestedBy() {
