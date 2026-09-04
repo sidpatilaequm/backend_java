@@ -41,6 +41,10 @@ public class FolderItService {
     private String clientSecret() { return credentials.get("folderit.client_secret", DEFAULT_CLIENT_SECRET); }
     private String accountUid() { return credentials.get("folderit.account_uid", DEFAULT_ACCOUNT_UID); }
 
+    /** Exposed so callers can build their own stable reference to a file (e.g. the FolderIt API
+     *  download endpoint for a known file uid) without needing a fresh presigned URL up front. */
+    public String getAccountUid() { return accountUid(); }
+
     private String getAccessToken() throws IOException {
         RequestBody formBody = new FormBody.Builder()
                 .add("grant_type", "client_credentials")
@@ -204,7 +208,8 @@ public class FolderItService {
             }
         }
 
-        return uploadFileToFolder(file, folderUid, token);
+        String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+        return uploadBytesToFolder(file.getBytes(), file.getOriginalFilename(), contentType, folderUid, token);
     }
 
     /**
@@ -327,32 +332,40 @@ public class FolderItService {
 
     /** Uploads directly into a known folder — skips the documentType/vendorName folder-resolution logic above. */
     public String uploadFileToFolder(MultipartFile file, String folderUid) throws IOException {
-        return uploadFileToFolder(file, folderUid, getAccessToken());
+        String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+        return uploadBytesToFolder(file.getBytes(), file.getOriginalFilename(), contentType, folderUid, getAccessToken());
     }
 
-    private String uploadFileToFolder(MultipartFile file, String folderUid, String token) throws IOException {
+    /** Same as {@link #uploadFileToFolder(MultipartFile, String)} but for bytes generated
+     *  server-side (e.g. a report) rather than something a user uploaded as a MultipartFile. */
+    public String uploadBytesToFolder(byte[] bytes, String fileName, String contentType, String folderUid) throws IOException {
+        return uploadBytesToFolder(bytes, fileName, contentType, folderUid, getAccessToken());
+    }
+
+    private String uploadBytesToFolder(byte[] bytes, String fileName, String contentType, String folderUid, String token) throws IOException {
         String authHeader = "Bearer " + token;
         String baseUrl = "https://api.folderit.com/v2/accounts/" + accountUid() + "/files/upload";
-        
+        long fileSize = bytes.length;
+
         // 1. Create Action
         JSONObject createPayload = new JSONObject();
         createPayload.put("action", "create");
         createPayload.put("folderUid", folderUid);
-        createPayload.put("fileName", file.getOriginalFilename());
-        createPayload.put("fileSize", file.getSize());
-        createPayload.put("contentType", file.getContentType() != null ? file.getContentType() : "application/octet-stream");
-        
+        createPayload.put("fileName", fileName);
+        createPayload.put("fileSize", fileSize);
+        createPayload.put("contentType", contentType);
+
         RequestBody createBody = RequestBody.create(
                 createPayload.toString(),
                 MediaType.parse("application/json")
         );
-        
+
         Request createReq = new Request.Builder()
                 .url(baseUrl)
                 .addHeader("Authorization", authHeader)
                 .post(createBody)
                 .build();
-                
+
         String uploadId;
         String key;
         try (Response response = httpClient.newCall(createReq).execute()) {
@@ -363,26 +376,26 @@ public class FolderItService {
             uploadId = resJson.getString("uploadId");
             key = resJson.getString("key");
         }
-        
+
         // 2. Part Action
         JSONObject partPayload = new JSONObject();
         partPayload.put("action", "part");
         partPayload.put("uploadId", uploadId);
         partPayload.put("key", key);
         partPayload.put("partNumber", 1);
-        partPayload.put("contentLength", file.getSize());
-        
+        partPayload.put("contentLength", fileSize);
+
         RequestBody partBody = RequestBody.create(
                 partPayload.toString(),
                 MediaType.parse("application/json")
         );
-        
+
         Request partReq = new Request.Builder()
                 .url(baseUrl)
                 .addHeader("Authorization", authHeader)
                 .post(partBody)
                 .build();
-                
+
         String uploadUrl;
         try (Response response = httpClient.newCall(partReq).execute()) {
             if (!response.isSuccessful()) {
@@ -391,50 +404,50 @@ public class FolderItService {
             JSONObject resJson = new JSONObject(response.body().string());
             uploadUrl = resJson.getString("url");
         }
-        
+
         // 3. Put File Action (S3 upload)
         RequestBody fileBody = RequestBody.create(
-                file.getBytes(),
+                bytes,
                 MediaType.parse("application/octet-stream")
         );
-        
+
         Request putReq = new Request.Builder()
                 .url(uploadUrl)
                 .put(fileBody)
                 .build();
-                
+
         try (Response response = httpClient.newCall(putReq).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("File PUT action failed: " + response.body().string());
             }
         }
-        
+
         // 4. Complete Action
         JSONObject completePayload = new JSONObject();
         completePayload.put("action", "complete");
         completePayload.put("uploadId", uploadId);
         completePayload.put("key", key);
-        completePayload.put("fileSize", file.getSize());
-        completePayload.put("fileName", file.getOriginalFilename());
+        completePayload.put("fileSize", fileSize);
+        completePayload.put("fileName", fileName);
         completePayload.put("folderUid", folderUid);
-        
+
         RequestBody completeBody = RequestBody.create(
                 completePayload.toString(),
                 MediaType.parse("application/json")
         );
-        
+
         Request completeReq = new Request.Builder()
                 .url(baseUrl)
                 .addHeader("Authorization", authHeader)
                 .post(completeBody)
                 .build();
-                
+
         try (Response response = httpClient.newCall(completeReq).execute()) {
             String resStr = response.body().string();
             if (!response.isSuccessful()) {
                 throw new IOException("Complete action failed: " + resStr);
             }
-            logger.info("File uploaded successfully to FolderIt: {}", file.getOriginalFilename());
+            logger.info("File uploaded successfully to FolderIt: {}", fileName);
             JSONObject resJson = new JSONObject(resStr);
             if (resJson.has("uid")) return resJson.getString("uid");
             if (resJson.has("fileUid")) return resJson.getString("fileUid");

@@ -11,6 +11,7 @@ import com.example.multimedia.file_upload_api.util.SupplierDocumentConfig;
 import com.example.multimedia.file_upload_api.utils.AppConstants;
 import com.example.multimedia.file_upload_api.utils.PasswordUtils;
 import com.example.multimedia.file_upload_api.utils.ServiceControllerUtils;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
@@ -57,6 +58,7 @@ public class SupplierRegistrationService {
     private final DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository;
     private final DocumentTypeRepository documentTypeRepository;
     private final AuditLogService auditLogService;
+    private final VendorApprovalExcelService vendorApprovalExcelService;
 
     @Value("${workflow.api.base-url:http://localhost:8000}")
     private String workflowBaseUrl;
@@ -88,7 +90,8 @@ public class SupplierRegistrationService {
                                         SupplierRegistrationDocumentTypeRepository documentTypeSelectionRepository,
                                         DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository,
                                         DocumentTypeRepository documentTypeRepository,
-                                        AuditLogService auditLogService) {
+                                        AuditLogService auditLogService,
+                                        VendorApprovalExcelService vendorApprovalExcelService) {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
         this.attachmentRepository = attachmentRepository;
@@ -112,6 +115,7 @@ public class SupplierRegistrationService {
         this.documentTypeCompanyCodeRepository = documentTypeCompanyCodeRepository;
         this.documentTypeRepository = documentTypeRepository;
         this.auditLogService = auditLogService;
+        this.vendorApprovalExcelService = vendorApprovalExcelService;
     }
 
     // ── Document upload + OCR + FolderIt storage ────────────────────────────
@@ -1108,9 +1112,48 @@ public class SupplierRegistrationService {
                 // name, so a rename hiccup shouldn't block the vendor actually being approved.
                 logger.warn("Could not rename FolderIt folder {} for registration {}", reg.getFolderitFolderUid(), reg.getId(), e);
             }
+            uploadApprovalExcel(reg);
         }
 
         sendCredentialsEmail(reg, rawPassword);
+    }
+
+    /**
+     * Snapshots the full application (every field the vendor filled in, plus a FolderIt
+     * reference — not the files themselves — for every document/attachment) into one workbook
+     * and drops it into the vendor's own FolderIt folder. Best-effort, same as the folder
+     * rename above: a failure here shouldn't block the vendor actually being approved, so it's
+     * logged rather than thrown.
+     */
+    private void uploadApprovalExcel(SupplierRegistration reg) {
+        try {
+            byte[] excel = buildApprovalExcelBytes(reg);
+            String fileName = approvalExcelFileName(reg);
+            folderItService.uploadBytesToFolder(excel, fileName,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", reg.getFolderitFolderUid());
+        } catch (Exception e) {
+            logger.warn("Could not upload approval Excel for registration {}", reg.getId(), e);
+        }
+    }
+
+    /** Shared by the auto-upload-on-approval above and the admin preview/download endpoint. */
+    public byte[] buildApprovalExcelBytes(SupplierRegistration reg) throws IOException {
+        List<SupplierRegistrationDocument> docs = documentRepository.findByRegistrationId(reg.getId());
+        docs.sort(Comparator.comparingInt(d -> SupplierDocumentConfig.orderIndex(d.getDocType())));
+        List<SupplierRegistrationAttachment> attachments = attachmentRepository.findByRegistrationIdOrderByCreatedDateAsc(reg.getId());
+        JSONArray dynamicAnswers = questionnaireService.getAnswersForReview(reg.getFormStudioResponseId(), reg.getId());
+        return vendorApprovalExcelService.buildApprovalExcel(
+                reg, docs, attachments, dynamicAnswers, folderItService.getAccountUid());
+    }
+
+    public SupplierRegistration getRegistrationById(Long registrationId) {
+        return registrationRepository.findById(registrationId)
+                .orElseThrow(() -> new RuntimeException("Registration not found"));
+    }
+
+    public String approvalExcelFileName(SupplierRegistration reg) {
+        String label = reg.getVendorCode() != null ? reg.getVendorCode() : ("REG-" + reg.getId());
+        return "Vendor Application - " + label + " - " + orDefault(reg.getVendorName(), "unnamed") + ".xlsx";
     }
 
     private void sendCredentialsEmail(SupplierRegistration reg, String rawPassword) {

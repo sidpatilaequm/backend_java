@@ -301,6 +301,29 @@ public class SupplierRegistrationController {
         }
     }
 
+    /**
+     * Admin-only download of the same workbook that gets uploaded to the vendor's FolderIt
+     * folder on approval (see SupplierRegistrationService.provisionVendorAccount /
+     * uploadApprovalExcel) — lets an admin preview or re-fetch it on demand, for any
+     * registration regardless of status, not just after auto-upload fires.
+     */
+    @GetMapping("/api/supplier-registration/{registrationId}/approval-excel")
+    public ResponseEntity<byte[]> downloadApprovalExcel(@PathVariable Long registrationId) {
+        if (!isAdmin()) return ResponseEntity.status(403).build();
+        try {
+            var reg = service.getRegistrationById(registrationId);
+            byte[] excel = service.buildApprovalExcelBytes(reg);
+            String fileName = service.approvalExcelFileName(reg);
+            return ResponseEntity.ok()
+                    .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .header("Content-Disposition", "attachment; filename=\"" + fileName.replace("\"", "") + "\"")
+                    .body(excel);
+        } catch (Exception e) {
+            logger.warn("Could not build approval Excel for registration {}", registrationId, e);
+            return ResponseEntity.status(404).build();
+        }
+    }
+
     // ── Approved vendor self-service: view own profile, request a change ────
 
     /**
