@@ -217,7 +217,8 @@ public class PrLifecycleService {
         m.put("Status", pr.getStatus().name());
         m.put("Requested By", resolveUserName(pr.getRequestedBy()));
         m.put("Company Code", pr.getCompanyCode());
-        m.put("Location ID", pr.getLocationId());
+        m.put("Plant Code", pr.getPlantCode());
+        m.put("Storage Location", pr.getSlocId());
         m.put("Required Date", pr.getRequiredDate());
         m.put("Total Amount", pr.getTotalAmount());
         m.put("Remarks", pr.getRemarks());

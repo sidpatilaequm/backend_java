@@ -13,7 +13,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import com.example.multimedia.file_upload_api.repository.LocationRepository;
+import com.example.multimedia.file_upload_api.repository.StorageLocationRepository;
+import com.example.multimedia.file_upload_api.repository.PlantRepository;
 import com.example.multimedia.file_upload_api.repository.MaterialRepository;
 
 import java.util.HashMap;
@@ -27,7 +28,10 @@ public class PurchaseRequisitionController {
     private PurchaseRequisitionService prService;
 
     @Autowired
-    private LocationRepository locationRepository;
+    private StorageLocationRepository storageLocationRepository;
+
+    @Autowired
+    private PlantRepository plantRepository;
 
     @Autowired
     private MaterialRepository materialRepository;
@@ -35,7 +39,17 @@ public class PurchaseRequisitionController {
     @GetMapping("/create-pr-options")
     public ResponseEntity<Map<String, Object>> getCreatePrOptions() {
         Map<String, Object> response = new HashMap<>();
-        response.put("locations", locationRepository.findAll());
+        response.put("storageLocations", storageLocationRepository.findAll().stream()
+                .map(sl -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("plantCode", sl.getPlantCode());
+                    m.put("slocId", sl.getSlocId());
+                    m.put("description", sl.getDescription());
+                    m.put("plantName", plantRepository.findById(sl.getPlantCode())
+                            .map(com.example.multimedia.file_upload_api.entity.Plant::getPlantName)
+                            .orElse(sl.getPlantCode()));
+                    return m;
+                }).toList());
         response.put("materials", materialRepository.findAll());
         return ResponseEntity.ok(response);
     }
@@ -50,8 +64,9 @@ public class PurchaseRequisitionController {
         responseMap.put("prId", response.getId());
         responseMap.put("prNumber", response.getPrNumber());
         responseMap.put("id", response.getId());
-        responseMap.put("locationId", response.getLocationId());
-        responseMap.put("locationName", response.getLocationName());
+        responseMap.put("plantCode", response.getPlantCode());
+        responseMap.put("slocId", response.getSlocId());
+        responseMap.put("storageLocationLabel", response.getStorageLocationLabel());
         responseMap.put("requestedBy", response.getRequestedBy());
         responseMap.put("requiredDate", response.getRequiredDate());
         responseMap.put("remarks", response.getRemarks());
@@ -66,7 +81,7 @@ public class PurchaseRequisitionController {
 
     @GetMapping
     public ResponseEntity<Page<PurchaseRequisitionResponse>> getAllPurchaseRequisitions(
-            @RequestParam(required = false) Long locationId,
+            @RequestParam(required = false) String plantCode,
             @RequestParam(required = false) PurchaseRequisitionStatus status,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
@@ -77,7 +92,7 @@ public class PurchaseRequisitionController {
         Sort sort = sortDir.equalsIgnoreCase(Sort.Direction.ASC.name()) ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
         Pageable pageable = PageRequest.of(page, size, sort);
-        Page<PurchaseRequisitionResponse> response = prService.getAllPurchaseRequisitions(locationId, status, search,
+        Page<PurchaseRequisitionResponse> response = prService.getAllPurchaseRequisitions(plantCode, status, search,
                 pageable);
         return ResponseEntity.ok(response);
     }

@@ -8,12 +8,14 @@ import com.example.multimedia.file_upload_api.dto.PurchaseRequisitionStatusReque
 import com.example.multimedia.file_upload_api.entity.PurchaseRequisition;
 import com.example.multimedia.file_upload_api.entity.PurchaseRequisitionItem;
 import com.example.multimedia.file_upload_api.entity.PurchaseRequisitionItemVendor;
-import com.example.multimedia.file_upload_api.entity.Location;
+import com.example.multimedia.file_upload_api.entity.StorageLocation;
+import com.example.multimedia.file_upload_api.entity.Plant;
 import com.example.multimedia.file_upload_api.enums.PurchaseRequisitionStatus;
 import com.example.multimedia.file_upload_api.repository.PurchaseRequisitionRepository;
 import com.example.multimedia.file_upload_api.dto.VendorPurchaseRequisitionItemResponse;
 import com.example.multimedia.file_upload_api.repository.PurchaseRequisitionItemVendorRepository;
-import com.example.multimedia.file_upload_api.repository.LocationRepository;
+import com.example.multimedia.file_upload_api.repository.StorageLocationRepository;
+import com.example.multimedia.file_upload_api.repository.PlantRepository;
 import com.example.multimedia.file_upload_api.repository.CompanyDetailsRepository;
 import com.example.multimedia.file_upload_api.repository.MaterialRepository;
 import com.example.multimedia.file_upload_api.repository.FinancialTermsRepository;
@@ -48,7 +50,10 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
     private PurchaseRequisitionRepository prRepository;
 
     @Autowired
-    private LocationRepository locationRepository;
+    private StorageLocationRepository storageLocationRepository;
+
+    @Autowired
+    private PlantRepository plantRepository;
 
     @Autowired
     private PurchaseRequisitionItemVendorRepository vendorRepository;
@@ -94,14 +99,15 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
             requestedById = user.getUserId();
         }
 
-        Location location = locationRepository.findById(request.getLocationId())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid Location ID"));
-        if (!location.getSuperAdmin().getSuperAdminId().equals(superAdminId)) {
-            throw new IllegalArgumentException("Location does not belong to the current admin.");
-        }
+        StorageLocation.Pk slocKey = new StorageLocation.Pk();
+        slocKey.setPlantCode(request.getPlantCode());
+        slocKey.setSlocId(request.getSlocId());
+        storageLocationRepository.findById(slocKey)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid plant/storage location"));
 
         PurchaseRequisition pr = new PurchaseRequisition();
-        pr.setLocationId(request.getLocationId());
+        pr.setPlantCode(request.getPlantCode());
+        pr.setSlocId(request.getSlocId());
         pr.setRequiredDate(request.getRequiredDate());
         pr.setRemarks(request.getRemarks());
         pr.setCompanyCode(request.getCompanyCode());
@@ -240,11 +246,11 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
     }
 
     @Override
-    public Page<PurchaseRequisitionResponse> getAllPurchaseRequisitions(Long locationId,
+    public Page<PurchaseRequisitionResponse> getAllPurchaseRequisitions(String plantCode,
             PurchaseRequisitionStatus status, String search, Pageable pageable) {
         if (currentUserService.isCurrentUserSuperAdmin()) {
             Long superAdminId = currentUserService.getCurrentSuperAdminId();
-            Page<PurchaseRequisition> prPage = prRepository.findWithFilters(superAdminId, locationId, status, search,
+            Page<PurchaseRequisition> prPage = prRepository.findWithFilters(superAdminId, plantCode, status, search,
                     pageable);
             return prPage.map(this::mapToResponse);
         } else {
@@ -265,7 +271,7 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
                 }
             }
             allowedUserIds.add(user.getUserId());
-            Page<PurchaseRequisition> prPage = prRepository.findWithFiltersIn(allowedUserIds, locationId, status, search,
+            Page<PurchaseRequisition> prPage = prRepository.findWithFiltersIn(allowedUserIds, plantCode, status, search,
                     pageable);
             return prPage.map(this::mapToResponse);
         }
@@ -303,13 +309,14 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
             throw new IllegalStateException("Cannot modify a Purchase Requisition that has already been dispatched to vendors.");
         }
 
-        Location location = locationRepository.findById(request.getLocationId())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid Location ID"));
-        if (!location.getSuperAdmin().getSuperAdminId().equals(superAdminId)) {
-            throw new IllegalArgumentException("Location does not belong to the current admin.");
-        }
+        StorageLocation.Pk slocKey = new StorageLocation.Pk();
+        slocKey.setPlantCode(request.getPlantCode());
+        slocKey.setSlocId(request.getSlocId());
+        storageLocationRepository.findById(slocKey)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid plant/storage location"));
 
-        pr.setLocationId(request.getLocationId());
+        pr.setPlantCode(request.getPlantCode());
+        pr.setSlocId(request.getSlocId());
         pr.setRequiredDate(request.getRequiredDate());
         pr.setRemarks(request.getRemarks());
         pr.setCompanyCode(request.getCompanyCode());
@@ -655,16 +662,30 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
         return "ID: " + requestedById;
     }
 
+    // e.g. "AAPL Manufacturing Unit — Main Store (1100/1100)" — resolved fresh each time rather
+    // than denormalized onto the PR row, since plant/storage-location names can change after the
+    // PR was created.
+    private String resolveStorageLocationLabel(PurchaseRequisition pr) {
+        if (pr.getPlantCode() == null || pr.getSlocId() == null) {
+            return null;
+        }
+        String plantName = plantRepository.findById(pr.getPlantCode())
+                .map(Plant::getPlantName).orElse(pr.getPlantCode());
+        StorageLocation.Pk slocKey = new StorageLocation.Pk();
+        slocKey.setPlantCode(pr.getPlantCode());
+        slocKey.setSlocId(pr.getSlocId());
+        String slocDescription = storageLocationRepository.findById(slocKey)
+                .map(StorageLocation::getDescription).orElse(pr.getSlocId());
+        return plantName + " — " + slocDescription + " (" + pr.getPlantCode() + "/" + pr.getSlocId() + ")";
+    }
+
     private PurchaseRequisitionResponse mapToResponse(PurchaseRequisition pr) {
         PurchaseRequisitionResponse response = new PurchaseRequisitionResponse();
         response.setId(pr.getId());
         response.setPrNumber(pr.getPrNumber());
-        response.setLocationId(pr.getLocationId());
-
-        if (pr.getLocationId() != null) {
-            locationRepository.findById(pr.getLocationId())
-                    .ifPresent(location -> response.setLocationName(location.getLocationName()));
-        }
+        response.setPlantCode(pr.getPlantCode());
+        response.setSlocId(pr.getSlocId());
+        response.setStorageLocationLabel(resolveStorageLocationLabel(pr));
 
         response.setRequestedBy(resolveRequestedByName(pr.getRequestedBy()));
         response.setRequiredDate(pr.getRequiredDate());
@@ -713,12 +734,9 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
         PurchaseRequisitionResponse response = new PurchaseRequisitionResponse();
         response.setId(pr.getId());
         response.setPrNumber(pr.getPrNumber());
-        response.setLocationId(pr.getLocationId());
-
-        if (pr.getLocationId() != null) {
-            locationRepository.findById(pr.getLocationId())
-                    .ifPresent(location -> response.setLocationName(location.getLocationName()));
-        }
+        response.setPlantCode(pr.getPlantCode());
+        response.setSlocId(pr.getSlocId());
+        response.setStorageLocationLabel(resolveStorageLocationLabel(pr));
 
         response.setRequestedBy(resolveRequestedByName(pr.getRequestedBy()));
         response.setRequiredDate(pr.getRequiredDate());

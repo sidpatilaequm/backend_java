@@ -5,19 +5,28 @@ import java.time.LocalDate;
 import java.util.List;
 
 public class PurchaseRequisitionRequest {
-    private Long locationId;
+    private String plantCode;
+    private String slocId;
     private LocalDate requiredDate;
     private String remarks;
     private String companyCode;
     private PurchaseRequisitionStatus status = PurchaseRequisitionStatus.CREATED;
     private List<PurchaseRequisitionItemRequest> items;
 
-    public Long getLocationId() {
-        return locationId;
+    public String getPlantCode() {
+        return plantCode;
     }
 
-    public void setLocationId(Long locationId) {
-        this.locationId = locationId;
+    public void setPlantCode(String plantCode) {
+        this.plantCode = plantCode;
+    }
+
+    public String getSlocId() {
+        return slocId;
+    }
+
+    public void setSlocId(String slocId) {
+        this.slocId = slocId;
     }
 
     public LocalDate getRequiredDate() {

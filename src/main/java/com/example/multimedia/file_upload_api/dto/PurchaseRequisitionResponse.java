@@ -9,8 +9,9 @@ import java.util.List;
 public class PurchaseRequisitionResponse {
     private Long id;
     private String prNumber;
-    private Long locationId;
-    private String locationName;
+    private String plantCode;
+    private String slocId;
+    private String storageLocationLabel;
     private String requestedBy;
     private LocalDate requiredDate;
     private String remarks;
@@ -40,20 +41,28 @@ public class PurchaseRequisitionResponse {
         this.prNumber = prNumber;
     }
 
-    public Long getLocationId() {
-        return locationId;
+    public String getPlantCode() {
+        return plantCode;
     }
 
-    public void setLocationId(Long locationId) {
-        this.locationId = locationId;
+    public void setPlantCode(String plantCode) {
+        this.plantCode = plantCode;
     }
 
-    public String getLocationName() {
-        return locationName;
+    public String getSlocId() {
+        return slocId;
     }
 
-    public void setLocationName(String locationName) {
-        this.locationName = locationName;
+    public void setSlocId(String slocId) {
+        this.slocId = slocId;
+    }
+
+    public String getStorageLocationLabel() {
+        return storageLocationLabel;
+    }
+
+    public void setStorageLocationLabel(String storageLocationLabel) {
+        this.storageLocationLabel = storageLocationLabel;
     }
 
     public String getRequestedBy() {

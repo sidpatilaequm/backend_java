@@ -12,7 +12,7 @@ import java.util.List;
 public interface PurchaseRequisitionService {
     PurchaseRequisitionResponse createPurchaseRequisition(PurchaseRequisitionRequest request);
 
-    Page<PurchaseRequisitionResponse> getAllPurchaseRequisitions(Long locationId, PurchaseRequisitionStatus status,
+    Page<PurchaseRequisitionResponse> getAllPurchaseRequisitions(String plantCode, PurchaseRequisitionStatus status,
             String search, Pageable pageable);
 
     PurchaseRequisitionResponse getPurchaseRequisitionById(Long id);    

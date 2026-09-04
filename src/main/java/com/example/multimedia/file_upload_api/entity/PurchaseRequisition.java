@@ -25,8 +25,15 @@ public class PurchaseRequisition {
     @Column(name = "company_code")
     private String companyCode;
 
-    @Column(nullable = false)
-    private Long locationId;
+    // The requisitioning plant + storage location (Enterprise Structure master data —
+    // see StorageLocation) this PR's items are delivered to. Replaces the old locationId FK
+    // into the separate, mostly-unused Location ("delivery address") table — that column stays
+    // in the DB for existing rows' history but is no longer written or read.
+    @Column(name = "plant_code", length = 4)
+    private String plantCode;
+
+    @Column(name = "sloc_id", length = 4)
+    private String slocId;
 
     @Column(nullable = false)
     private Long requestedBy;
@@ -85,12 +92,20 @@ public class PurchaseRequisition {
         this.companyCode = companyCode;
     }
 
-    public Long getLocationId() {
-        return locationId;
+    public String getPlantCode() {
+        return plantCode;
     }
 
-    public void setLocationId(Long locationId) {
-        this.locationId = locationId;
+    public void setPlantCode(String plantCode) {
+        this.plantCode = plantCode;
+    }
+
+    public String getSlocId() {
+        return slocId;
+    }
+
+    public void setSlocId(String slocId) {
+        this.slocId = slocId;
     }
 
     public Long getRequestedBy() {
