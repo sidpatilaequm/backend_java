@@ -256,12 +256,8 @@ public class AsnServiceImpl implements AsnService {
     @Transactional(readOnly = true)
     public ServiceResponse getAllAsns(String companyCode) {
         ServiceResponse response = new ServiceResponse();
-        List<Asn> asns;
-        if (companyCode != null && !companyCode.trim().isEmpty()) {
-            asns = asnRepository.findByCompanyCodeOrderByIdDesc(companyCode);
-        } else {
-            asns = asnRepository.findAll();
-        }
+        // The user requested to get ALL ASNs here now without filtering by company code
+        List<Asn> asns = asnRepository.findAll(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "id"));
         List<com.example.multimedia.file_upload_api.dto.AsnResponseDto> dtos = asns.stream().map(this::mapToDto).collect(java.util.stream.Collectors.toList());
         response.addData("asns", dtos);
         response.setStatus("SUCCESS");
