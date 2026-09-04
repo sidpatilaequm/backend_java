@@ -38,10 +38,11 @@ public class VendorApprovalExcelService {
             CellStyle labelStyle = labelStyle(workbook);
 
             buildVendorDetailsSheet(workbook, reg, sectionStyle, labelStyle);
-            buildDirectorsSheet(workbook, reg, headerStyle);
+            buildDirectorsSheet(workbook, docs, headerStyle);
             buildMachinerySheet(workbook, reg, headerStyle);
             buildDocumentsSheet(workbook, docs, attachments, headerStyle, folderItAccountUid);
             buildQuestionnaireSheet(workbook, dynamicAnswers, attachments, headerStyle, folderItAccountUid);
+            buildVerificationDetailsSheet(workbook, docs, headerStyle);
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             workbook.write(out);
@@ -133,18 +134,34 @@ public class VendorApprovalExcelService {
         kv(sheet, r, labelStyle, name + " — Valid To", expiry);
     }
 
-    // ── Sheet 2: directorsJson ([{name, qualification, experience, commencementDate, capitalEmployed}]) ──
+    // ── Sheet 2: directors — sourced from Microvista's CIN verification (run automatically
+    // against the COI document at upload time), not typed in by anyone. MicrovistaService.
+    // verifyCin stores one "Director {name} — PAN/DIN" detail per director it finds into that
+    // document's verify_details_json; this just picks those back out. There's no separate
+    // "add a director" form field anywhere in the app.
 
-    private void buildDirectorsSheet(Workbook wb, SupplierRegistration reg, CellStyle headerStyle) {
+    private static final String DIRECTOR_LABEL_PREFIX = "Director ";
+    private static final String DIRECTOR_LABEL_SUFFIX = " — PAN/DIN";
+
+    private void buildDirectorsSheet(Workbook wb, List<SupplierRegistrationDocument> docs, CellStyle headerStyle) {
         Sheet sheet = wb.createSheet("Directors");
-        String[] cols = {"Name", "Qualification", "Experience", "Commencement Date", "Capital Employed"};
-        String[] keys = {"name", "qualification", "experience", "commencementDate", "capitalEmployed"};
+        String[] cols = {"Name", "PAN / DIN"};
         headerRow(sheet, headerStyle, cols);
-        JSONArray rows = parseArray(reg.getDirectorsJson());
-        for (int i = 0; i < rows.length(); i++) {
-            JSONObject o = rows.getJSONObject(i);
-            Row row = sheet.createRow(i + 1);
-            for (int c = 0; c < keys.length; c++) row.createCell(c).setCellValue(o.optString(keys[c], ""));
+        int r = 1;
+        for (SupplierRegistrationDocument d : docs) {
+            if (!"coi".equals(d.getDocType()) || d.getVerifyDetailsJson() == null) continue;
+            JSONObject vd = new JSONObject(d.getVerifyDetailsJson());
+            JSONArray details = vd.optJSONArray("details");
+            if (details == null) continue;
+            for (int i = 0; i < details.length(); i++) {
+                JSONObject det = details.getJSONObject(i);
+                String label = det.optString("label", "");
+                if (!label.startsWith(DIRECTOR_LABEL_PREFIX) || !label.endsWith(DIRECTOR_LABEL_SUFFIX)) continue;
+                String name = label.substring(DIRECTOR_LABEL_PREFIX.length(), label.length() - DIRECTOR_LABEL_SUFFIX.length());
+                Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(name);
+                row.createCell(1).setCellValue(det.optString("value", ""));
+            }
         }
         autoSize(sheet, cols.length);
     }
@@ -208,6 +225,45 @@ public class VendorApprovalExcelService {
         // Whoever holds the FolderIt client id/secret exchanges those for a bearer token and
         // calls this same endpoint to resolve it (see FolderItService.getDownloadUrl).
         return "https://api.folderit.com/v2/accounts/" + accountUid + "/files/" + fileUid + "/download";
+    }
+
+    // ── Sheet 6: every field Microvista actually returned when verifying each document — not
+    // just the pass/fail status shown elsewhere. Same verify_details_json each document already
+    // stores (message + labeled details — see MicrovistaService.verify*), just flattened out.
+
+    private void buildVerificationDetailsSheet(Workbook wb, List<SupplierRegistrationDocument> docs, CellStyle headerStyle) {
+        Sheet sheet = wb.createSheet("Verification Details");
+        String[] cols = {"Document", "Field", "Value"};
+        headerRow(sheet, headerStyle, cols);
+        int r = 1;
+        for (SupplierRegistrationDocument d : docs) {
+            if (d.getVerifyDetailsJson() == null) continue;
+            String docName;
+            try {
+                docName = SupplierDocumentConfig.byId(d.getDocType()).name();
+            } catch (IllegalArgumentException e) {
+                docName = d.getDocType();
+            }
+            JSONObject vd = new JSONObject(d.getVerifyDetailsJson());
+            String message = vd.optString("message", null);
+            if (notBlank(message)) {
+                Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(docName);
+                row.createCell(1).setCellValue("Result");
+                row.createCell(2).setCellValue(message);
+            }
+            JSONArray details = vd.optJSONArray("details");
+            if (details != null) {
+                for (int i = 0; i < details.length(); i++) {
+                    JSONObject det = details.getJSONObject(i);
+                    Row row = sheet.createRow(r++);
+                    row.createCell(0).setCellValue(docName);
+                    row.createCell(1).setCellValue(det.optString("label", ""));
+                    row.createCell(2).setCellValue(det.optString("value", ""));
+                }
+            }
+        }
+        autoSize(sheet, cols.length);
     }
 
     // ── Sheet 5: dynamic questionnaire answers (QuestionnaireService.getAnswersForReview shape) ──
