@@ -13,9 +13,12 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Builds the one-workbook snapshot of an approved vendor's Become-a-Supplier application —
@@ -23,6 +26,10 @@ import java.util.Map;
  * download-link javadoc on why not) to every document/attachment they uploaded, resolvable by
  * whoever holds the FolderIt client id/secret. Uploaded into that vendor's own FolderIt folder
  * at approval time (see SupplierRegistrationService.provisionVendorAccount).
+ *
+ * Every sheet is a real table — one fixed set of column headers on row 1, one data row per
+ * record beneath it — rather than label/value pairs, so this can be read programmatically (e.g.
+ * imported into SAP) and not just by a person skimming it.
  */
 @Service
 public class VendorApprovalExcelService {
@@ -33,15 +40,13 @@ public class VendorApprovalExcelService {
                                       List<SupplierRegistrationAttachment> attachments, JSONArray dynamicAnswers,
                                       String folderItAccountUid) throws IOException {
         try (Workbook workbook = new XSSFWorkbook()) {
-            CellStyle sectionStyle = sectionStyle(workbook);
             CellStyle headerStyle = headerStyle(workbook);
-            CellStyle labelStyle = labelStyle(workbook);
 
-            buildVendorDetailsSheet(workbook, reg, sectionStyle, labelStyle);
+            buildVendorMasterSheet(workbook, reg, headerStyle);
             buildDirectorsSheet(workbook, docs, headerStyle);
             buildMachinerySheet(workbook, reg, headerStyle);
             buildDocumentsSheet(workbook, docs, attachments, headerStyle, folderItAccountUid);
-            buildQuestionnaireSheet(workbook, dynamicAnswers, attachments, headerStyle, folderItAccountUid);
+            buildQuestionnaireSheets(workbook, dynamicAnswers, attachments, headerStyle, folderItAccountUid);
             buildVerificationDetailsSheet(workbook, docs, headerStyle);
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -50,88 +55,58 @@ public class VendorApprovalExcelService {
         }
     }
 
-    // ── Sheet 1: every scalar field the vendor filled in, as Field | Value ────────────────
+    // ── Sheet 1: one row for this vendor, every scalar field as its own column — a flat master
+    // record the way SAP's own vendor-master tables (LFA1/LFB1/LFBK-style) are shaped, rather
+    // than the field-per-row layout this used to be. Every column is always present (even blank)
+    // so a downstream reader can rely on a fixed header row regardless of what this vendor filled in.
 
-    private void buildVendorDetailsSheet(Workbook wb, SupplierRegistration reg, CellStyle sectionStyle, CellStyle labelStyle) {
-        Sheet sheet = wb.createSheet("Vendor Details");
-        int[] r = {0};
+    private static final String[] VENDOR_MASTER_COLUMNS = {
+            "Vendor Code", "Vendor Name", "Status", "Vendor Category", "Approved Date", "Address",
+            "Contact Name", "Designation", "Login Email", "Phone",
+            "Contact 1 Name", "Contact 1 Role", "Contact 1 Email", "Contact 1 Phone",
+            "Contact 2 Name", "Contact 2 Role", "Contact 2 Email", "Contact 2 Phone",
+            "Business Types", "Business Scope", "Company Type", "Telephone", "Fax", "Weekly Off",
+            "Annual Turnover", "Turnover Year", "Regulatory Acts",
+            "Manpower Office", "Manpower Supervisor", "Manpower Workmen", "Shifts Per Day",
+            "Spare Capacity", "Floor Space", "Equipment Facilities",
+            "GST Number", "PAN Number", "MSME Number", "CIN Number",
+            "Beneficiary Name", "Account Number", "IFSC Code", "Bank Name",
+            "ISO 9001 Certificate No", "ISO 9001 Certifying Body", "ISO 9001 Valid To",
+            "ISO 14001 Certificate No", "ISO 14001 Certifying Body", "ISO 14001 Valid To",
+            "ISO 45001 Certificate No", "ISO 45001 Certifying Body", "ISO 45001 Valid To",
+            "ISO 27001 Certificate No", "ISO 27001 Certifying Body", "ISO 27001 Valid To",
+            "AS9100D Certificate No", "AS9100D Certifying Body", "AS9100D Valid To",
+            "NADCAP Certificate No", "NADCAP Expiry",
+    };
 
-        section(sheet, r, sectionStyle, "Vendor");
-        kv(sheet, r, labelStyle, "Vendor Code", reg.getVendorCode());
-        kv(sheet, r, labelStyle, "Vendor Name", reg.getVendorName());
-        kv(sheet, r, labelStyle, "Status", reg.getStatus());
-        kv(sheet, r, labelStyle, "Vendor Category", reg.getVendorCategory());
-        kv(sheet, r, labelStyle, "Approved Date", reg.getApprovedDate() != null ? reg.getApprovedDate().format(TS) : "");
-        kv(sheet, r, labelStyle, "Address", reg.getAddress());
-
-        section(sheet, r, sectionStyle, "Primary Contact");
-        kv(sheet, r, labelStyle, "Contact Name", reg.getContactName());
-        kv(sheet, r, labelStyle, "Designation", reg.getDesignation());
-        kv(sheet, r, labelStyle, "Login Email", reg.getEmail());
-        kv(sheet, r, labelStyle, "Phone", reg.getPhone());
-
-        section(sheet, r, sectionStyle, "Contact 1");
-        kv(sheet, r, labelStyle, "Name", reg.getContact1Name());
-        kv(sheet, r, labelStyle, "Role", reg.getContact1Role());
-        kv(sheet, r, labelStyle, "Email", reg.getContact1Email());
-        kv(sheet, r, labelStyle, "Phone", reg.getContact1Phone());
-
-        if (notBlank(reg.getContact2Name()) || notBlank(reg.getContact2Email())) {
-            section(sheet, r, sectionStyle, "Contact 2");
-            kv(sheet, r, labelStyle, "Name", reg.getContact2Name());
-            kv(sheet, r, labelStyle, "Role", reg.getContact2Role());
-            kv(sheet, r, labelStyle, "Email", reg.getContact2Email());
-            kv(sheet, r, labelStyle, "Phone", reg.getContact2Phone());
-        }
-
-        section(sheet, r, sectionStyle, "Business Profile");
-        kv(sheet, r, labelStyle, "Business Types", reg.getBusinessTypes());
-        kv(sheet, r, labelStyle, "Business Scope", reg.getBusinessScope());
-        kv(sheet, r, labelStyle, "Company Type", reg.getCompanyType());
-        kv(sheet, r, labelStyle, "Telephone", reg.getTelephone());
-        kv(sheet, r, labelStyle, "Fax", reg.getFax());
-        kv(sheet, r, labelStyle, "Weekly Off", reg.getWeeklyOff());
-        kv(sheet, r, labelStyle, "Annual Turnover", reg.getAnnualTurnover());
-        kv(sheet, r, labelStyle, "Turnover Year", reg.getTurnoverYear());
-        kv(sheet, r, labelStyle, "Regulatory Acts", reg.getRegulatoryActs());
-        kv(sheet, r, labelStyle, "Manpower — Office", reg.getManpowerOffice());
-        kv(sheet, r, labelStyle, "Manpower — Supervisor", reg.getManpowerSupervisor());
-        kv(sheet, r, labelStyle, "Manpower — Workmen", reg.getManpowerWorkmen());
-        kv(sheet, r, labelStyle, "Shifts Per Day", reg.getShiftsPerDay());
-        kv(sheet, r, labelStyle, "Spare Capacity", reg.getSpareCapacity());
-        kv(sheet, r, labelStyle, "Floor Space", reg.getFloorSpace());
-        kv(sheet, r, labelStyle, "Equipment / Facilities", reg.getEquipmentFacilities());
-
-        section(sheet, r, sectionStyle, "KYC");
-        kv(sheet, r, labelStyle, "GST Number", reg.getGstNumber());
-        kv(sheet, r, labelStyle, "PAN Number", reg.getPanNumber());
-        kv(sheet, r, labelStyle, "MSME / Udyam Number", reg.getMsmeNumber());
-        kv(sheet, r, labelStyle, "CIN Number", reg.getCinNumber());
-
-        section(sheet, r, sectionStyle, "Bank");
-        kv(sheet, r, labelStyle, "Beneficiary Name", reg.getBeneficiaryName());
-        kv(sheet, r, labelStyle, "Account Number", reg.getAccountNumber());
-        kv(sheet, r, labelStyle, "IFSC Code", reg.getIfscCode());
-        kv(sheet, r, labelStyle, "Bank Name", reg.getBankName());
-
-        section(sheet, r, sectionStyle, "Certifications");
-        cert(sheet, r, labelStyle, "ISO 9001", reg.getIsoCertificateNo(), reg.getIsoCertifyingBody(), reg.getIsoExpiry());
-        cert(sheet, r, labelStyle, "ISO 14001", reg.getIso14001CertificateNo(), reg.getIso14001CertifyingBody(), reg.getIso14001Expiry());
-        cert(sheet, r, labelStyle, "ISO 45001", reg.getIso45001CertificateNo(), reg.getIso45001CertifyingBody(), reg.getIso45001Expiry());
-        cert(sheet, r, labelStyle, "ISO 27001", reg.getIso27001CertificateNo(), reg.getIso27001CertifyingBody(), reg.getIso27001Expiry());
-        cert(sheet, r, labelStyle, "AS9100D", reg.getAs9100dCertificateNo(), reg.getAs9100dCertifyingBody(), reg.getAs9100dExpiry());
-        kv(sheet, r, labelStyle, "NADCAP — Certificate No", reg.getNadcapCertificateNo());
-        kv(sheet, r, labelStyle, "NADCAP — Expiry", reg.getNadcapExpiry());
-
-        sheet.setColumnWidth(0, 32 * 256);
-        sheet.setColumnWidth(1, 60 * 256);
-    }
-
-    private void cert(Sheet sheet, int[] r, CellStyle labelStyle, String name, String no, String body, String expiry) {
-        if (!notBlank(no) && !notBlank(body) && !notBlank(expiry)) return;
-        kv(sheet, r, labelStyle, name + " — Certificate No", no);
-        kv(sheet, r, labelStyle, name + " — Certifying Body", body);
-        kv(sheet, r, labelStyle, name + " — Valid To", expiry);
+    private void buildVendorMasterSheet(Workbook wb, SupplierRegistration reg, CellStyle headerStyle) {
+        Sheet sheet = wb.createSheet("Vendor Master");
+        headerRow(sheet, headerStyle, VENDOR_MASTER_COLUMNS);
+        Row row = sheet.createRow(1);
+        String[] values = {
+                orEmpty(reg.getVendorCode()), orEmpty(reg.getVendorName()), orEmpty(reg.getStatus()),
+                orEmpty(reg.getVendorCategory()), reg.getApprovedDate() != null ? reg.getApprovedDate().format(TS) : "",
+                orEmpty(reg.getAddress()),
+                orEmpty(reg.getContactName()), orEmpty(reg.getDesignation()), orEmpty(reg.getEmail()), orEmpty(reg.getPhone()),
+                orEmpty(reg.getContact1Name()), orEmpty(reg.getContact1Role()), orEmpty(reg.getContact1Email()), orEmpty(reg.getContact1Phone()),
+                orEmpty(reg.getContact2Name()), orEmpty(reg.getContact2Role()), orEmpty(reg.getContact2Email()), orEmpty(reg.getContact2Phone()),
+                orEmpty(reg.getBusinessTypes()), orEmpty(reg.getBusinessScope()), orEmpty(reg.getCompanyType()),
+                orEmpty(reg.getTelephone()), orEmpty(reg.getFax()), orEmpty(reg.getWeeklyOff()),
+                orEmpty(reg.getAnnualTurnover()), orEmpty(reg.getTurnoverYear()), orEmpty(reg.getRegulatoryActs()),
+                orEmpty(reg.getManpowerOffice()), orEmpty(reg.getManpowerSupervisor()), orEmpty(reg.getManpowerWorkmen()),
+                orEmpty(reg.getShiftsPerDay()), orEmpty(reg.getSpareCapacity()), orEmpty(reg.getFloorSpace()),
+                orEmpty(reg.getEquipmentFacilities()),
+                orEmpty(reg.getGstNumber()), orEmpty(reg.getPanNumber()), orEmpty(reg.getMsmeNumber()), orEmpty(reg.getCinNumber()),
+                orEmpty(reg.getBeneficiaryName()), orEmpty(reg.getAccountNumber()), orEmpty(reg.getIfscCode()), orEmpty(reg.getBankName()),
+                orEmpty(reg.getIsoCertificateNo()), orEmpty(reg.getIsoCertifyingBody()), orEmpty(reg.getIsoExpiry()),
+                orEmpty(reg.getIso14001CertificateNo()), orEmpty(reg.getIso14001CertifyingBody()), orEmpty(reg.getIso14001Expiry()),
+                orEmpty(reg.getIso45001CertificateNo()), orEmpty(reg.getIso45001CertifyingBody()), orEmpty(reg.getIso45001Expiry()),
+                orEmpty(reg.getIso27001CertificateNo()), orEmpty(reg.getIso27001CertifyingBody()), orEmpty(reg.getIso27001Expiry()),
+                orEmpty(reg.getAs9100dCertificateNo()), orEmpty(reg.getAs9100dCertifyingBody()), orEmpty(reg.getAs9100dExpiry()),
+                orEmpty(reg.getNadcapCertificateNo()), orEmpty(reg.getNadcapExpiry()),
+        };
+        for (int c = 0; c < values.length; c++) row.createCell(c).setCellValue(values[c]);
+        autoSize(sheet, VENDOR_MASTER_COLUMNS.length);
     }
 
     // ── Sheet 2: directors — sourced from Microvista's CIN verification (run automatically
@@ -230,6 +205,9 @@ public class VendorApprovalExcelService {
     // ── Sheet 6: every field Microvista actually returned when verifying each document — not
     // just the pass/fail status shown elsewhere. Same verify_details_json each document already
     // stores (message + labeled details — see MicrovistaService.verify*), just flattened out.
+    // Long/melted shape (Document, Field, Value) rather than one-column-per-field, since each
+    // document type returns a different, variable-length set of fields — this keeps every row
+    // under the same three headers instead of a ragged table.
 
     private void buildVerificationDetailsSheet(Workbook wb, List<SupplierRegistrationDocument> docs, CellStyle headerStyle) {
         Sheet sheet = wb.createSheet("Verification Details");
@@ -266,11 +244,18 @@ public class VendorApprovalExcelService {
         autoSize(sheet, cols.length);
     }
 
-    // ── Sheet 5: dynamic questionnaire answers (QuestionnaireService.getAnswersForReview shape) ──
+    // ── Sheet 5(+): dynamic questionnaire answers (QuestionnaireService.getAnswersForReview
+    // shape). Every non-table question becomes one column on a single flat "Questionnaire
+    // Answers" row (one vendor = one row), same flat-table shape as Vendor Master. Each
+    // table-type question (e.g. "Head Office Details" with its own City/State/Country/Zip
+    // Code/... columns) gets its own dedicated sheet, named after the question, with real
+    // columns matching that question's own column defs and one row per table row the vendor
+    // filled in — instead of every answer being squeezed into one "Answer" text cell.
 
-    private void buildQuestionnaireSheet(Workbook wb, JSONArray answers, List<SupplierRegistrationAttachment> attachments,
-                                          CellStyle headerStyle, String folderItAccountUid) {
+    private void buildQuestionnaireSheets(Workbook wb, JSONArray answers, List<SupplierRegistrationAttachment> attachments,
+                                           CellStyle headerStyle, String folderItAccountUid) {
         if (answers == null || answers.isEmpty()) return;
+
         // A file_upload question's answer is answered by an attachment carrying that questionId
         // (see SupplierRegistrationAttachment.questionId) — same lookup QuestionnaireService.
         // getAnswersForReview uses to build previewUrl, but we want the FolderIt reference here
@@ -280,39 +265,58 @@ public class VendorApprovalExcelService {
             if (a.getQuestionId() != null) attachmentByQuestionId.put(a.getQuestionId(), a);
         }
 
-        Sheet sheet = wb.createSheet("Questionnaire Answers");
-        String[] cols = {"Question", "Answer", "FolderIt File UID", "FolderIt API Reference"};
-        headerRow(sheet, headerStyle, cols);
-        int r = 1;
+        List<JSONObject> flat = new ArrayList<>();
+        List<JSONObject> tables = new ArrayList<>();
         for (int i = 0; i < answers.length(); i++) {
             JSONObject a = answers.getJSONObject(i);
-            Row row = sheet.createRow(r++);
-            row.createCell(0).setCellValue(a.optString("prompt", ""));
-            row.createCell(1).setCellValue(answerText(a));
-            SupplierRegistrationAttachment att = attachmentByQuestionId.get(a.optInt("questionId", -1));
-            if (att != null && att.getFolderItFileUid() != null) {
-                row.createCell(2).setCellValue(att.getFolderItFileUid());
-                row.createCell(3).setCellValue(folderItReference(att.getFolderItFileUid(), folderItAccountUid));
-            }
+            (("table".equals(a.optString("questionType", ""))) ? tables : flat).add(a);
         }
-        autoSize(sheet, cols.length);
+
+        if (!flat.isEmpty()) {
+            Sheet sheet = wb.createSheet("Questionnaire Answers");
+            Row header = sheet.createRow(0);
+            Row data = sheet.createRow(1);
+            int col = 0;
+            for (JSONObject a : flat) {
+                setHeaderCell(header, col, a.optString("prompt", ""), headerStyle);
+                data.createCell(col).setCellValue(answerText(a));
+                col++;
+                SupplierRegistrationAttachment att = attachmentByQuestionId.get(a.optInt("questionId", -1));
+                if (att != null && att.getFolderItFileUid() != null) {
+                    setHeaderCell(header, col, a.optString("prompt", "") + " — FolderIt File UID", headerStyle);
+                    data.createCell(col).setCellValue(att.getFolderItFileUid());
+                    col++;
+                    setHeaderCell(header, col, a.optString("prompt", "") + " — FolderIt API Reference", headerStyle);
+                    data.createCell(col).setCellValue(folderItReference(att.getFolderItFileUid(), folderItAccountUid));
+                    col++;
+                }
+            }
+            autoSize(sheet, col);
+        }
+
+        Set<String> usedSheetNames = new HashSet<>();
+        for (JSONObject a : tables) {
+            JSONArray columnLabels = a.optJSONArray("columnLabels");
+            List<String> cols = new ArrayList<>();
+            if (columnLabels != null) for (int i = 0; i < columnLabels.length(); i++) cols.add(columnLabels.getString(i));
+            if (cols.isEmpty()) continue;
+
+            Sheet sheet = wb.createSheet(uniqueSheetName(usedSheetNames, a.optString("prompt", "Table")));
+            headerRow(sheet, headerStyle, cols.toArray(new String[0]));
+
+            JSONArray rows = a.optJSONArray("rows");
+            if (rows != null) {
+                for (int i = 0; i < rows.length(); i++) {
+                    JSONObject rowObj = rows.getJSONObject(i);
+                    Row row = sheet.createRow(i + 1);
+                    for (int c = 0; c < cols.size(); c++) row.createCell(c).setCellValue(rowObj.optString(cols.get(c), ""));
+                }
+            }
+            autoSize(sheet, cols.size());
+        }
     }
 
     private String answerText(JSONObject a) {
-        String type = a.optString("questionType", "");
-        if ("table".equals(type)) {
-            JSONArray rows = a.optJSONArray("rows");
-            if (rows == null || rows.isEmpty()) return "(not answered)";
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < rows.length(); i++) {
-                JSONObject row = rows.getJSONObject(i);
-                if (i > 0) sb.append(" | ");
-                sb.append(row.keySet().stream()
-                        .map(k -> k + ": " + row.optString(k, ""))
-                        .reduce((x, y) -> x + ", " + y).orElse(""));
-            }
-            return sb.toString();
-        }
         JSONArray labels = a.optJSONArray("selectedLabels");
         if (labels != null && !labels.isEmpty()) {
             StringBuilder sb = new StringBuilder();
@@ -323,7 +327,7 @@ public class VendorApprovalExcelService {
             return sb.toString();
         }
         String text = a.optString("textValue", null);
-        return text != null ? text : "(not answered)";
+        return text != null ? text : "";
     }
 
     // ── small helpers ──────────────────────────────────────────────────────────────────────
@@ -337,29 +341,15 @@ public class VendorApprovalExcelService {
         }
     }
 
-    private void section(Sheet sheet, int[] r, CellStyle style, String title) {
-        Row row = sheet.createRow(r[0]++);
-        Cell cell = row.createCell(0);
-        cell.setCellValue(title);
-        cell.setCellStyle(style);
-    }
-
-    private void kv(Sheet sheet, int[] r, CellStyle labelStyle, String label, String value) {
-        if (!notBlank(value)) return;
-        Row row = sheet.createRow(r[0]++);
-        Cell labelCell = row.createCell(0);
-        labelCell.setCellValue(label);
-        labelCell.setCellStyle(labelStyle);
-        row.createCell(1).setCellValue(value);
-    }
-
     private void headerRow(Sheet sheet, CellStyle style, String[] cols) {
         Row row = sheet.createRow(0);
-        for (int i = 0; i < cols.length; i++) {
-            Cell c = row.createCell(i);
-            c.setCellValue(cols[i]);
-            c.setCellStyle(style);
-        }
+        for (int i = 0; i < cols.length; i++) setHeaderCell(row, i, cols[i], style);
+    }
+
+    private void setHeaderCell(Row row, int col, String value, CellStyle style) {
+        Cell c = row.createCell(col);
+        c.setCellValue(value);
+        c.setCellStyle(style);
     }
 
     private void autoSize(Sheet sheet, int cols) {
@@ -369,15 +359,20 @@ public class VendorApprovalExcelService {
     private boolean notBlank(String s) { return s != null && !s.isBlank(); }
     private String orEmpty(String s) { return s != null ? s : ""; }
 
-    private CellStyle sectionStyle(Workbook wb) {
-        CellStyle style = wb.createCellStyle();
-        Font font = wb.createFont();
-        font.setBold(true);
-        font.setColor(IndexedColors.WHITE.getIndex());
-        style.setFont(font);
-        style.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
-        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        return style;
+    /** Excel sheet names: max 31 chars, no \ / ? * [ ] : — and must be unique within the workbook. */
+    private String uniqueSheetName(Set<String> used, String rawName) {
+        String cleaned = rawName.replaceAll("[\\\\/?*\\[\\]:]", " ").trim();
+        if (cleaned.isEmpty()) cleaned = "Table";
+        String base = cleaned.length() > 31 ? cleaned.substring(0, 31).trim() : cleaned;
+        String candidate = base;
+        int n = 2;
+        while (!used.add(candidate)) {
+            String suffix = " (" + n + ")";
+            int cut = Math.max(0, Math.min(base.length(), 31 - suffix.length()));
+            candidate = base.substring(0, cut) + suffix;
+            n++;
+        }
+        return candidate;
     }
 
     private CellStyle headerStyle(Workbook wb) {
@@ -387,14 +382,6 @@ public class VendorApprovalExcelService {
         style.setFont(font);
         style.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
         style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        return style;
-    }
-
-    private CellStyle labelStyle(Workbook wb) {
-        CellStyle style = wb.createCellStyle();
-        Font font = wb.createFont();
-        font.setBold(true);
-        style.setFont(font);
         return style;
     }
 }
