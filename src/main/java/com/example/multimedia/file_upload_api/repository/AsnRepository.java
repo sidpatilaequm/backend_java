@@ -17,4 +17,6 @@ public interface AsnRepository extends JpaRepository<Asn, Long> {
     
     @org.springframework.data.jpa.repository.Query("SELECT a FROM Asn a WHERE a.purchaseOrder.vendor.companyId = :vendorId AND (:companyCode IS NULL OR a.companyCode = :companyCode) ORDER BY a.id DESC")
     List<Asn> findByVendorId(@org.springframework.data.repository.query.Param("vendorId") Long vendorId, @org.springframework.data.repository.query.Param("companyCode") String companyCode);
+    
+    List<Asn> findByCompanyCodeOrderByIdDesc(String companyCode);
 }

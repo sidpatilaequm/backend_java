@@ -33,6 +33,7 @@ import org.w3c.dom.Node;
 @Service
 public class MasterPurchaseOrderService {
     
+    private static final Logger logger = LoggerFactory.getLogger(MasterPurchaseOrderService.class);
     private static final Logger log = LoggerFactory.getLogger(MasterPurchaseOrderService.class);
 
     private final CompanyDetailsRepository companyRepo;
@@ -57,6 +58,7 @@ public class MasterPurchaseOrderService {
     @Transactional
     public List<PortalPurchaseOrder> saveExcelData(byte[] fileBytes, Long userId) throws Exception {
         String fileContentStr = new String(fileBytes, java.nio.charset.StandardCharsets.UTF_8);
+        logger.info("File contents preview: " + fileContentStr.substring(0, Math.min(fileContentStr.length(), 500)));
         if (fileContentStr.trim().startsWith("<?xml")) {
             return parseXmlData(fileBytes, userId);
         }

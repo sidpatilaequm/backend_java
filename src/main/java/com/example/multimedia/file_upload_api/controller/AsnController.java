@@ -76,7 +76,9 @@ public class AsnController {
             } else {
                 Long vendorId = null;
                 try {
-                    vendorId = securityContextUtils.getCurrentVendorId();
+                    if (securityContextUtils.isCurrentUserVendor()) {
+                        vendorId = securityContextUtils.getCurrentVendorId();
+                    }
                 } catch (Exception e) {
                     // Ignore if not authenticated as vendor
                 }
@@ -84,7 +86,7 @@ public class AsnController {
                 if (vendorId != null) {
                     serviceResponse = asnService.getAsnsByVendorId(vendorId, companyCode);
                 } else {
-                    serviceResponse = asnService.getAllAsns();
+                    serviceResponse = asnService.getAllAsns(companyCode);
                 }
             }
 

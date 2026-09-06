@@ -34,5 +34,12 @@ public interface PortalPurchaseOrderRepository extends JpaRepository<PortalPurch
     @org.springframework.data.jpa.repository.Query("SELECT p FROM PortalPurchaseOrder p LEFT JOIN p.purchaseRequisition pr WHERE pr.requestedBy IN :requestedByIds OR p.createdBy IN :createdByList ORDER BY p.createdDate DESC")
     List<PortalPurchaseOrder> findByPurchaseRequisition_RequestedByInOrCreatedByIn(@org.springframework.data.repository.query.Param("requestedByIds") java.util.Collection<Long> requestedByIds, @org.springframework.data.repository.query.Param("createdByList") java.util.Collection<String> createdByList);
 
+    @org.springframework.data.jpa.repository.Query("SELECT p FROM PortalPurchaseOrder p LEFT JOIN p.purchaseRequisition pr WHERE p.vendor.superAdmin.superAdminId = :superAdminId AND (pr.requestedBy IN :requestedByIds OR p.createdBy IN :createdByList OR p.createdBy IS NULL) ORDER BY p.createdDate DESC")
+    List<PortalPurchaseOrder> findEmployeePOs(
+        @org.springframework.data.repository.query.Param("superAdminId") Long superAdminId,
+        @org.springframework.data.repository.query.Param("requestedByIds") java.util.Collection<Long> requestedByIds,
+        @org.springframework.data.repository.query.Param("createdByList") java.util.Collection<String> createdByList
+    );
+
     List<PortalPurchaseOrder> findByPurchaseRequisition_Id(Long prId);
 }
