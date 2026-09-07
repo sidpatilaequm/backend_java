@@ -7,6 +7,7 @@ import com.example.multimedia.file_upload_api.dto.VerifyResult;
 import com.example.multimedia.file_upload_api.entity.*;
 import com.example.multimedia.file_upload_api.enums.UserType;
 import com.example.multimedia.file_upload_api.repository.*;
+import com.example.multimedia.file_upload_api.security.OrgConfigGate;
 import com.example.multimedia.file_upload_api.util.SupplierDocumentConfig;
 import com.example.multimedia.file_upload_api.utils.AppConstants;
 import com.example.multimedia.file_upload_api.utils.PasswordUtils;
@@ -59,6 +60,7 @@ public class SupplierRegistrationService {
     private final DocumentTypeRepository documentTypeRepository;
     private final AuditLogService auditLogService;
     private final VendorApprovalExcelService vendorApprovalExcelService;
+    private final OrgConfigGate orgConfigGate;
 
     @Value("${workflow.api.base-url:http://localhost:8000}")
     private String workflowBaseUrl;
@@ -91,7 +93,8 @@ public class SupplierRegistrationService {
                                         DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository,
                                         DocumentTypeRepository documentTypeRepository,
                                         AuditLogService auditLogService,
-                                        VendorApprovalExcelService vendorApprovalExcelService) {
+                                        VendorApprovalExcelService vendorApprovalExcelService,
+                                        OrgConfigGate orgConfigGate) {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
         this.attachmentRepository = attachmentRepository;
@@ -116,6 +119,7 @@ public class SupplierRegistrationService {
         this.documentTypeRepository = documentTypeRepository;
         this.auditLogService = auditLogService;
         this.vendorApprovalExcelService = vendorApprovalExcelService;
+        this.orgConfigGate = orgConfigGate;
     }
 
     // ── Document upload + OCR + FolderIt storage ────────────────────────────
@@ -628,6 +632,10 @@ public class SupplierRegistrationService {
             row.put("companyType", reg.getCompanyType());
             row.put("businessTypes", reg.getBusinessTypes());
             row.put("vendorCategory", reg.getVendorCategory());
+            row.put("vendorTypeProduct", reg.isVendorTypeProduct());
+            row.put("vendorTypeService", reg.isVendorTypeService());
+            row.put("vendorTypeSubcontracting", reg.isVendorTypeSubcontracting());
+            row.put("vendorTypeSchedulingAgreement", reg.isVendorTypeSchedulingAgreement());
             row.put("approvedBy", reg.getApprovedBy());
             row.put("approvedDate", reg.getApprovedDate());
             out.add(row);
@@ -677,6 +685,35 @@ public class SupplierRegistrationService {
         data.put("decidedByYou", claimed > 0);
         response.addData("result", data);
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Classification recorded");
+    }
+
+    /**
+     * The admin-editable replacement for vendorCategory above — 4 independent flags instead of
+     * one comma-joined pick, editable anytime from the vendor's own detail page rather than only
+     * during approval, so no "first approver wins" claim here: whoever calls this last wins,
+     * same as any other admin edit.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ServiceResponse setVendorBusinessTypes(Long registrationId, boolean product, boolean service,
+                                                    boolean subcontracting, boolean schedulingAgreement) {
+        ServiceResponse response = new ServiceResponse();
+        SupplierRegistration reg = registrationRepository.findById(registrationId).orElse(null);
+        if (reg == null) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
+        }
+        reg.setVendorTypeProduct(product);
+        reg.setVendorTypeService(service);
+        reg.setVendorTypeSubcontracting(subcontracting);
+        reg.setVendorTypeSchedulingAgreement(schedulingAgreement);
+        registrationRepository.save(reg);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("vendorTypeProduct", product);
+        data.put("vendorTypeService", service);
+        data.put("vendorTypeSubcontracting", subcontracting);
+        data.put("vendorTypeSchedulingAgreement", schedulingAgreement);
+        response.addData("result", data);
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Vendor business types updated");
     }
 
     /**
@@ -899,6 +936,11 @@ public class SupplierRegistrationService {
     public ServiceResponse submit(Long registrationId) {
         ServiceResponse response = new ServiceResponse();
         try {
+            if (!orgConfigGate.isVendorOnboardingEnabled()) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE,
+                        "Vendor onboarding is currently disabled.");
+            }
+
             SupplierRegistration reg = registrationRepository.findById(registrationId)
                     .orElseThrow(() -> new RuntimeException("Registration not found"));
 

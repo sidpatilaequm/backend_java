@@ -55,9 +55,14 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
     @Autowired
     private com.example.multimedia.file_upload_api.repository.AsnItemRepository asnItemRepository;
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.security.OrgConfigGate orgConfigGate;
+
     @Override
     @Transactional
     public PortalPurchaseOrderResponse createPOFromAwardedQuotation(Long quotationId, PortalPurchaseOrderRequest request) {
+        orgConfigGate.requirePrToPoEnabled();
+
         // Find quotation
         VendorQuotation quotation = quotationRepository.findById(quotationId)
                 .orElseThrow(() -> new RuntimeException("Quotation not found with ID: " + quotationId));

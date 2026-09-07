@@ -224,6 +224,23 @@ public class SupplierRegistrationController {
     }
 
     /**
+     * Admin-editable replacement for the classification pick above — 4 independent Yes/No flags,
+     * editable anytime from the vendor's own detail page in Vendor Management, not tied to the
+     * approval flow.
+     */
+    @PatchMapping("/api/supplier-registration/{registrationId}/business-types")
+    public ResponseEntity<ServiceResponse> setVendorBusinessTypes(@PathVariable Long registrationId, @RequestBody java.util.Map<String, Object> body) {
+        if (!isAdmin()) return ResponseEntity.status(403).body(null);
+        boolean product = Boolean.TRUE.equals(body.get("product"));
+        boolean service_ = Boolean.TRUE.equals(body.get("service"));
+        boolean subcontracting = Boolean.TRUE.equals(body.get("subcontracting"));
+        boolean schedulingAgreement = Boolean.TRUE.equals(body.get("schedulingAgreement"));
+        ServiceResponse response = service.setVendorBusinessTypes(registrationId, product, service_, subcontracting, schedulingAgreement);
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.badRequest().body(response);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Reference menu for the document-type picker below — same underlying data as the Purchasing
      * Roles admin screen (PurchaseRoleReferenceController), but without that endpoint's isAdmin()
      * gate: an EMPLOYEE/PURCHASE_DEPT approver reviewing a vendor_registration request needs this

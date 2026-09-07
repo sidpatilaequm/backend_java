@@ -27,6 +27,9 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
     @Autowired
     private DocumentTypeRepository documentTypeRepository;
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.security.OrgConfigGate orgConfigGate;
+
     @Override
     public List<MaterialInwardQueueDto> getQueue() {
         // Fetch gate entries that are ALLOWED
@@ -85,10 +88,14 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
                 // The founder's rule: only a doc type ending in "RM" (today just ZFRM) needs a
                 // real warehouse + bin at putaway — everything else is location-only. Resolved
                 // fresh from the PR each time rather than copied forward onto the ASN/PO.
+                // Org-wide master switch overrides this: when off, every receipt is
+                // location-only regardless of doc type — not a replacement for the rule above,
+                // just a way to disable warehouse-based receipt org-wide when it's on.
                 if (po.getPurchaseRequisition() != null) {
                     String docTypeCode = po.getPurchaseRequisition().getDocTypeCode();
                     dto.setDocTypeCode(docTypeCode);
-                    dto.setRawMaterial(docTypeCode != null && docTypeCode.endsWith("RM"));
+                    dto.setRawMaterial(orgConfigGate.isGoodsReceiptWarehouseEnabled()
+                            && docTypeCode != null && docTypeCode.endsWith("RM"));
                     if (docTypeCode != null) {
                         documentTypeRepository.findById(docTypeCode)
                                 .ifPresent(dt -> dto.setDocTypeDescription(dt.getDescription()));

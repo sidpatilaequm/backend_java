@@ -94,9 +94,13 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
     @Autowired
     private com.example.multimedia.file_upload_api.repository.SuperAdminRepository superAdminRepository;
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.security.OrgConfigGate orgConfigGate;
+
     @Override
     @Transactional
     public PurchaseRequisitionResponse createPurchaseRequisition(PurchaseRequisitionRequest request) {
+        orgConfigGate.requirePrToPoEnabled();
         Long superAdminId;
         Long requestedById;
         if (currentUserService.isCurrentUserSuperAdmin()) {
@@ -620,6 +624,7 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
     @Override
     @Transactional
     public void createRfq(Long prId, java.util.List<Long> vendorIds) {
+        orgConfigGate.requirePrToPoEnabled();
         PurchaseRequisition pr = prRepository.findById(prId)
                 .orElseThrow(() -> new RuntimeException("Purchase Requisition not found: " + prId));
 

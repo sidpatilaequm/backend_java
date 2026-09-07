@@ -220,12 +220,29 @@ public class SupplierRegistration {
 
     /**
      * PRODUCT / SERVICE / SCHEDULING_AGREEMENT / SUBCONTRACTING — set by whichever approver
-     * decides it first during review (see VendorClassificationController), never by the vendor.
-     * Under a stage requiring several approvers, the first one to set it wins; later approvers
-     * see it already decided. Null until the deciding approval happens.
+     * decides it first during review, never by the vendor. Under a stage requiring several
+     * approvers, the first one to set it wins; later approvers see it already decided. Null
+     * until the deciding approval happens.
+     *
+     * Superseded by the 4 vendorType* booleans below for anything new — this column is left in
+     * place (read-only now) only because two admin display screens still read it. Editing a
+     * vendor's business type happens through those booleans instead, editable anytime from the
+     * admin vendor detail page, independent of the approval flow.
      */
     @Column(name = "vendor_category")
     private String vendorCategory;
+
+    @Column(name = "vendor_type_product")
+    private boolean vendorTypeProduct = false;
+
+    @Column(name = "vendor_type_service")
+    private boolean vendorTypeService = false;
+
+    @Column(name = "vendor_type_subcontracting")
+    private boolean vendorTypeSubcontracting = false;
+
+    @Column(name = "vendor_type_scheduling_agreement")
+    private boolean vendorTypeSchedulingAgreement = false;
 
     // ── KYC ──────────────────────────────────────────────────────────────
     @Column(name = "gst_number")

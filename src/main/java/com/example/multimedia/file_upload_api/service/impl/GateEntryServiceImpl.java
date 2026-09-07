@@ -41,6 +41,9 @@ public class GateEntryServiceImpl implements GateEntryService {
     @Autowired
     private VendorMasterRepository vendorMasterRepository;
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.security.OrgConfigGate orgConfigGate;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private Long extractAsnId(String asnNumberStr) {
@@ -432,6 +435,11 @@ public class GateEntryServiceImpl implements GateEntryService {
             response.setStatusMsg("Unauthorized: No email found in token");
             return response;
         }
+        if (!orgConfigGate.isGateEntryShowToVendorEnabled()) {
+            response.setStatus("error");
+            response.setStatusMsg("Gate entry status is not available.");
+            return response;
+        }
 
         VendorMaster vendor = vendorMasterRepository.findBySupplierRegistration_Email(email).stream()
                 .findFirst()
@@ -467,6 +475,11 @@ public class GateEntryServiceImpl implements GateEntryService {
         if (email == null) {
             response.setStatus("error");
             response.setStatusMsg("Unauthorized: No email found in token");
+            return response;
+        }
+        if (!orgConfigGate.isGateEntryShowToVendorEnabled()) {
+            response.setStatus("error");
+            response.setStatusMsg("Gate entry status is not available.");
             return response;
         }
 

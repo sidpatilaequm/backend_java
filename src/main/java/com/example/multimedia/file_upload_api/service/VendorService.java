@@ -116,6 +116,10 @@ public class VendorService {
                 // registrations decided under the newer per-company-code flow, but left populated
                 // for whichever old registrations still only have this.
                 vendorData.put("vendorCategory", reg.getVendorCategory());
+                vendorData.put("vendorTypeProduct", reg.isVendorTypeProduct());
+                vendorData.put("vendorTypeService", reg.isVendorTypeService());
+                vendorData.put("vendorTypeSubcontracting", reg.isVendorTypeSubcontracting());
+                vendorData.put("vendorTypeSchedulingAgreement", reg.isVendorTypeSchedulingAgreement());
 
                 // Per-company document type codes (e.g. company 1000 -> NB, ZNB, ZCAP) the
                 // approver actually granted this vendor — see AdminWorkflows' Document Types
