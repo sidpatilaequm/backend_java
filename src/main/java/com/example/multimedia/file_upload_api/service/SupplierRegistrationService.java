@@ -309,14 +309,7 @@ public class SupplierRegistrationService {
             JSONObject values = new JSONObject(Optional.ofNullable(doc.getOcrExtractedFieldsJson()).orElse("{}"));
             SupplierDocumentConfig.DocDef def = SupplierDocumentConfig.byId(docType);
 
-            VerifyResult result = switch (Optional.ofNullable(def.verifyKind()).orElse("")) {
-                case "pan" -> microvistaService.verifyPan(values.optString("pan"));
-                case "gstin" -> microvistaService.verifyGstin(values.optString("gstin"));
-                case "cin" -> microvistaService.verifyCin(values.optString("cin"));
-                case "udyam" -> microvistaService.verifyUdyam(values.optString("udyam"));
-                case "bank" -> microvistaService.verifyBank(values.optString("acctNo"), values.optString("ifsc"), values.optString("benName"));
-                default -> new VerifyResult(true, "No verification available for this document.", new ArrayList<>());
-            };
+            VerifyResult result = dispatchMicrovistaVerify(def, values);
 
             doc.setVerifyStatus(result.isVerified() ? "verified" : "error");
             doc.setVerifyDetailsJson(new JSONObject(Map.of("message", result.getMessage(), "details", result.getDetails())).toString());
@@ -328,6 +321,22 @@ public class SupplierRegistrationService {
             logger.error("Verification failed for docType={}", docType, e);
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Verification failed: " + e.getMessage());
         }
+    }
+
+    /** The same doc-type → Microvista-endpoint dispatch verifyDocument uses above, pulled out so
+     *  VendorChangeRequestService's submission-time preview (run before a document even exists in
+     *  the DB, on OCR fields freshly read off the not-yet-approved replacement file) can call the
+     *  exact same logic instead of re-implementing the switch. Package-private on purpose — no
+     *  reason for this to be part of the public API surface. */
+    VerifyResult dispatchMicrovistaVerify(SupplierDocumentConfig.DocDef def, JSONObject values) {
+        return switch (Optional.ofNullable(def.verifyKind()).orElse("")) {
+            case "pan" -> microvistaService.verifyPan(values.optString("pan"));
+            case "gstin" -> microvistaService.verifyGstin(values.optString("gstin"));
+            case "cin" -> microvistaService.verifyCin(values.optString("cin"));
+            case "udyam" -> microvistaService.verifyUdyam(values.optString("udyam"));
+            case "bank" -> microvistaService.verifyBank(values.optString("acctNo"), values.optString("ifsc"), values.optString("benName"));
+            default -> new VerifyResult(true, "No verification available for this document.", new ArrayList<>());
+        };
     }
 
     // ── Draft save / resume ──────────────────────────────────────────────
@@ -1166,8 +1175,12 @@ public class SupplierRegistrationService {
      * and drops it into the vendor's own FolderIt folder. Best-effort, same as the folder
      * rename above: a failure here shouldn't block the vendor actually being approved, so it's
      * logged rather than thrown.
+     *
+     * Package-private (not private) so VendorChangeRequestService can re-run this after an
+     * approved change request mutates the registration/its documents/attachments/answers — the
+     * Excel is meant to be a live snapshot, not just a one-time-at-approval artifact.
      */
-    private void uploadApprovalExcel(SupplierRegistration reg) {
+    void uploadApprovalExcel(SupplierRegistration reg) {
         try {
             byte[] excel = buildApprovalExcelBytes(reg);
             String fileName = approvalExcelFileName(reg);

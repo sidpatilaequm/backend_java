@@ -51,6 +51,24 @@ public class SupplierChangeRequest {
     @Column(name = "new_answer_json", columnDefinition = "LONGTEXT")
     private String newAnswerJson;
 
+    /** Snapshot of the vendor's own submission-time preview (see
+     *  VendorChangeRequestService.previewVerify) — OCR fields read off the proposed replacement
+     *  document and the Microvista verification run against them, captured at submit() so an
+     *  admin reviewing a still-PENDING request sees the same information the vendor saw, without
+     *  needing to re-download/re-OCR the file just to review it. Only ever set for
+     *  itemType="document"; null for attachment/answer requests. Independent of — and not reused
+     *  by — applyApprovedChange, which re-derives its own authoritative OCR/verify result from the
+     *  file fresh at approval time. */
+    @Column(name = "new_ocr_extracted_fields_json", columnDefinition = "LONGTEXT")
+    private String newOcrExtractedFieldsJson;
+
+    /** "verified" / "error" — mirrors SupplierRegistrationDocument.verifyStatus's vocabulary. */
+    @Column(name = "new_verify_status")
+    private String newVerifyStatus;
+
+    @Column(name = "new_verify_details_json", columnDefinition = "LONGTEXT")
+    private String newVerifyDetailsJson;
+
     /** PENDING / APPROVED / REJECTED */
     @Column(nullable = false)
     private String status = "PENDING";

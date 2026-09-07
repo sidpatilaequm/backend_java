@@ -16,6 +16,7 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -62,6 +63,7 @@ public class VendorChangeRequestService {
 
     private final WorkflowEmailClient workflowEmailClient;
     private final AuditLogService auditLogService;
+    private final SupplierRegistrationService supplierRegistrationService;
 
     public VendorChangeRequestService(SupplierChangeRequestRepository changeRequestRepository,
                                        SupplierRegistrationRepository registrationRepository,
@@ -73,7 +75,8 @@ public class VendorChangeRequestService {
                                        RestTemplate restTemplate,
                                        ServiceControllerUtils serviceControllerUtils,
                                        WorkflowEmailClient workflowEmailClient,
-                                       AuditLogService auditLogService) {
+                                       AuditLogService auditLogService,
+                                       @Lazy SupplierRegistrationService supplierRegistrationService) {
         this.changeRequestRepository = changeRequestRepository;
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
@@ -85,6 +88,10 @@ public class VendorChangeRequestService {
         this.serviceControllerUtils = serviceControllerUtils;
         this.workflowEmailClient = workflowEmailClient;
         this.auditLogService = auditLogService;
+        // @Lazy because SupplierRegistrationService already depends on this class (to dispatch
+        // change-request webhooks) — without it, Spring can't resolve which bean to construct
+        // first. The lazy proxy defers that until applyApprovedChange actually calls into it.
+        this.supplierRegistrationService = supplierRegistrationService;
     }
 
     /**
@@ -286,6 +293,16 @@ public class VendorChangeRequestService {
                 registrationRepository.save(reg);
 
                 documentRepository.save(doc);
+
+                // Same Microvista re-verification the original Become-a-Supplier upload runs —
+                // reuses SupplierRegistrationService.verifyDocument as-is (reads the
+                // ocrExtractedFieldsJson just saved above, dispatches to the right Microvista
+                // endpoint for this docType, writes verifyStatus/verifyDetailsJson back onto the
+                // doc) rather than re-implementing that dispatch here. Already catches its own
+                // failures internally and reports them via verifyStatus="error" instead of
+                // throwing, same as a first-time verification failure would — re-runnable later
+                // from the same admin screen without undoing the change that was just approved.
+                supplierRegistrationService.verifyDocument(reg.getId(), cr.getItemKey());
             }
             case "attachment" -> {
                 SupplierRegistrationAttachment att = attachmentRepository.findById(Long.parseLong(cr.getItemKey()))
@@ -298,6 +315,12 @@ public class VendorChangeRequestService {
                     reg.getFormStudioResponseId(), Integer.parseInt(cr.getItemKey()), new JSONObject(cr.getNewAnswerJson()));
             default -> logger.warn("Unknown change request item type {} for change request {}", cr.getItemType(), cr.getId());
         }
+
+        // Whatever changed — document, attachment, or answer — the FolderIt Excel snapshot is
+        // stale the moment this method returns unless it's rebuilt from the now-current DB state
+        // and re-uploaded. uploadApprovalExcel already catches its own failures internally (same
+        // best-effort reasoning as the initial upload-on-approval), so no try/catch needed here.
+        supplierRegistrationService.uploadApprovalExcel(reg);
     }
 
     /** Mirrors SupplierDocumentConfig's field keys to the matching flat column on

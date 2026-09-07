@@ -30,6 +30,12 @@ public interface PurchaseRequisitionRepository extends JpaRepository<PurchaseReq
     // Backs the PR Lifecycle tab's default cross-PR feed — see PrLifecycleService.getFeed.
     List<PurchaseRequisition> findTop100ByOrderByCreatedAtDesc();
 
+    // Which PRs are still mid-pipeline (not yet a PO, not rejected/closed) — used to refuse
+    // disabling the PR-to-PO org-config toggle while any exist, see OrgConfigController.
+    List<PurchaseRequisition> findTop20ByStatusNotInOrderByCreatedAtDesc(List<PurchaseRequisitionStatus> terminalStatuses);
+
+    long countByStatusNotIn(List<PurchaseRequisitionStatus> terminalStatuses);
+
     @Query("SELECT p FROM PurchaseRequisition p WHERE p.requestedBy = :requestedBy " +
             "AND (:plantCode IS NULL OR p.plantCode = :plantCode) " +
             "AND (:status IS NULL OR p.status = :status) " +
