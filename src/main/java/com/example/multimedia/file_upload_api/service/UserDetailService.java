@@ -202,7 +202,14 @@ public class UserDetailService {
                 employee.setDepartment(deptOpt.get());
             }
         }
-        
+
+        if (dto.getManagerCode() != null && !dto.getManagerCode().trim().isEmpty()) {
+            Optional<Employee> managerOpt = employeeRepository.findById(dto.getManagerCode());
+            if (managerOpt.isPresent()) {
+                employee.setManager(managerOpt.get());
+            }
+        }
+
         employeeRepository.save(employee);
 
         auditLogService.record(currentSuperAdmin, "USER_CREATED", userDetail, List.of(
