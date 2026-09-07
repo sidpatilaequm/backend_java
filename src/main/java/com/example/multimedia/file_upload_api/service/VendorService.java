@@ -54,8 +54,22 @@ public class VendorService {
         ServiceResponse response = new ServiceResponse();
 
         try {
-            // Get current admin ID for filtering
-            Long currentAdminId = currentUserService.getCurrentSuperAdminId();
+            // Get current admin ID for filtering — an admin/PROC_MGR IS a SuperAdmin row, but an
+            // employee (EMPLOYEE/PURCHASE_DEPT/SUBMITTER/APPROVER) is only a UserDetail row linked
+            // to one, so getCurrentSuperAdminId() alone (SuperAdmin-table lookup only) threw for
+            // every non-admin caller — this is what made the employee Vendor List screen silently
+            // come back empty. Same isCurrentUserSuperAdmin()-branch pattern already used in
+            // PurchaseRequisitionServiceImpl for the same reason.
+            Long currentAdminId;
+            if (currentUserService.isCurrentUserSuperAdmin()) {
+                currentAdminId = currentUserService.getCurrentSuperAdminId();
+            } else {
+                UserDetail currentUser = currentUserService.getCurrentUser();
+                if (currentUser.getSuperAdmin() == null) {
+                    throw new RuntimeException("Current user is not linked to an organisation.");
+                }
+                currentAdminId = currentUser.getSuperAdmin().getSuperAdminId();
+            }
 
             // Get all VendorMaster records
             List<VendorMaster> vendorMasters = vendorMasterRepository.findAll();
