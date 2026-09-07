@@ -1,6 +1,7 @@
 package com.example.multimedia.file_upload_api.service;
 
 import com.example.multimedia.file_upload_api.dto.ServiceResponse;
+import com.example.multimedia.file_upload_api.dto.VerifyResult;
 import com.example.multimedia.file_upload_api.entity.SupplierChangeRequest;
 import com.example.multimedia.file_upload_api.entity.SupplierRegistration;
 import com.example.multimedia.file_upload_api.entity.SupplierRegistrationAttachment;
@@ -30,6 +31,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * A vendor's self-service request to change one already-approved document, attachment, or
@@ -115,6 +117,9 @@ public class VendorChangeRequestService {
             String oldValueSummary;
             String newFileName = null;
             String newFolderItFileUid = null;
+            String newOcrExtractedFieldsJson = null;
+            String newVerifyStatus = null;
+            String newVerifyDetailsJson = null;
 
             switch (itemType) {
                 case "document" -> {
@@ -123,6 +128,24 @@ public class VendorChangeRequestService {
                     if (file == null || file.isEmpty()) {
                         return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Attach the replacement file.");
                     }
+
+                    // Re-derived here rather than trusted from whatever the vendor's preview-verify
+                    // call earlier returned to the browser — this is what an admin will see while
+                    // the request sits PENDING, so it has to come from the server's own read of the
+                    // actual uploaded file, not an echoed client value. Best-effort: a failure here
+                    // just means no snapshot is shown at review time, not a blocked submission — the
+                    // authoritative OCR/verify still happens fresh at approval either way.
+                    try {
+                        SupplierDocumentConfig.DocDef def = SupplierDocumentConfig.byId(itemKey);
+                        OpenAiVisionOcrService.ExtractResult extracted = ocrService.extractFields(itemKey, file);
+                        VerifyResult verifyResult = supplierRegistrationService.dispatchMicrovistaVerify(def, new JSONObject(extracted.values()));
+                        newOcrExtractedFieldsJson = new JSONObject(extracted.values()).toString();
+                        newVerifyStatus = verifyResult.isVerified() ? "verified" : "error";
+                        newVerifyDetailsJson = new JSONObject(Map.of("message", verifyResult.getMessage(), "details", verifyResult.getDetails())).toString();
+                    } catch (Exception e) {
+                        logger.warn("Submission-time verify snapshot failed for change request docType={}", itemKey, e);
+                    }
+
                     newFolderItFileUid = folderItService.uploadFileToFolder(file, reg.getFolderitFolderUid());
                     newFileName = file.getOriginalFilename();
                 }
@@ -158,6 +181,9 @@ public class VendorChangeRequestService {
             cr.setOldValueSummary(oldValueSummary);
             cr.setNewFileName(newFileName);
             cr.setNewFolderItFileUid(newFolderItFileUid);
+            cr.setNewOcrExtractedFieldsJson(newOcrExtractedFieldsJson);
+            cr.setNewVerifyStatus(newVerifyStatus);
+            cr.setNewVerifyDetailsJson(newVerifyDetailsJson);
             cr.setNewAnswerJson(newAnswerJson);
             cr = changeRequestRepository.save(cr);
 
@@ -206,6 +232,43 @@ public class VendorChangeRequestService {
         } catch (IOException | RuntimeException e) {
             logger.error("Change request submission failed", e);
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Failed to submit change request: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Read-only preview for the vendor's own change-request composer: OCR-reads the proposed
+     * replacement document and runs the same Microvista verification Become-a-Supplier shows live
+     * while a vendor is filling out the original form — same dispatch, via
+     * SupplierRegistrationService.dispatchMicrovistaVerify, just against fields read off a file
+     * that has no SupplierRegistrationDocument row yet (this change hasn't been submitted, let
+     * alone approved). Nothing is written to the DB or FolderIt here.
+     */
+    public ServiceResponse previewVerify(String vendorEmail, String docType, MultipartFile file) {
+        ServiceResponse response = new ServiceResponse();
+        try {
+            registrationRepository.findByEmail(vendorEmail)
+                    .orElseThrow(() -> new RuntimeException("No supplier profile found for this account"));
+            if (file == null || file.isEmpty()) {
+                return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Attach a file to check.");
+            }
+            SupplierDocumentConfig.DocDef def = SupplierDocumentConfig.byId(docType);
+            OpenAiVisionOcrService.ExtractResult extracted = ocrService.extractFields(docType, file);
+            JSONObject values = new JSONObject(extracted.values());
+            VerifyResult result = supplierRegistrationService.dispatchMicrovistaVerify(def, values);
+
+            // Flat verified/message/details, same shape SupplierRegistrationService.verifyDocument
+            // returns for Become-a-Supplier's own live verify — lets the frontend reuse identical
+            // result-rendering code for both.
+            Map<String, Object> data = new HashMap<>();
+            data.put("extractedFields", extracted.values());
+            data.put("verified", result.isVerified());
+            data.put("message", result.getMessage());
+            data.put("details", result.getDetails());
+            response.addData("result", data);
+            return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Preview complete");
+        } catch (IOException | RuntimeException e) {
+            logger.error("Change request preview-verify failed for docType={}", docType, e);
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Could not check this document: " + e.getMessage());
         }
     }
 
@@ -410,6 +473,16 @@ public class VendorChangeRequestService {
         data.put("createdDate", cr.getCreatedDate());
         if (cr.getNewFolderItFileUid() != null) {
             data.put("newFilePreviewUrl", "/api/supplier-registration/change-request/" + cr.getId() + "/preview");
+        }
+        // The vendor's own submission-time OCR + Microvista snapshot (see submit()'s "document"
+        // branch) — flattened out of its stored JSON here so the reviewer UI can render it with
+        // the same verifyStatus/verifyMessage/verifyDetails shape Become-a-Supplier's own review
+        // screen already uses, instead of parsing raw JSON client-side.
+        if (cr.getNewVerifyStatus() != null) {
+            data.put("newVerifyStatus", cr.getNewVerifyStatus());
+            JSONObject detailsJson = new JSONObject(Optional.ofNullable(cr.getNewVerifyDetailsJson()).orElse("{}"));
+            data.put("newVerifyMessage", detailsJson.optString("message", null));
+            data.put("newVerifyDetails", detailsJson.opt("details"));
         }
         response.addData("result", data);
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Change request loaded");

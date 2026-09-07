@@ -391,6 +391,23 @@ public class SupplierRegistrationController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * Lets a vendor see, before submitting a document-replacement change request, the same
+     * OCR-read + Microvista-verified result Become-a-Supplier shows them live while filling out
+     * the original form — read-only, nothing is persisted here (that happens in submit() once
+     * they actually submit).
+     */
+    @PostMapping("/api/supplier-registration/change-requests/preview-verify")
+    public ResponseEntity<ServiceResponse> previewVerifyChangeRequest(
+            @RequestParam("itemKey") String itemKey,
+            @RequestParam("file") MultipartFile file) {
+        String email = currentUserEmail();
+        if (email == null) return ResponseEntity.status(401).build();
+        ServiceResponse response = vendorChangeRequestService.previewVerify(email, itemKey, file);
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.badRequest().body(response);
+        return ResponseEntity.ok(response);
+    }
+
     /** Admin/employee reviewer detail for one change request — old value, reason, proposed new value. */
     @GetMapping("/api/supplier-registration/change-request/{changeRequestId}")
     public ResponseEntity<ServiceResponse> getChangeRequestForReview(@PathVariable Long changeRequestId) {
