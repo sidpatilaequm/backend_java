@@ -10,6 +10,7 @@ logs/
 *.class
 *.jar
 .env
+server-db.env
 upload-dir/
 tessdata/
 
