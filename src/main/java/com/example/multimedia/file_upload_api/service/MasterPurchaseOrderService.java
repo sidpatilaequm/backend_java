@@ -120,21 +120,17 @@ public class MasterPurchaseOrderService {
                     }
                     
                     if (vendorNo != null && !vendorNo.isEmpty()) {
-                        vendorMasterRepo.findByBpNo(vendorNo.trim()).ifPresentOrElse(
-                            vendorMaster -> {
-                                companyRepo.findById(vendorMaster.getVendorId()).ifPresent(po::setVendor);
-                            },
-                            () -> {
-                                List<CompanyDetails> vendors = companyRepo.findByCompanyCode(vendorNo.trim());
-                                if (!vendors.isEmpty()) po.setVendor(vendors.get(0));
-                                else {
-                                     try {
-                                         Long vId = Long.parseLong(vendorNo.trim());
-                                         companyRepo.findById(vId).ifPresent(po::setVendor);
-                                     } catch (NumberFormatException ignored) {}
-                                }
-                            }
-                        );
+                        String cleanVendorNo = vendorNo.trim();
+                        List<CompanyDetails> vendors = companyRepo.findByCompanyCode(cleanVendorNo);
+                        if (!vendors.isEmpty()) {
+                            // Map the PO dynamically to the vendor using the BP No (Company Code)
+                            po.setVendor(vendors.get(vendors.size() - 1)); // Prefer the newest one if duplicates exist
+                        } else {
+                            try {
+                                Long vId = Long.parseLong(cleanVendorNo);
+                                companyRepo.findById(vId).ifPresent(po::setVendor);
+                            } catch (NumberFormatException ignored) {}
+                        }
                     }
                     
                     po.setLanguageKey("EN");
