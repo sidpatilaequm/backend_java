@@ -162,13 +162,11 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
                         Long passedVendorId = itemReq.getVendorIds().get(i);
                         Long finalVendorId = passedVendorId;
                         
-                        // Internal fallback: If the frontend passes VendorMaster ID instead of Company ID, map it safely
+                        // Internal fallback: If the frontend passes VendorMaster ID instead of Company ID, map it safely.
+                        // Real FK first (V9 migration) instead of the email round-trip through UserDetail.
                         Optional<VendorMaster> vmOpt = vendorMasterRepository.findById(passedVendorId);
-                        if (vmOpt.isPresent() && vmOpt.get().getSupplierRegistration() != null && vmOpt.get().getSupplierRegistration().getEmail() != null) {
-                            Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vmOpt.get().getSupplierRegistration().getEmail());
-                            if (userOpt.isPresent() && userOpt.get().getCompany() != null) {
-                                finalVendorId = userOpt.get().getCompany().getCompanyId();
-                            }
+                        if (vmOpt.isPresent() && vmOpt.get().getCompanyDetails() != null) {
+                            finalVendorId = vmOpt.get().getCompanyDetails().getCompanyId();
                         }
 
                         PurchaseRequisitionItemVendor vendor = new PurchaseRequisitionItemVendor();
@@ -368,13 +366,11 @@ public class PurchaseRequisitionServiceImpl implements PurchaseRequisitionServic
                         Long passedVendorId = itemReq.getVendorIds().get(i);
                         Long finalVendorId = passedVendorId;
                         
-                        // Internal fallback: If the frontend passes VendorMaster ID instead of Company ID, map it safely
+                        // Internal fallback: If the frontend passes VendorMaster ID instead of Company ID, map it safely.
+                        // Real FK first (V9 migration) instead of the email round-trip through UserDetail.
                         Optional<VendorMaster> vmOpt = vendorMasterRepository.findById(passedVendorId);
-                        if (vmOpt.isPresent() && vmOpt.get().getSupplierRegistration() != null && vmOpt.get().getSupplierRegistration().getEmail() != null) {
-                            Optional<UserDetail> userOpt = userDetailRepository.findByEmail(vmOpt.get().getSupplierRegistration().getEmail());
-                            if (userOpt.isPresent() && userOpt.get().getCompany() != null) {
-                                finalVendorId = userOpt.get().getCompany().getCompanyId();
-                            }
+                        if (vmOpt.isPresent() && vmOpt.get().getCompanyDetails() != null) {
+                            finalVendorId = vmOpt.get().getCompanyDetails().getCompanyId();
                         }
 
                         PurchaseRequisitionItemVendor vendor = new PurchaseRequisitionItemVendor();

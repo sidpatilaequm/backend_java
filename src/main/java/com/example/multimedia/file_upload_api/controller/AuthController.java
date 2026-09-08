@@ -162,9 +162,21 @@ public class AuthController {
             response.setIsDocumentsPresent(checkDocumentsPresent(user.getCompany(), user.getEmail()));
 
             if (user.getUserType() == UserType.VENDOR) {
-                vendorMasterRepository.findBySupplierRegistration_Email(user.getEmail()).stream()
-                        .findFirst()
-                        .ifPresent(vm -> response.setVendorMasterId(vm.getVendorId()));
+                // Real FK first (V9 migration) — runs on every vendor login/session refresh, so
+                // this is the highest-traffic call site for this lookup; only fall back to the
+                // email-based traversal for a vendor that predates the migration.
+                if (user.getCompany() != null) {
+                    vendorMasterRepository.findByCompanyDetails_CompanyId(user.getCompany().getCompanyId())
+                            .ifPresentOrElse(
+                                    vm -> response.setVendorMasterId(vm.getVendorId()),
+                                    () -> vendorMasterRepository.findBySupplierRegistration_Email(user.getEmail()).stream()
+                                            .findFirst()
+                                            .ifPresent(vm -> response.setVendorMasterId(vm.getVendorId())));
+                } else {
+                    vendorMasterRepository.findBySupplierRegistration_Email(user.getEmail()).stream()
+                            .findFirst()
+                            .ifPresent(vm -> response.setVendorMasterId(vm.getVendorId()));
+                }
             }
 
             // Fetch permissions based on role type

@@ -12,7 +12,9 @@ import com.example.multimedia.file_upload_api.repository.GateEntryRepository;
 import com.example.multimedia.file_upload_api.service.GateEntryService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.multimedia.file_upload_api.entity.UserDetail;
 import com.example.multimedia.file_upload_api.entity.VendorMaster;
+import com.example.multimedia.file_upload_api.repository.UserDetailRepository;
 import com.example.multimedia.file_upload_api.repository.VendorMasterRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -42,9 +44,25 @@ public class GateEntryServiceImpl implements GateEntryService {
     private VendorMasterRepository vendorMasterRepository;
 
     @Autowired
+    private UserDetailRepository userDetailRepository;
+
+    @Autowired
     private com.example.multimedia.file_upload_api.security.OrgConfigGate orgConfigGate;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    // Real FK first (V9 migration), falling back to the email-based traversal only for a vendor
+    // that predates the migration and hasn't been linked to a CompanyDetails row yet.
+    private VendorMaster resolveVendorMasterByEmail(String email) {
+        UserDetail user = userDetailRepository.findByEmail(email).orElse(null);
+        if (user != null && user.getCompany() != null) {
+            Optional<VendorMaster> byCompany = vendorMasterRepository.findByCompanyDetails_CompanyId(user.getCompany().getCompanyId());
+            if (byCompany.isPresent()) return byCompany.get();
+        }
+        return vendorMasterRepository.findBySupplierRegistration_Email(email).stream()
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Vendor not found for email: " + email));
+    }
 
     private Long extractAsnId(String asnNumberStr) {
         if (asnNumberStr == null || !asnNumberStr.startsWith("ASN-")) {
@@ -441,9 +459,7 @@ public class GateEntryServiceImpl implements GateEntryService {
             return response;
         }
 
-        VendorMaster vendor = vendorMasterRepository.findBySupplierRegistration_Email(email).stream()
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("Vendor not found for email: " + email));
+        VendorMaster vendor = resolveVendorMasterByEmail(email);
         
         String vendorBpno = vendor.getBpNo();
 
@@ -483,9 +499,7 @@ public class GateEntryServiceImpl implements GateEntryService {
             return response;
         }
 
-        VendorMaster vendor = vendorMasterRepository.findBySupplierRegistration_Email(email).stream()
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("Vendor not found for email: " + email));
+        VendorMaster vendor = resolveVendorMasterByEmail(email);
         
         String vendorBpno = vendor.getBpNo();
 

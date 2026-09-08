@@ -2,10 +2,12 @@ package com.example.multimedia.file_upload_api.service;
 
 import com.example.multimedia.file_upload_api.dto.ServiceResponse;
 import com.example.multimedia.file_upload_api.dto.VerifyResult;
+import com.example.multimedia.file_upload_api.entity.CompanyDetails;
 import com.example.multimedia.file_upload_api.entity.SupplierChangeRequest;
 import com.example.multimedia.file_upload_api.entity.SupplierRegistration;
 import com.example.multimedia.file_upload_api.entity.SupplierRegistrationAttachment;
 import com.example.multimedia.file_upload_api.entity.SupplierRegistrationDocument;
+import com.example.multimedia.file_upload_api.repository.CompanyDetailsRepository;
 import com.example.multimedia.file_upload_api.repository.SupplierChangeRequestRepository;
 import com.example.multimedia.file_upload_api.repository.SupplierRegistrationAttachmentRepository;
 import com.example.multimedia.file_upload_api.repository.SupplierRegistrationDocumentRepository;
@@ -51,6 +53,7 @@ public class VendorChangeRequestService {
     private final SupplierRegistrationRepository registrationRepository;
     private final SupplierRegistrationDocumentRepository documentRepository;
     private final SupplierRegistrationAttachmentRepository attachmentRepository;
+    private final CompanyDetailsRepository companyDetailsRepository;
     private final FolderItService folderItService;
     private final QuestionnaireService questionnaireService;
     private final OpenAiVisionOcrService ocrService;
@@ -71,6 +74,7 @@ public class VendorChangeRequestService {
                                        SupplierRegistrationRepository registrationRepository,
                                        SupplierRegistrationDocumentRepository documentRepository,
                                        SupplierRegistrationAttachmentRepository attachmentRepository,
+                                       CompanyDetailsRepository companyDetailsRepository,
                                        FolderItService folderItService,
                                        QuestionnaireService questionnaireService,
                                        OpenAiVisionOcrService ocrService,
@@ -83,6 +87,7 @@ public class VendorChangeRequestService {
         this.registrationRepository = registrationRepository;
         this.documentRepository = documentRepository;
         this.attachmentRepository = attachmentRepository;
+        this.companyDetailsRepository = companyDetailsRepository;
         this.folderItService = folderItService;
         this.questionnaireService = questionnaireService;
         this.ocrService = ocrService;
@@ -354,6 +359,10 @@ public class VendorChangeRequestService {
                 doc.setOcrExtractedFieldsJson(new JSONObject(extracted.values()).toString());
                 applyExtractedFields(reg, extracted.values());
                 registrationRepository.save(reg);
+                // company_details is the live source of truth for these fields (V9 migration) —
+                // SupplierRegistration keeps getting written above too, as the application's own
+                // historical/audit record, but this is what every post-approval read now uses.
+                syncToCompanyDetails(reg, extracted.values());
 
                 documentRepository.save(doc);
 
@@ -421,6 +430,47 @@ public class VendorChangeRequestService {
                 default -> { /* no flat column for this key (e.g. NDA has none) */ }
             }
         });
+    }
+
+    /** Same field set as applyExtractedFields, mirrored onto the linked CompanyDetails row —
+     *  company_details is the live source of truth for a vendor's profile (V9 migration), so an
+     *  approved document-replacement change request needs to land here too, not just on the
+     *  SupplierRegistration audit copy. No-op if this registration has no linked CompanyDetails
+     *  yet (pre-migration vendor that hasn't been backfilled/re-approved). */
+    private void syncToCompanyDetails(SupplierRegistration reg, Map<String, String> values) {
+        CompanyDetails company = companyDetailsRepository.findBySupplierRegistrationId(reg.getId()).orElse(null);
+        if (company == null) return;
+        values.forEach((key, value) -> {
+            if (value == null || value.isBlank()) return;
+            switch (key) {
+                case "cin" -> company.setCinNumber(value);
+                case "gstin" -> company.setGstinNumber(value);
+                case "pan" -> company.setPanNumber(value);
+                case "benName" -> company.setBeneficiaryName(value);
+                case "acctNo" -> company.setAccountNumber(value);
+                case "ifsc" -> company.setIfscCode(value);
+                case "udyam" -> company.setMsmeNumber(value);
+                case "isoNo" -> company.setIsoCertificateNo(value);
+                case "isoBody" -> company.setIsoCertifyingBody(value);
+                case "isoExpiry" -> company.setIsoExpiry(value);
+                case "iso14001No" -> company.setIso14001CertificateNo(value);
+                case "iso14001Body" -> company.setIso14001CertifyingBody(value);
+                case "iso14001Expiry" -> company.setIso14001Expiry(value);
+                case "iso45001No" -> company.setIso45001CertificateNo(value);
+                case "iso45001Body" -> company.setIso45001CertifyingBody(value);
+                case "iso45001Expiry" -> company.setIso45001Expiry(value);
+                case "iso27001No" -> company.setIso27001CertificateNo(value);
+                case "iso27001Body" -> company.setIso27001CertifyingBody(value);
+                case "iso27001Expiry" -> company.setIso27001Expiry(value);
+                case "asNo" -> company.setAs9100dCertificateNo(value);
+                case "asBody" -> company.setAs9100dCertifyingBody(value);
+                case "asExpiry" -> company.setAs9100dExpiry(value);
+                case "nadcapNo" -> company.setNadcapCertificateNo(value);
+                case "nadcapExpiry" -> company.setNadcapExpiry(value);
+                default -> { /* no flat column for this key (e.g. NDA has none) */ }
+            }
+        });
+        companyDetailsRepository.save(company);
     }
 
     /** A human-readable name for whichever document/attachment/answer a change request is about,

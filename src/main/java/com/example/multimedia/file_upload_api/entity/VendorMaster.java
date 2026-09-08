@@ -11,10 +11,13 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
  * The lean vendor identity record — just enough to be a stable reference point for RFQ/PO/Gate
- * Entry/payments to foreign-key against. Everything about who the vendor actually is (name,
- * contact, GST/PAN, certifications, bank details...) lives on the linked SupplierRegistration,
- * reached via supplierRegistration below — not duplicated here. A null supplierRegistration means
- * this vendor predates that link (legacy/SAP-imported data).
+ * Entry/payments to foreign-key against. As of the V9 migration, the live profile (name,
+ * contact, GST/PAN, certifications, bank details...) lives on the linked CompanyDetails
+ * (companyDetails below), which is now the source of truth for an approved vendor — not on
+ * SupplierRegistration. supplierRegistration is kept as a second, independent link back to the
+ * original onboarding application (still needed for RFQ/Gate Entry/PR code paths that predate
+ * the companyDetails link, and for anything that only exists on the application itself). A null
+ * companyDetails means this vendor predates the migration and hasn't been backfilled/relinked.
  */
 @Data
 @Entity
@@ -38,6 +41,10 @@ public class VendorMaster {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "supplier_registration_id")
     private SupplierRegistration supplierRegistration;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "company_id")
+    private CompanyDetails companyDetails;
 
     @Column(name = "company_code")
     private String companyCode;

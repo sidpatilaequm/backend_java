@@ -78,21 +78,21 @@ public class VendorService {
             // Prepare response data
             List<Map<String, Object>> vendorList = new ArrayList<>();
             for (VendorMaster vm : vendorMasters) {
-                // Name/GST/PAN/city/etc. all live on the linked SupplierRegistration now, not on
-                // VendorMaster itself — a vendor with no link (legacy/SAP-imported) has nothing
-                // to show here and is skipped, same as the old email-based skip did.
-                SupplierRegistration reg = vm.getSupplierRegistration();
-                if (reg == null || reg.getEmail() == null || reg.getEmail().isEmpty()) {
+                // company_details is the live source of truth for a vendor's profile now (V9
+                // migration), reached via the real FK on VendorMaster — a vendor with no link
+                // (predates the migration, never backfilled) has nothing reliable to show and is
+                // skipped, same as the old supplierRegistration-null skip did. Unlike that old
+                // check, this one no longer depends on supplier_registration_id also being set —
+                // exactly the gap that made an approved vendor invisible here before.
+                CompanyDetails company = vm.getCompanyDetails();
+                if (company == null) {
                     continue;
                 }
 
-                // Find UserDetail linked to this vendor via email
-                Optional<UserDetail> userOpt = userDetailRepository.findByEmail(reg.getEmail());
-                if (userOpt.isEmpty()) {
+                UserDetail user = company.getUser();
+                if (user == null) {
                     continue; // Skip if no user linked
                 }
-
-                UserDetail user = userOpt.get();
 
                 // Ensure this user belongs to the current super admin
                 if (user.getSuperAdmin() == null || !user.getSuperAdmin().getSuperAdminId().equals(currentAdminId)) {
@@ -109,36 +109,39 @@ public class VendorService {
                 vendorData.put("phoneNumber", user.getPhoneNumber());
                 vendorData.put("isActive", user.getIsActive());
 
-                if (user.getCompany() != null) {
-                    vendorData.put("companyId", user.getCompany().getCompanyId());
-                }
+                vendorData.put("companyId", company.getCompanyId());
 
-                // Vendor Master details
+                // Vendor Master + CompanyDetails details
                 vendorData.put("vendorId", vm.getVendorId());
-                vendorData.put("registrationId", reg.getId());
+                SupplierRegistration reg = company.getSupplierRegistration();
+                vendorData.put("registrationId", reg != null ? reg.getId() : null);
                 vendorData.put("bpNo", vm.getBpNo());
-                vendorData.put("companyName", reg.getVendorName()); // mapping name to companyName to keep API compatible
-                vendorData.put("name", reg.getVendorName());
-                vendorData.put("gstNumber", reg.getGstNumber());
-                vendorData.put("pan", reg.getPanNumber());
-                // No dedicated city field on SupplierRegistration (just a free-text address) —
+                vendorData.put("companyName", company.getCompanyName()); // mapping name to companyName to keep API compatible
+                vendorData.put("name", company.getCompanyName());
+                vendorData.put("gstNumber", company.getGstinNumber());
+                vendorData.put("pan", company.getPanNumber());
+                // No dedicated city field on CompanyDetails (just a free-text address) —
                 // cityName was only ever populated for SAP-imported vendors anyway; the frontend
                 // already falls back to "Location not specified" when it's absent.
 
-                // Product/Service/Scheduling agreement/Sub-contracting, set by an approver during
-                // Become-a-Supplier review. Superseded by documentTypeSelections below for
-                // registrations decided under the newer per-company-code flow, but left populated
-                // for whichever old registrations still only have this.
-                vendorData.put("vendorCategory", reg.getVendorCategory());
-                vendorData.put("vendorTypeProduct", reg.isVendorTypeProduct());
-                vendorData.put("vendorTypeService", reg.isVendorTypeService());
-                vendorData.put("vendorTypeSubcontracting", reg.isVendorTypeSubcontracting());
-                vendorData.put("vendorTypeSchedulingAgreement", reg.isVendorTypeSchedulingAgreement());
+                // Product/Service/Scheduling agreement/Sub-contracting, kept live here (dual-
+                // written by SupplierRegistrationService.setVendorBusinessTypes). Superseded by
+                // documentTypeSelections below for registrations decided under the newer
+                // per-company-code flow, but left populated for whichever old registrations
+                // still only have this.
+                vendorData.put("vendorCategory", company.getVendorCategory());
+                vendorData.put("vendorTypeProduct", company.isVendorTypeProduct());
+                vendorData.put("vendorTypeService", company.isVendorTypeService());
+                vendorData.put("vendorTypeSubcontracting", company.isVendorTypeSubcontracting());
+                vendorData.put("vendorTypeSchedulingAgreement", company.isVendorTypeSchedulingAgreement());
 
                 // Per-company document type codes (e.g. company 1000 -> NB, ZNB, ZCAP) the
                 // approver actually granted this vendor — see AdminWorkflows' Document Types
-                // picker and SupplierRegistrationService.setVendorDocumentTypes.
-                List<SupplierRegistrationDocumentType> docTypeSelections = documentTypeSelectionRepository.findByRegistrationId(reg.getId());
+                // picker and SupplierRegistrationService.setVendorDocumentTypes. Still keyed by
+                // the original registration id — this grant table is unrelated to this migration.
+                List<SupplierRegistrationDocumentType> docTypeSelections = reg != null
+                        ? documentTypeSelectionRepository.findByRegistrationId(reg.getId())
+                        : List.of();
                 Map<String, String> classificationByCode = documentTypeRepository.findAllById(
                         docTypeSelections.stream().map(SupplierRegistrationDocumentType::getDocTypeCode).distinct().toList()
                 ).stream().collect(Collectors.toMap(DocumentType::getCode, DocumentType::getClassification));
@@ -224,7 +227,10 @@ public class VendorService {
     public java.util.Map<String, Object> getVendorById(Long id) {
         VendorMaster vm = vendorMasterRepository.findById(id).orElse(null);
         if (vm == null) return null;
-        String name = vm.getSupplierRegistration() != null ? vm.getSupplierRegistration().getVendorName() : null;
+        // company_details first (V9 migration), falling back to the supplierRegistration link
+        // only for a vendor that predates the migration and hasn't been backfilled.
+        String name = vm.getCompanyDetails() != null ? vm.getCompanyDetails().getCompanyName()
+                : (vm.getSupplierRegistration() != null ? vm.getSupplierRegistration().getVendorName() : null);
         java.util.Map<String, Object> data = new java.util.HashMap<>();
         data.put("vendorId", vm.getVendorId());
         data.put("bp_no", vm.getBpNo());
