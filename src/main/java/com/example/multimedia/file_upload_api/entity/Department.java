@@ -40,17 +40,6 @@ public class Department {
         this.deptName = deptName;
     }
 
-    @Column(name = "org_code", length = 50, nullable = false)
-    private String orgCode = "DEFAULT";
-
-    public String getOrgCode() {
-        return orgCode;
-    }
-
-    public void setOrgCode(String orgCode) {
-        this.orgCode = orgCode;
-    }
-
     @Column(name = "wbs", length = 50, nullable = false)
     private String wbs = "DEFAULT";
 
