@@ -10,6 +10,7 @@ import com.example.multimedia.file_upload_api.repository.ExcelImportMappingRepos
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -28,10 +29,11 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Backs the admin "which Excel column feeds which DB column" screen for the 5 SAP report
- * excels (ExcelReportType). Config only: saves/reads the mapping and lets the admin inspect an
- * uploaded sample file's headers and the live target table's columns. No import/watcher logic
- * here yet -- that reads this config in a later phase.
+ * Backs the admin "which Excel column feeds which DB column" screen for the SAP report excels
+ * and ASN (ExcelReportType). Saves/reads the mapping, lets the admin inspect an uploaded sample
+ * file's headers and the live target table's columns, and (exportGenericToExcel) generates a
+ * real download for the single-table report types using that same saved mapping in reverse.
+ * FolderIt watching/cron import is a later phase -- not built yet.
  */
 @Service
 public class ExcelImportMappingService {
@@ -70,12 +72,20 @@ public class ExcelImportMappingService {
         return toDto(type, repository.save(entity));
     }
 
-    /** Live columns of the report's target table, straight from information_schema -- never goes stale. */
+    /** Live columns of the report's target table (+ item table, if it has one), straight from
+     *  information_schema -- never goes stale. */
     public List<ExcelTargetColumnDto> targetColumns(ExcelReportType type) {
+        List<ExcelTargetColumnDto> out = new ArrayList<>(tableColumns(type.getTargetTable(), "header"));
+        if (type.getItemTable() != null) {
+            out.addAll(tableColumns(type.getItemTable(), "item"));
+        }
+        return out;
+    }
+
+    private List<ExcelTargetColumnDto> tableColumns(String table, String tableRole) {
         List<ExcelTargetColumnDto> out = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData meta = conn.getMetaData();
-            String table = type.getTargetTable();
 
             // Primary keys are deliberately left mappable -- e.g. a "Sr. No." column can be a
             // legitimate source for id. Only FK relationship columns and the two timestamp
@@ -97,13 +107,90 @@ public class ExcelImportMappingService {
                     else if (name.equals("created_at")) reason = "set automatically when the row is created";
                     else if (name.equals("updated_at")) reason = "set automatically whenever the row changes";
 
-                    out.add(new ExcelTargetColumnDto(name, colType, nullable, reason != null, reason));
+                    out.add(new ExcelTargetColumnDto(name, colType, nullable, reason != null, reason, tableRole));
                 }
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Could not read columns of " + type.getTargetTable() + ": " + e.getMessage(), e);
+            throw new RuntimeException("Could not read columns of " + table + ": " + e.getMessage(), e);
         }
         return out;
+    }
+
+    /** For the single-table report types: SELECT the mapped columns straight from the target
+     *  table and write a normal spreadsheet (header row + one row per DB row). Report types
+     *  with an item table (INVOICES, ASN) aren't exported here -- ASN goes through
+     *  AsnController (it needs vendor-scoped visibility); INVOICES has no live export need yet. */
+    public byte[] exportGenericToExcel(ExcelReportType type) {
+        if (type.getItemTable() != null) {
+            throw new IllegalArgumentException(type + " has an item table and isn't exported generically");
+        }
+        ExcelImportMapping saved = repository.findByReportType(type)
+                .orElseThrow(() -> new IllegalStateException("No mapping saved for " + type + " yet"));
+        List<ExcelColumnMappingDto> mapping = readMappingJson(saved.getMappingJson());
+        if (mapping.isEmpty()) {
+            throw new IllegalStateException("Mapping for " + type + " has no columns mapped yet");
+        }
+
+        String columnList = mapping.stream().map(ExcelColumnMappingDto::getDbColumn)
+                .reduce((a, b) -> a + ", " + b).orElse("");
+        String sql = "SELECT " + columnList + " FROM " + type.getTargetTable();
+
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet(type.getLabel());
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font boldFont = workbook.createFont();
+            boldFont.setBold(true);
+            headerStyle.setFont(boldFont);
+            headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < mapping.size(); i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(mapping.get(i).getExcelColumn());
+                cell.setCellStyle(headerStyle);
+            }
+
+            try (Connection conn = dataSource.getConnection();
+                 java.sql.Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                int r = 1;
+                while (rs.next()) {
+                    Row row = sheet.createRow(r++);
+                    for (int i = 0; i < mapping.size(); i++) {
+                        Object value = rs.getObject(i + 1);
+                        writeCell(row.createCell(i), value);
+                    }
+                }
+            }
+
+            for (int i = 0; i < mapping.size(); i++) sheet.autoSizeColumn(i);
+
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            workbook.write(out);
+            return out.toByteArray();
+        } catch (IOException | SQLException e) {
+            throw new RuntimeException("Could not build export for " + type + ": " + e.getMessage(), e);
+        }
+    }
+
+    /** Shared by exportGenericToExcel and (via AsnController) the ASN export. */
+    public static void writeCell(Cell cell, Object value) {
+        if (value == null) {
+            cell.setBlank();
+        } else if (value instanceof Number) {
+            cell.setCellValue(((Number) value).doubleValue());
+        } else if (value instanceof Boolean) {
+            cell.setCellValue((Boolean) value);
+        } else if (value instanceof java.sql.Date || value instanceof java.util.Date) {
+            cell.setCellValue((java.util.Date) value);
+        } else if (value instanceof java.time.LocalDate) {
+            cell.setCellValue((java.time.LocalDate) value);
+        } else if (value instanceof java.time.LocalDateTime) {
+            cell.setCellValue((java.time.LocalDateTime) value);
+        } else {
+            cell.setCellValue(value.toString());
+        }
     }
 
     /** Sheet names, and the header row's column names, of an uploaded sample workbook. */

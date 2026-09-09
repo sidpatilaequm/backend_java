@@ -8,6 +8,8 @@ import com.example.multimedia.file_upload_api.enums.ExcelReportType;
 import com.example.multimedia.file_upload_api.repository.UserDetailRepository;
 import com.example.multimedia.file_upload_api.security.AdminAuthChecker;
 import com.example.multimedia.file_upload_api.service.ExcelImportMappingService;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -69,6 +71,24 @@ public class ExcelImportMappingController {
         if (!adminAuthChecker.isAdmin()) return ResponseEntity.status(403).build();
         Long adminUserId = currentUserId();
         return ResponseEntity.ok(service.save(reportType, dto, adminUserId));
+    }
+
+    /**
+     * Generates a real excel using the saved mapping, for the single-table report types (ASN
+     * has its own export under /api/vendor/asns/export.xlsx since it needs vendor-scoped
+     * visibility, not admin-only access).
+     */
+    @GetMapping("/{reportType}/export.xlsx")
+    public ResponseEntity<byte[]> export(@PathVariable ExcelReportType reportType) {
+        if (!adminAuthChecker.isAdmin()) return ResponseEntity.status(403).build();
+        if (reportType.getItemTable() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        byte[] file = service.exportGenericToExcel(reportType);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + reportType.name().toLowerCase() + "-export.xlsx\"")
+                .body(file);
     }
 
     private Long currentUserId() {

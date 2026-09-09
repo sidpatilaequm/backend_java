@@ -9,15 +9,20 @@ public class ExcelTargetColumnDto {
      *  manages their value, not an excel import. */
     private boolean systemManaged;
     private String systemManagedReason;
+    /** "header" or "item" -- which of the report type's tables this column came from (most
+     *  report types have only a header table, so this is "header" for everything they have;
+     *  INVOICES and ASN also have an item table). Display/grouping only. */
+    private String table;
 
     public ExcelTargetColumnDto() {}
 
-    public ExcelTargetColumnDto(String name, String type, boolean nullable, boolean systemManaged, String systemManagedReason) {
+    public ExcelTargetColumnDto(String name, String type, boolean nullable, boolean systemManaged, String systemManagedReason, String table) {
         this.name = name;
         this.type = type;
         this.nullable = nullable;
         this.systemManaged = systemManaged;
         this.systemManagedReason = systemManagedReason;
+        this.table = table;
     }
 
     public String getName() { return name; }
@@ -30,4 +35,6 @@ public class ExcelTargetColumnDto {
     public void setSystemManaged(boolean systemManaged) { this.systemManaged = systemManaged; }
     public String getSystemManagedReason() { return systemManagedReason; }
     public void setSystemManagedReason(String systemManagedReason) { this.systemManagedReason = systemManagedReason; }
+    public String getTable() { return table; }
+    public void setTable(String table) { this.table = table; }
 }
