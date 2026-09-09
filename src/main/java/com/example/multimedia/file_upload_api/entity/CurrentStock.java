@@ -28,9 +28,6 @@ public class CurrentStock {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "company_code")
-    private String companyCode;
-
     @Column(name = "plant")
     private String plant;
 

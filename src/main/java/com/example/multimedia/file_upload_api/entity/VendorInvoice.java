@@ -68,20 +68,8 @@ public class VendorInvoice {
     @Column(name = "grn_delivery_note_no", length = 100)
     private String grnDeliveryNoteNo;
 
-    @Column(name = "tds_section", length = 50)
-    private String tdsSection;
-
-    @Column(name = "tds_deducted_pct", precision = 10, scale = 2)
-    private BigDecimal tdsDeductedPct;
-
     @Column(name = "tax_code", length = 50)
     private String taxCode;
-
-    @Column(name = "remarks", columnDefinition = "TEXT")
-    private String remarks;
-
-    @Column(name = "portal_status", length = 30)
-    private String portalStatus = "SUBMITTED";
 
     @Column(name = "line_amount_net", precision = 18, scale = 2)
     private BigDecimal lineAmountNet = BigDecimal.ZERO;

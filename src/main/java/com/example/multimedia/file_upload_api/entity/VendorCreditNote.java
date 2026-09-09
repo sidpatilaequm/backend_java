@@ -64,9 +64,6 @@ public class VendorCreditNote {
     @Column(name = "credit_note_no")
     private String creditNoteNo;
 
-    @Column(name = "sap_credit_memo_doc_no")
-    private String sapCreditMemoDocNo;
-
     @Column(name = "credit_note_date")
     private LocalDate creditNoteDate;
 
@@ -81,10 +78,6 @@ public class VendorCreditNote {
 
     @Column(length = 10)
     private String currency;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "portal_status")
-    private CreditNoteStatus status;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
