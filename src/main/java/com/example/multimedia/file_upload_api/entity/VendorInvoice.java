@@ -11,12 +11,20 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Unused by any service/controller today (see V11/V12 migrations) -- kept accurate to the real
+ * table so whoever wires up the actual SAP report import doesn't inherit a stale mapping. Columns
+ * added by V11 that have no excel-header counterpart in the original schema (vendor_name,
+ * vendor_address, bank_name...) aren't mapped here yet -- add them when this entity is actually
+ * used. consignee/business_place/zip_code/section_code/sap_tax_type/dc_date/payable_amount_ex_gst
+ * had no excel counterpart and were dropped in V12.
+ */
 @Data
 @Entity
 @Table(name = "vendor_invoice", indexes = {
     @Index(name = "idx_vendor_company", columnList = "vendor_company_id"),
     @Index(name = "idx_vendor_user", columnList = "vendor_user_id"),
-    @Index(name = "idx_invoice_number", columnList = "invoice_number")
+    @Index(name = "idx_invoice_number", columnList = "invoice_no")
 })
 public class VendorInvoice {
 
@@ -25,8 +33,8 @@ public class VendorInvoice {
     @Column(name = "invoice_id")
     private Long invoiceId;
 
-    @Column(name = "invoice_number", nullable = false, unique = true, length = 100)
-    private String invoiceNumber;
+    @Column(name = "invoice_no", nullable = false, unique = true, length = 100)
+    private String invoiceNo;
 
     @Column(name = "po_id")
     private Long poId;
@@ -42,74 +50,53 @@ public class VendorInvoice {
     @Column(name = "invoice_date", nullable = false)
     private LocalDate invoiceDate;
 
-    @Column(name = "invoice_due_date")
-    private LocalDate invoiceDueDate;
+    @Column(name = "due_date")
+    private LocalDate dueDate;
 
-    @Column(name = "vendor_number", length = 100)
-    private String vendorNumber;
+    @Column(name = "vendor_no", length = 100)
+    private String vendorNo;
 
-    @Column(name = "gst_number", length = 50)
-    private String gstNumber;
+    @Column(name = "vendor_gstin", length = 50)
+    private String vendorGstin;
 
-    @Column(name = "invoice_currency", length = 20)
-    private String invoiceCurrency;
+    @Column(name = "currency", length = 20)
+    private String currency;
 
-    @Column(name = "bill_type", length = 50)
-    private String billType;
+    @Column(name = "invoice_type", length = 50)
+    private String invoiceType;
 
-    @Column(name = "consignee", length = 255)
-    private String consignee;
-
-    @Column(name = "business_place", length = 255)
-    private String businessPlace;
-
-    @Column(name = "zip_code", length = 20)
-    private String zipCode;
-
-    @Column(name = "delivery_note_number", length = 100)
-    private String deliveryNoteNumber;
-
-    @Column(name = "section_code", length = 50)
-    private String sectionCode;
+    @Column(name = "grn_delivery_note_no", length = 100)
+    private String grnDeliveryNoteNo;
 
     @Column(name = "tds_section", length = 50)
     private String tdsSection;
 
-    @Column(name = "tds_rate", precision = 10, scale = 2)
-    private BigDecimal tdsRate;
+    @Column(name = "tds_deducted_pct", precision = 10, scale = 2)
+    private BigDecimal tdsDeductedPct;
 
-    @Column(name = "sap_tax_type", length = 50)
-    private String sapTaxType;
-
-    @Column(name = "sap_tax_code", length = 50)
-    private String sapTaxCode;
-
-    @Column(name = "dc_date")
-    private LocalDate dcDate;
+    @Column(name = "tax_code", length = 50)
+    private String taxCode;
 
     @Column(name = "remarks", columnDefinition = "TEXT")
     private String remarks;
 
-    @Column(name = "status", length = 30)
-    private String status = "SUBMITTED";
+    @Column(name = "portal_status", length = 30)
+    private String portalStatus = "SUBMITTED";
 
-    @Column(name = "subtotal_amount", precision = 18, scale = 2)
-    private BigDecimal subtotalAmount = BigDecimal.ZERO;
+    @Column(name = "line_amount_net", precision = 18, scale = 2)
+    private BigDecimal lineAmountNet = BigDecimal.ZERO;
 
-    @Column(name = "gst_total_amount", precision = 18, scale = 2)
-    private BigDecimal gstTotalAmount = BigDecimal.ZERO;
+    @Column(name = "tax_amount_gst", precision = 18, scale = 2)
+    private BigDecimal taxAmountGst = BigDecimal.ZERO;
 
     @Column(name = "tds_amount", precision = 18, scale = 2)
     private BigDecimal tdsAmount = BigDecimal.ZERO;
 
-    @Column(name = "invoice_total_amount", precision = 18, scale = 2)
-    private BigDecimal invoiceTotalAmount = BigDecimal.ZERO;
+    @Column(name = "line_total_gross", precision = 18, scale = 2)
+    private BigDecimal lineTotalGross = BigDecimal.ZERO;
 
-    @Column(name = "payable_amount_inc_gst", precision = 18, scale = 2)
-    private BigDecimal payableAmountIncGst = BigDecimal.ZERO;
-
-    @Column(name = "payable_amount_ex_gst", precision = 18, scale = 2)
-    private BigDecimal payableAmountExGst = BigDecimal.ZERO;
+    @Column(name = "net_amount_payable", precision = 18, scale = 2)
+    private BigDecimal netAmountPayable = BigDecimal.ZERO;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

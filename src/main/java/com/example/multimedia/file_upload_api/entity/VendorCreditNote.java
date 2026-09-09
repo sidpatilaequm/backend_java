@@ -6,6 +6,13 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+/**
+ * Unused by any service/controller today (see V11/V12 migrations) -- kept accurate to the real
+ * table so whoever wires up the actual SAP report import doesn't inherit a stale mapping. Columns
+ * added by V11 that have no excel-header counterpart in the original schema (e.g. vendor_gstin,
+ * original_invoice_no, bank_name...) aren't mapped here yet -- add them when this entity is
+ * actually used.
+ */
 @Entity
 @Table(name = "vendor_credit_notes")
 @Getter
@@ -19,36 +26,28 @@ public class VendorCreditNote {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Company
     @Column(name = "company_code")
     private String companyCode;
 
-    // Vendor Relationship
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vendor_id")
     private VendorMaster vendor;
 
-    @Column(name = "vendor_code")
-    private String vendorCode;
+    @Column(name = "vendor_no")
+    private String vendorNo;
 
     @Column(name = "vendor_name")
     private String vendorName;
 
-    // Purchase Order
-    @Column(name = "purchase_order_number")
-    private String purchaseOrderNumber;
+    @Column(name = "original_po_no")
+    private String originalPoNo;
 
-    @Column(name = "po_item")
-    private Integer poItem;
+    @Column(name = "po_line_item")
+    private Integer poLineItem;
 
-    // Plant
-    @Column(name = "plant_code")
-    private String plantCode;
+    @Column(name = "plant")
+    private String plant;
 
-    @Column(name = "storage_location")
-    private String storageLocation;
-
-    // Material Relationship
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "material_id")
     private Material material;
@@ -56,47 +55,31 @@ public class VendorCreditNote {
     @Column(name = "material_code")
     private String materialCode;
 
-    @Column(name = "material_description", length = 1000)
-    private String materialDescription;
+    @Column(name = "description", length = 1000)
+    private String description;
 
-    // Movement
-    @Column(name = "movement_type")
-    private String movementType;
+    @Column(name = "credit_note_no")
+    private String creditNoteNo;
 
-    @Column(name = "document_number")
-    private String documentNumber;
+    @Column(name = "sap_credit_memo_doc_no")
+    private String sapCreditMemoDocNo;
 
-    @Column(name = "material_document")
-    private String materialDocument;
+    @Column(name = "credit_note_date")
+    private LocalDate creditNoteDate;
 
-    @Column(name = "fiscal_year")
-    private Integer fiscalYear;
+    @Column(name = "credit_quantity", precision = 18, scale = 3)
+    private BigDecimal creditQuantity;
 
-    @Column(name = "posting_date")
-    private LocalDate postingDate;
+    @Column(name = "uom")
+    private String uom;
 
-    // Quantity
-    @Column(precision = 18, scale = 3)
-    private BigDecimal quantity;
-
-    @Column(name = "unit_of_measure")
-    private String unitOfMeasure;
-
-    // Amount
-    @Column(precision = 18, scale = 2)
-    private BigDecimal amount;
+    @Column(name = "total_credit_amount", precision = 18, scale = 2)
+    private BigDecimal totalCreditAmount;
 
     @Column(length = 10)
     private String currency;
 
-    // Status
     @Enumerated(EnumType.STRING)
+    @Column(name = "portal_status")
     private CreditNoteStatus status;
-
-    // SAP Sync
-    @Column(name = "sap_synced")
-    private Boolean sapSynced = false;
-
-    @Column(name = "sap_sync_message", length = 1000)
-    private String sapSyncMessage;
 }

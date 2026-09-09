@@ -5,6 +5,13 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 
+/**
+ * Unused by any service/controller today (see V11/V12 migrations) -- kept accurate to the real
+ * table so whoever wires up the actual SAP report import doesn't inherit a stale mapping.
+ * pack_code/batch_number/mrp/currency/discount_amount and the cgst/sgst/ugst/igst percent+amount
+ * breakdown had no counterpart in the excel (which only has a flat Tax Rate %/Tax Amount) and
+ * were dropped in V12 -- re-add them here if a source that actually reports the GST split shows up.
+ */
 @Data
 @Entity
 @Table(name = "vendor_invoice_item")
@@ -22,66 +29,36 @@ public class VendorInvoiceItem {
     @Column(name = "sr_no")
     private Integer srNo;
 
-    @Column(name = "pack_code", length = 100)
-    private String packCode;
-
-    @Column(name = "material", length = 100)
-    private String material;
+    @Column(name = "material_service_code", length = 100)
+    private String materialServiceCode;
 
     @Column(name = "description", length = 500)
     private String description;
 
-    @Column(name = "hsn_code", length = 50)
-    private String hsnCode;
+    @Column(name = "hsn_sac_code", length = 50)
+    private String hsnSacCode;
 
-    @Column(name = "item_code", length = 100)
-    private String itemCode;
-
-    @Column(name = "batch_number", length = 100)
-    private String batchNumber;
-
-    @Column(name = "mrp", precision = 18, scale = 2)
-    private BigDecimal mrp;
+    @Column(name = "po_line_item")
+    private String poLineItem;
 
     @Column(name = "quantity", precision = 18, scale = 2)
     private BigDecimal quantity;
 
-    @Column(name = "rate", precision = 18, scale = 2)
-    private BigDecimal rate;
+    @Column(name = "uom")
+    private String uom;
 
-    @Column(name = "currency", length = 20)
-    private String currency;
+    @Column(name = "unit_price", precision = 18, scale = 2)
+    private BigDecimal unitPrice;
 
-    @Column(name = "discount_amount", precision = 18, scale = 2)
-    private BigDecimal discountAmount;
+    @Column(name = "line_amount_net", precision = 18, scale = 2)
+    private BigDecimal lineAmountNet;
 
-    @Column(name = "basic_amount", precision = 18, scale = 2)
-    private BigDecimal basicAmount;
+    @Column(name = "tax_rate_pct", precision = 6, scale = 2)
+    private BigDecimal taxRatePct;
 
-    @Column(name = "cgst_percent", precision = 10, scale = 2)
-    private BigDecimal cgstPercent;
+    @Column(name = "tax_amount_gst", precision = 18, scale = 2)
+    private BigDecimal taxAmountGst;
 
-    @Column(name = "cgst_amount", precision = 18, scale = 2)
-    private BigDecimal cgstAmount;
-
-    @Column(name = "sgst_percent", precision = 10, scale = 2)
-    private BigDecimal sgstPercent;
-
-    @Column(name = "sgst_amount", precision = 18, scale = 2)
-    private BigDecimal sgstAmount;
-
-    @Column(name = "ugst_percent", precision = 10, scale = 2)
-    private BigDecimal ugstPercent;
-
-    @Column(name = "ugst_amount", precision = 18, scale = 2)
-    private BigDecimal ugstAmount;
-
-    @Column(name = "igst_percent", precision = 10, scale = 2)
-    private BigDecimal igstPercent;
-
-    @Column(name = "igst_amount", precision = 18, scale = 2)
-    private BigDecimal igstAmount;
-
-    @Column(name = "line_total", precision = 18, scale = 2)
-    private BigDecimal lineTotal;
+    @Column(name = "line_total_gross", precision = 18, scale = 2)
+    private BigDecimal lineTotalGross;
 }
