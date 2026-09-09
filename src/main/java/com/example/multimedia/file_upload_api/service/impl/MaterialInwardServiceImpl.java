@@ -106,35 +106,71 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
             // Map packages (boxes) and items (lines)
             List<MaterialInwardDetailDto.BoxDto> boxDtos = new ArrayList<>();
             if (asn.getPackages() != null) {
-                for (AsnPackage pkg : asn.getPackages()) {
+                // Group by packageNumber to avoid duplicates when multiple materials are in one package
+                java.util.Map<Integer, List<AsnPackage>> groupedPackages = asn.getPackages().stream()
+                        .filter(p -> p.getPackageNumber() != null)
+                        .collect(Collectors.groupingBy(AsnPackage::getPackageNumber));
+                
+                for (java.util.Map.Entry<Integer, List<AsnPackage>> entry : groupedPackages.entrySet()) {
+                    List<AsnPackage> pkgs = entry.getValue();
+                    AsnPackage primaryPkg = pkgs.get(0); // Take the first one for weight/seal info
+
                     MaterialInwardDetailDto.BoxDto boxDto = new MaterialInwardDetailDto.BoxDto();
-                    boxDto.setId("PKG-" + pkg.getId());
-                    boxDto.setBoxNo("BOX-" + String.format("%03d", pkg.getPackageNumber()));
-                    boxDto.setManifestSeal("SL-" + (88000 + pkg.getId())); // Mock seal
-                    boxDto.setWeight(pkg.getQuantity() != null ? pkg.getQuantity() + " kg gross" : "N/A");
+                    boxDto.setId("PKG-" + primaryPkg.getId());
+                    boxDto.setBoxNo("BOX-" + String.format("%03d", primaryPkg.getPackageNumber()));
+                    boxDto.setManifestSeal("SL-" + (88000 + primaryPkg.getId())); // Mock seal
                     
-                    // Add items for each box. For now, since AsnPackage doesn't map directly to AsnItem in the entity,
-                    // we'll just map all AsnItems to the first box as a fallback, or duplicate them if there are multiple boxes.
-                    // In a real scenario, this relationship needs to be defined in the DB.
+                    // Sum weights if needed, or just use the first
+                    double totalWeight = 0;
+                    for(AsnPackage p : pkgs) {
+                        if(p.getQuantity() != null) totalWeight += p.getQuantity();
+                    }
+                    boxDto.setWeight(totalWeight > 0 ? totalWeight + " kg gross" : "N/A");
+                    
+                    // Add items for each box. Use the materialDetails to map correctly
                     List<MaterialInwardDetailDto.LineDto> lineDtos = new ArrayList<>();
+                    
+                    // Collect all material details for this package group
+                    java.util.Set<String> packageMatCodes = new java.util.HashSet<>();
+                    for(AsnPackage p : pkgs) {
+                        if (p.getMaterialDetails() != null && !p.getMaterialDetails().isEmpty()) {
+                            String[] details = p.getMaterialDetails().split(",");
+                            for(String d : details) {
+                                packageMatCodes.add(d.split(" - ")[0].trim());
+                            }
+                        }
+                    }
+                    
                     if (asn.getItems() != null) {
                         for (AsnItem item : asn.getItems()) {
-                            MaterialInwardDetailDto.LineDto lineDto = new MaterialInwardDetailDto.LineDto();
-                            lineDto.setId("LN-" + item.getId());
-                            lineDto.setItemNo(item.getPartNumber());
-                            lineDto.setDescription(item.getPurchaseOrderItem() != null ? item.getPurchaseOrderItem().getMaterialDescription() : "Item Description");
-                            lineDto.setUom(item.getPurchaseOrderItem() != null ? item.getPurchaseOrderItem().getUom() : "EA");
-                            lineDto.setManifestQty(item.getQuantityShipped() != null ? item.getQuantityShipped().doubleValue() : 0.0);
-                            
-                            // Mock batches
-                            if (item.getBatchHeatNumber() != null && !item.getBatchHeatNumber().isEmpty()) {
-                                MaterialInwardDetailDto.BatchDto batchDto = new MaterialInwardDetailDto.BatchDto();
-                                batchDto.setBatchNo(item.getBatchHeatNumber());
-                                batchDto.setQty(lineDto.getManifestQty());
-                                lineDto.setBatches(List.of(batchDto));
+                            boolean belongsToBox = false;
+                            String itemPartNo = item.getPartNumber() != null ? item.getPartNumber().trim() : "";
+                            if (packageMatCodes.isEmpty()) {
+                                belongsToBox = true; // Fallback: add all if no mapping
+                            } else {
+                                if (packageMatCodes.contains(itemPartNo)) {
+                                    belongsToBox = true;
+                                }
                             }
                             
-                            lineDtos.add(lineDto);
+                            if (belongsToBox) {
+                                MaterialInwardDetailDto.LineDto lineDto = new MaterialInwardDetailDto.LineDto();
+                                lineDto.setId("LN-" + item.getId());
+                                lineDto.setItemNo(item.getPartNumber());
+                                lineDto.setDescription(item.getPurchaseOrderItem() != null ? item.getPurchaseOrderItem().getMaterialDescription() : "Item Description");
+                                lineDto.setUom(item.getPurchaseOrderItem() != null ? item.getPurchaseOrderItem().getUom() : "EA");
+                                lineDto.setManifestQty(item.getQuantityShipped() != null ? item.getQuantityShipped().doubleValue() : 0.0);
+                                
+                                // Mock batches
+                                if (item.getBatchHeatNumber() != null && !item.getBatchHeatNumber().isEmpty()) {
+                                    MaterialInwardDetailDto.BatchDto batchDto = new MaterialInwardDetailDto.BatchDto();
+                                    batchDto.setBatchNo(item.getBatchHeatNumber());
+                                    batchDto.setQty(lineDto.getManifestQty());
+                                    lineDto.setBatches(List.of(batchDto));
+                                }
+                                
+                                lineDtos.add(lineDto);
+                            }
                         }
                     }
                     boxDto.setLines(lineDtos);
