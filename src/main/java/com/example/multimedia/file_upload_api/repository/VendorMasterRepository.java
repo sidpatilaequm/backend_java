@@ -23,4 +23,9 @@ public interface VendorMasterRepository extends JpaRepository<VendorMaster, Long
     boolean existsBySupplierRegistration_Email(String email);
     
     Optional<VendorMaster> findBySuperAdmin(com.example.multimedia.file_upload_api.entity.SuperAdmin superAdmin);
+
+    // The real, FK-backed lookup (V9 migration) — prefer this over the email-based
+    // findBySupplierRegistration_Email traversal above wherever the caller already has (or can
+    // cheaply get) the vendor's CompanyDetails id.
+    Optional<VendorMaster> findByCompanyDetails_CompanyId(Long companyId);
 }

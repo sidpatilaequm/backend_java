@@ -628,25 +628,30 @@ public class SupplierRegistrationService {
     public ServiceResponse listApprovedSuppliers() {
         ServiceResponse response = new ServiceResponse();
         List<Map<String, Object>> out = new ArrayList<>();
-        for (SupplierRegistration reg : registrationRepository.findByStatusOrderByApprovedDateDesc("ACTIVE")) {
+        // Reads company_details now (V9 migration) — the live, kept-in-sync record — instead of
+        // supplier_registration, the one-time application snapshot. approvedBy/approvedDate have
+        // no company_details equivalent (they're application-approval-decision facts, not vendor
+        // profile fields), so those two still come from the linked SupplierRegistration.
+        for (CompanyDetails company : companyDetailsRepository.findByStatus("ACTIVE")) {
+            SupplierRegistration reg = company.getSupplierRegistration();
             Map<String, Object> row = new HashMap<>();
-            row.put("id", reg.getId());
-            row.put("vendorName", reg.getVendorName());
-            row.put("vendorCode", reg.getVendorCode());
-            row.put("email", reg.getEmail());
-            row.put("phone", reg.getPhone());
-            row.put("address", reg.getAddress());
-            row.put("gstNumber", reg.getGstNumber());
-            row.put("panNumber", reg.getPanNumber());
-            row.put("companyType", reg.getCompanyType());
-            row.put("businessTypes", reg.getBusinessTypes());
-            row.put("vendorCategory", reg.getVendorCategory());
-            row.put("vendorTypeProduct", reg.isVendorTypeProduct());
-            row.put("vendorTypeService", reg.isVendorTypeService());
-            row.put("vendorTypeSubcontracting", reg.isVendorTypeSubcontracting());
-            row.put("vendorTypeSchedulingAgreement", reg.isVendorTypeSchedulingAgreement());
-            row.put("approvedBy", reg.getApprovedBy());
-            row.put("approvedDate", reg.getApprovedDate());
+            row.put("id", reg != null ? reg.getId() : null);
+            row.put("vendorName", company.getCompanyName());
+            row.put("vendorCode", company.getCompanyCode());
+            row.put("email", company.getEmail());
+            row.put("phone", company.getPhone());
+            row.put("address", company.getRegisteredAddress());
+            row.put("gstNumber", company.getGstinNumber());
+            row.put("panNumber", company.getPanNumber());
+            row.put("companyType", company.getCompanyType());
+            row.put("businessTypes", company.getBusinessTypes());
+            row.put("vendorCategory", company.getVendorCategory());
+            row.put("vendorTypeProduct", company.isVendorTypeProduct());
+            row.put("vendorTypeService", company.isVendorTypeService());
+            row.put("vendorTypeSubcontracting", company.isVendorTypeSubcontracting());
+            row.put("vendorTypeSchedulingAgreement", company.isVendorTypeSchedulingAgreement());
+            row.put("approvedBy", reg != null ? reg.getApprovedBy() : null);
+            row.put("approvedDate", reg != null ? reg.getApprovedDate() : null);
             out.add(row);
         }
         response.addData("suppliers", out);
@@ -715,6 +720,18 @@ public class SupplierRegistrationService {
         reg.setVendorTypeSubcontracting(subcontracting);
         reg.setVendorTypeSchedulingAgreement(schedulingAgreement);
         registrationRepository.save(reg);
+
+        // company_details is the live source of truth for this (V9 migration) — dual-write so
+        // every post-approval read (GET /api/vendors/all, approved-suppliers list, ...) reflects
+        // this edit immediately. No-op if this vendor predates the migration and hasn't been
+        // linked yet.
+        companyDetailsRepository.findBySupplierRegistrationId(registrationId).ifPresent(company -> {
+            company.setVendorTypeProduct(product);
+            company.setVendorTypeService(service);
+            company.setVendorTypeSubcontracting(subcontracting);
+            company.setVendorTypeSchedulingAgreement(schedulingAgreement);
+            companyDetailsRepository.save(company);
+        });
 
         Map<String, Object> data = new HashMap<>();
         data.put("vendorTypeProduct", product);
@@ -844,6 +861,28 @@ public class SupplierRegistrationService {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "No supplier profile found for this account");
         }
         Map<String, Object> data = buildRegistrationDetail(reg);
+        // company_details is the live source of truth (V9 migration) — a vendor's own profile
+        // view should reflect whatever an approved change request actually landed as
+        // authoritative, not the application's original/audit copy on `registration` above.
+        // Additive field, existing frontend reads are unaffected.
+        companyDetailsRepository.findBySupplierRegistrationId(reg.getId()).ifPresent(company -> {
+            Map<String, Object> currentProfile = new HashMap<>();
+            currentProfile.put("gstNumber", company.getGstinNumber());
+            currentProfile.put("panNumber", company.getPanNumber());
+            currentProfile.put("beneficiaryName", company.getBeneficiaryName());
+            currentProfile.put("accountNumber", company.getAccountNumber());
+            currentProfile.put("ifscCode", company.getIfscCode());
+            currentProfile.put("bankName", company.getBankName());
+            currentProfile.put("msmeNumber", company.getMsmeNumber());
+            currentProfile.put("cinNumber", company.getCinNumber());
+            currentProfile.put("isoCertificateNo", company.getIsoCertificateNo());
+            currentProfile.put("iso14001CertificateNo", company.getIso14001CertificateNo());
+            currentProfile.put("iso45001CertificateNo", company.getIso45001CertificateNo());
+            currentProfile.put("iso27001CertificateNo", company.getIso27001CertificateNo());
+            currentProfile.put("as9100dCertificateNo", company.getAs9100dCertificateNo());
+            currentProfile.put("nadcapCertificateNo", company.getNadcapCertificateNo());
+            data.put("currentProfile", currentProfile);
+        });
         // The exact questionnaire this vendor answered — not whatever's active now, which may
         // have moved on since. See QuestionnaireService.getQuestionnaireForResponse.
         JSONObject myQuestionnaire = questionnaireService.getQuestionnaireForResponse(reg.getFormStudioResponseId());
@@ -1128,6 +1167,56 @@ public class SupplierRegistrationService {
         company.setAuthKey("vendor");
         company.setStatus("ACTIVE");
         company.setCompanyCode(vendorCode);
+        // company_details is now the live source of truth for an approved vendor's profile
+        // (V9 migration) — link it back to the application it came from, and seed every field
+        // that has a home here, not just the 4 originally copied above. Kept in sync afterward
+        // by VendorChangeRequestService.applyApprovedChange whenever the vendor edits any of
+        // these post-approval.
+        company.setSupplierRegistration(reg);
+        company.setContactName(reg.getContactName());
+        company.setDesignation(reg.getDesignation());
+        company.setEmail(reg.getEmail());
+        company.setPhone(reg.getPhone());
+        company.setContact1Name(reg.getContact1Name());
+        company.setContact1Role(reg.getContact1Role());
+        company.setContact1Email(reg.getContact1Email());
+        company.setContact1Phone(reg.getContact1Phone());
+        company.setContact2Name(reg.getContact2Name());
+        company.setContact2Role(reg.getContact2Role());
+        company.setContact2Email(reg.getContact2Email());
+        company.setContact2Phone(reg.getContact2Phone());
+        company.setPrimaryContact(reg.getPrimaryContact());
+        company.setBusinessTypes(reg.getBusinessTypes());
+        company.setBusinessScope(reg.getBusinessScope());
+        company.setCompanyType(reg.getCompanyType());
+        company.setVendorCategory(reg.getVendorCategory());
+        company.setVendorTypeProduct(reg.isVendorTypeProduct());
+        company.setVendorTypeService(reg.isVendorTypeService());
+        company.setVendorTypeSubcontracting(reg.isVendorTypeSubcontracting());
+        company.setVendorTypeSchedulingAgreement(reg.isVendorTypeSchedulingAgreement());
+        company.setBeneficiaryName(reg.getBeneficiaryName());
+        company.setAccountNumber(reg.getAccountNumber());
+        company.setIfscCode(reg.getIfscCode());
+        company.setBankName(reg.getBankName());
+        company.setMsmeNumber(reg.getMsmeNumber());
+        company.setCinNumber(reg.getCinNumber());
+        company.setIsoCertificateNo(reg.getIsoCertificateNo());
+        company.setIsoCertifyingBody(reg.getIsoCertifyingBody());
+        company.setIsoExpiry(reg.getIsoExpiry());
+        company.setIso14001CertificateNo(reg.getIso14001CertificateNo());
+        company.setIso14001CertifyingBody(reg.getIso14001CertifyingBody());
+        company.setIso14001Expiry(reg.getIso14001Expiry());
+        company.setIso45001CertificateNo(reg.getIso45001CertificateNo());
+        company.setIso45001CertifyingBody(reg.getIso45001CertifyingBody());
+        company.setIso45001Expiry(reg.getIso45001Expiry());
+        company.setIso27001CertificateNo(reg.getIso27001CertificateNo());
+        company.setIso27001CertifyingBody(reg.getIso27001CertifyingBody());
+        company.setIso27001Expiry(reg.getIso27001Expiry());
+        company.setAs9100dCertificateNo(reg.getAs9100dCertificateNo());
+        company.setAs9100dCertifyingBody(reg.getAs9100dCertifyingBody());
+        company.setAs9100dExpiry(reg.getAs9100dExpiry());
+        company.setNadcapCertificateNo(reg.getNadcapCertificateNo());
+        company.setNadcapExpiry(reg.getNadcapExpiry());
         company = companyDetailsRepository.save(company);
 
         user.setCompany(company);
@@ -1144,6 +1233,9 @@ public class SupplierRegistrationService {
             VendorMaster vendorMaster = new VendorMaster();
             vendorMaster.setBpNo(vendorCode);
             vendorMaster.setSupplierRegistration(reg);
+            // Real FK to the company_details row above (V9 migration) — a freshly-provisioned
+            // vendor never has to fall back to the bp_no==companyCode soft match.
+            vendorMaster.setCompanyDetails(company);
             vendorMaster.setSuperAdmin(owningAdmin);
             vendorMasterRepository.save(vendorMaster);
         }

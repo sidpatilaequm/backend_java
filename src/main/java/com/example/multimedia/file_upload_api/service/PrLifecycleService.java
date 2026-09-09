@@ -461,8 +461,13 @@ public class PrLifecycleService {
     // VendorMaster -> its linked SupplierRegistration's vendor name, not through CompanyDetails.
     private String resolveVendorMasterName(Long vendorMasterId) {
         if (vendorMasterId == null) return null;
+        // company_details first (V9 migration), falling back to supplierRegistration only for a
+        // vendor that predates the migration and hasn't been backfilled.
         return vendorMasterRepo.findById(vendorMasterId)
-                .map(vm -> vm.getSupplierRegistration() != null ? vm.getSupplierRegistration().getVendorName() : null)
+                .map(vm -> {
+                    if (vm.getCompanyDetails() != null) return vm.getCompanyDetails().getCompanyName();
+                    return vm.getSupplierRegistration() != null ? vm.getSupplierRegistration().getVendorName() : null;
+                })
                 .orElse(null);
     }
 

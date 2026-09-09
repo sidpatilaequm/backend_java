@@ -8,11 +8,15 @@ import com.example.multimedia.file_upload_api.entity.CompanyDetails;
 import com.example.multimedia.file_upload_api.entity.Country;
 import com.example.multimedia.file_upload_api.entity.Currency;
 import com.example.multimedia.file_upload_api.entity.SuperAdmin;
+import com.example.multimedia.file_upload_api.entity.UserDetail;
 import com.example.multimedia.file_upload_api.repository.CompanyDetailsRepository;
+import com.example.multimedia.file_upload_api.repository.UserDetailRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -23,7 +27,66 @@ public class CompanyDetailsService {
     private CompanyDetailsRepository companyDetailsRepository;
 
     @Autowired
+    private UserDetailRepository userDetailRepository;
+
+    @Autowired
     private CurrentUserService currentUserService;
+
+    /**
+     * The logged-in vendor's own company_details record (V9 migration) — resolved by JWT email,
+     * self-scoped, no admin-ownership check needed since it's always exactly "my own" record.
+     * Kept separate from getCompanyById above, which requires the caller to BE an admin (a plain
+     * vendor login isn't a SuperAdmin row, so getCurrentSuperAdminId() would just throw for them).
+     * Returns the full rich field set added in V9 — bank/certs/contacts — not the narrow
+     * CompanyDetailsDTO used by the generic admin CRUD endpoints above.
+     */
+    public ServiceResponse getMyCompany(String email) {
+        ServiceResponse response = new ServiceResponse();
+        UserDetail user = userDetailRepository.findByEmail(email).orElse(null);
+        if (user == null || user.getCompany() == null) {
+            response.setStatus("ERROR");
+            response.setStatusMsg("No company profile found for this account");
+            return response;
+        }
+        CompanyDetails company = user.getCompany();
+        Map<String, Object> data = new HashMap<>();
+        data.put("companyId", company.getCompanyId());
+        data.put("companyName", company.getCompanyName());
+        data.put("companyCode", company.getCompanyCode());
+        data.put("legalTradeName", company.getLegalTradeName());
+        data.put("registeredAddress", company.getRegisteredAddress());
+        data.put("status", company.getStatus());
+        data.put("gstinNumber", company.getGstinNumber());
+        data.put("panNumber", company.getPanNumber());
+        data.put("contactName", company.getContactName());
+        data.put("designation", company.getDesignation());
+        data.put("email", company.getEmail());
+        data.put("phone", company.getPhone());
+        data.put("businessTypes", company.getBusinessTypes());
+        data.put("businessScope", company.getBusinessScope());
+        data.put("companyType", company.getCompanyType());
+        data.put("vendorCategory", company.getVendorCategory());
+        data.put("vendorTypeProduct", company.isVendorTypeProduct());
+        data.put("vendorTypeService", company.isVendorTypeService());
+        data.put("vendorTypeSubcontracting", company.isVendorTypeSubcontracting());
+        data.put("vendorTypeSchedulingAgreement", company.isVendorTypeSchedulingAgreement());
+        data.put("beneficiaryName", company.getBeneficiaryName());
+        data.put("accountNumber", company.getAccountNumber());
+        data.put("ifscCode", company.getIfscCode());
+        data.put("bankName", company.getBankName());
+        data.put("msmeNumber", company.getMsmeNumber());
+        data.put("cinNumber", company.getCinNumber());
+        data.put("isoCertificateNo", company.getIsoCertificateNo());
+        data.put("iso14001CertificateNo", company.getIso14001CertificateNo());
+        data.put("iso45001CertificateNo", company.getIso45001CertificateNo());
+        data.put("iso27001CertificateNo", company.getIso27001CertificateNo());
+        data.put("as9100dCertificateNo", company.getAs9100dCertificateNo());
+        data.put("nadcapCertificateNo", company.getNadcapCertificateNo());
+        response.setStatus("SUCCESS");
+        response.setStatusMsg("Company profile retrieved");
+        response.addData("company", data);
+        return response;
+    }
 
     public ServiceResponse getAllCompanies() {
         ServiceResponse response = new ServiceResponse();

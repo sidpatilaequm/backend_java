@@ -45,6 +45,13 @@ public class SAPVendorMasterController {
             List<VendorMaster> allVendorMasters = vendorMasterRepository.findAll();
             List<VendorMaster> filtered = allVendorMasters.stream()
                     .filter(vm -> {
+                        // Real FK first (V9 migration) — CompanyDetails already carries the
+                        // owning UserDetail directly, no email round-trip needed. Falls back to
+                        // the old email-based path only for a vendor that predates the migration.
+                        if (vm.getCompanyDetails() != null && vm.getCompanyDetails().getUser() != null) {
+                            UserDetail user = vm.getCompanyDetails().getUser();
+                            return user.getSuperAdmin() != null && user.getSuperAdmin().getSuperAdminId().equals(currentAdminId);
+                        }
                         String email = vm.getSupplierRegistration() != null ? vm.getSupplierRegistration().getEmail() : null;
                         if (email == null || email.isEmpty()) {
                             return false;
@@ -74,6 +81,15 @@ public class SAPVendorMasterController {
         Optional<UserDetail> userOpt = userDetailRepository.findByEmail(email);
 
         if (userOpt.isPresent()) {
+            // Real FK first (V9 migration), falling back to the email-based lookup only if this
+            // vendor predates the migration and hasn't been linked to a CompanyDetails row.
+            UserDetail user = userOpt.get();
+            if (user.getCompany() != null) {
+                Optional<VendorMaster> byCompany = vendorMasterRepository.findByCompanyDetails_CompanyId(user.getCompany().getCompanyId());
+                if (byCompany.isPresent()) {
+                    return ResponseEntity.ok(List.of(byCompany.get()));
+                }
+            }
             List<VendorMaster> vendorMasters = vendorMasterRepository.findBySupplierRegistration_Email(email);
             return ResponseEntity.ok(vendorMasters);
         }

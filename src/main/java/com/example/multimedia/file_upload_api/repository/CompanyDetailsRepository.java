@@ -42,4 +42,8 @@ public interface CompanyDetailsRepository extends JpaRepository<CompanyDetails, 
     Optional<CompanyDetails> findByCompanyCodeAndSuperAdmin_SuperAdminId(String companyCode, Long superAdminId);
 
     List<CompanyDetails> findByCompanyCode(String companyCode);
+
+    Optional<CompanyDetails> findBySupplierRegistrationId(Long supplierRegistrationId);
+
+    List<CompanyDetails> findByStatus(String status);
 }
