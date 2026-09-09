@@ -1,5 +1,4 @@
 package com.example.multimedia.file_upload_api.service;
-
 import com.example.multimedia.file_upload_api.dto.MaterialDTO;
 import com.example.multimedia.file_upload_api.dto.ServiceResponse;
 import com.example.multimedia.file_upload_api.entity.Material;
@@ -49,9 +48,6 @@ public class MaterialService {
 
     @Autowired
     private ServiceControllerUtils serviceControllerUtils;
-
-
-
 
     @Autowired
     private CodeGenerator codeGenerator;

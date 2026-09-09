@@ -73,5 +73,7 @@ public class PortalPurchaseOrderResponse {
         private BigDecimal receivedQuantity;
         private BigDecimal inTransitQuantity;
         private BigDecimal pendingQuantity;
+        private String hsnCode;
+        private LocalDate confirmedDeliveryDate;
     }
 }

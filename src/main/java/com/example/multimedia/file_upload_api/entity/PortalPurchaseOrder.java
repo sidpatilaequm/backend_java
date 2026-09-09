@@ -47,6 +47,12 @@ public class PortalPurchaseOrder {
     @Column(name = "delivery_address", columnDefinition = "TEXT")
     private String deliveryAddress;
 
+    @Column(name = "payment_terms", length = 255)
+    private String paymentTerms;
+
+    @Column(name = "billing_address", columnDefinition = "TEXT")
+    private String billingAddress;
+
     @Column(name = "requested_delivery_date")
     private LocalDate requestedDeliveryDate;
 

@@ -410,12 +410,13 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
                 itemRes.setTaxPercent(i.getTaxPercent());
                 itemRes.setTaxAmount(i.getTaxAmount());
                 itemRes.setTotalValue(i.getTotalValue());
+                itemRes.setHsnCode(i.getHsnCode());
                 
-                BigDecimal received = asnItemRepository.getReceivedQuantity(po.getPoNumber(), i.getLineNumber());
+                BigDecimal received = asnItemRepository.getReceivedQuantity(i.getId());
                 if (received == null) received = BigDecimal.ZERO;
                 itemRes.setReceivedQuantity(received);
                 
-                BigDecimal inTransit = asnItemRepository.getInTransitQuantity(po.getPoNumber(), i.getLineNumber());
+                BigDecimal inTransit = asnItemRepository.getInTransitQuantity(i.getId());
                 if (inTransit == null) inTransit = BigDecimal.ZERO;
                 itemRes.setInTransitQuantity(inTransit);
                 

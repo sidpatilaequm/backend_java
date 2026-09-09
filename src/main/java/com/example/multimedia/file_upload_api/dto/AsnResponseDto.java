@@ -10,6 +10,8 @@ import java.util.List;
 public class AsnResponseDto {
     private Long id;
     private String poNumber;
+    private String poDate;
+    private String vendorName;
     private String vendorBpno;
     private String invoiceNumber;
     private LocalDate invoiceDate;

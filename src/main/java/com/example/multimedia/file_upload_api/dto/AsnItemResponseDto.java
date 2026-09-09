@@ -11,4 +11,10 @@ public class AsnItemResponseDto {
     private BigDecimal quantityShipped;
     private String batchHeatNumber;
     private String testCertUrl;
+    // Enriched from the linked PO item
+    private String materialNumber;
+    private String materialDescription;
+    private String hsnCode;
+    private String uom;
+    private String storageLocation;
 }

@@ -103,6 +103,14 @@ public class MasterPurchaseOrderService {
                 String currency2 = getCellValueAsString(row.getCell(18));
                 String inco1 = getCellValueAsString(row.getCell(19));
                 String inco2 = getCellValueAsString(row.getCell(20));
+                
+                // New Fields
+                String deliveryDateStr = getCellValueAsString(row.getCell(21));
+                String deliveryAddress = getCellValueAsString(row.getCell(22));
+                String paymentTerms = getCellValueAsString(row.getCell(23));
+                String taxPercentStr = getCellValueAsString(row.getCell(24));
+                String hsnCode = getCellValueAsString(row.getCell(25));
+                String billingAddress = getCellValueAsString(row.getCell(26));
 
                 String companyName = resolveCompanyName(coCode);
                 String vendorName = resolveCompanyName(vendorNo); // Find vendor using Company Code logic
@@ -140,6 +148,15 @@ public class MasterPurchaseOrderService {
                     po.setIncoterms(inco1);
                     po.setIncotermsPart2(inco2);
                     
+                    po.setDeliveryAddress(deliveryAddress);
+                    po.setPaymentTerms(paymentTerms);
+                    po.setBillingAddress(billingAddress);
+                    if (!deliveryDateStr.isEmpty()) {
+                        try {
+                            po.setRequestedDeliveryDate(LocalDate.parse(deliveryDateStr, formatter));
+                        } catch (Exception ignored) {}
+                    }
+                    
                     po.setGrandTotal(BigDecimal.valueOf(parseDouble(valueStr)));
                     po.setStatus("APPROVED"); // Default status
                     if (userId != null) {
@@ -176,6 +193,10 @@ public class MasterPurchaseOrderService {
                 poItem.setCgstAmount(BigDecimal.ZERO);
                 poItem.setTaxAmount(BigDecimal.ZERO);
                 poItem.setShippedQuantity(BigDecimal.ZERO);
+                
+                poItem.setHsnCode(hsnCode);
+                String cleanTax = taxPercentStr.replaceAll("[^0-9.]", "");
+                poItem.setTaxPercent(BigDecimal.valueOf(parseDouble(cleanTax)));
 
                 po.getItems().add(poItem);
                 portalPoMap.put(poNumber, po);
@@ -201,6 +222,13 @@ public class MasterPurchaseOrderService {
                 masterPo.setGrossOrderValue(parseDouble(valueStr));
                 masterPo.setUserId(0L);
                 masterPo.setAdminId(0L);
+                
+                masterPo.setDeliveryAddress(deliveryAddress);
+                masterPo.setPaymentTerms(paymentTerms);
+                masterPo.setBillingAddress(billingAddress);
+                masterPo.setHsnCode(hsnCode);
+                String cleanTaxMaster = taxPercentStr.replaceAll("[^0-9.]", "");
+                masterPo.setTaxPercent(parseDouble(cleanTaxMaster));
                 
                 masterPos.add(masterPo);
             }
@@ -337,6 +365,13 @@ public class MasterPurchaseOrderService {
                 String inco1 = cellValues[19];
                 String inco2 = cellValues[20];
                 
+                String deliveryDateStr = cellValues[21];
+                String deliveryAddress = cellValues[22];
+                String paymentTerms = cellValues[23];
+                String taxPercentStr = cellValues[24];
+                String hsnCode = cellValues[25];
+                String billingAddress = cellValues[26];
+                
                 String companyName = resolveCompanyName(coCode);
                 String vendorName = resolveCompanyName(vendorNo); // Using CompanyCode repository for Vendors as well since they share the same table in this system.
                 
@@ -368,6 +403,16 @@ public class MasterPurchaseOrderService {
                     po.setCurrency(currency);
                     po.setIncoterms(inco1);
                     po.setIncotermsPart2(inco2);
+                    
+                    po.setDeliveryAddress(deliveryAddress);
+                    po.setPaymentTerms(paymentTerms);
+                    po.setBillingAddress(billingAddress);
+                    if (deliveryDateStr != null && !deliveryDateStr.isEmpty()) {
+                        try {
+                            po.setRequestedDeliveryDate(LocalDate.parse(deliveryDateStr, formatter));
+                        } catch (Exception ignored) {}
+                    }
+                    
                     po.setGrandTotal(BigDecimal.valueOf(parseDouble(valueStr)));
                     po.setStatus("APPROVED");
                     if (userId != null) {
@@ -404,6 +449,11 @@ public class MasterPurchaseOrderService {
                 poItem.setTaxAmount(BigDecimal.ZERO);
                 poItem.setShippedQuantity(BigDecimal.ZERO);
                 
+                poItem.setHsnCode(hsnCode);
+                String cleanTax = (taxPercentStr != null) ? taxPercentStr.replaceAll("[^0-9.]", "") : "0";
+                if (cleanTax.isEmpty()) cleanTax = "0";
+                poItem.setTaxPercent(BigDecimal.valueOf(parseDouble(cleanTax)));
+                
                 po.getItems().add(poItem);
                 portalPoMap.put(poNumber, po);
                 
@@ -427,6 +477,14 @@ public class MasterPurchaseOrderService {
                 masterPo.setGrossOrderValue(parseDouble(valueStr));
                 masterPo.setUserId(0L);
                 masterPo.setAdminId(0L);
+                
+                masterPo.setDeliveryAddress(deliveryAddress);
+                masterPo.setPaymentTerms(paymentTerms);
+                masterPo.setBillingAddress(billingAddress);
+                masterPo.setHsnCode(hsnCode);
+                String cleanTaxMaster = taxPercentStr.replaceAll("[^0-9.]", "");
+                masterPo.setTaxPercent(parseDouble(cleanTaxMaster));
+                
                 masterPos.add(masterPo);
             }
         }
