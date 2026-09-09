@@ -2,8 +2,11 @@ package com.example.multimedia.file_upload_api.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
  * Unused by any service/controller today (see V11/V12 migrations) -- kept accurate to the real
@@ -56,4 +59,12 @@ public class CurrentStock {
 
     @Column(name = "vendor_name")
     private String vendorName;
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 }

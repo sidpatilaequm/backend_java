@@ -21,9 +21,11 @@ import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Backs the admin "which Excel column feeds which DB column" screen for the 5 SAP report
@@ -73,12 +75,30 @@ public class ExcelImportMappingService {
         List<ExcelTargetColumnDto> out = new ArrayList<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData meta = conn.getMetaData();
-            try (ResultSet rs = meta.getColumns(conn.getCatalog(), null, type.getTargetTable(), null)) {
+            String table = type.getTargetTable();
+
+            Set<String> primaryKeys = new HashSet<>();
+            try (ResultSet rs = meta.getPrimaryKeys(conn.getCatalog(), null, table)) {
+                while (rs.next()) primaryKeys.add(rs.getString("COLUMN_NAME"));
+            }
+            Set<String> foreignKeys = new HashSet<>();
+            try (ResultSet rs = meta.getImportedKeys(conn.getCatalog(), null, table)) {
+                while (rs.next()) foreignKeys.add(rs.getString("FKCOLUMN_NAME"));
+            }
+
+            try (ResultSet rs = meta.getColumns(conn.getCatalog(), null, table, null)) {
                 while (rs.next()) {
                     String name = rs.getString("COLUMN_NAME");
                     String colType = rs.getString("TYPE_NAME");
                     boolean nullable = "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE"));
-                    out.add(new ExcelTargetColumnDto(name, colType, nullable));
+
+                    String reason = null;
+                    if (primaryKeys.contains(name)) reason = "primary key";
+                    else if (foreignKeys.contains(name)) reason = "foreign key";
+                    else if (name.equals("created_at")) reason = "set automatically when the row is created";
+                    else if (name.equals("updated_at")) reason = "set automatically whenever the row changes";
+
+                    out.add(new ExcelTargetColumnDto(name, colType, nullable, reason != null, reason));
                 }
             }
         } catch (SQLException e) {
