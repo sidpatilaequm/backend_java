@@ -55,8 +55,8 @@ public class VendorCreditNote {
     @JoinColumn(name = "material_id")
     private Material material;
 
-    @Column(name = "material_code")
-    private String materialCode;
+    @Column(name = "material_service_code")
+    private String materialServiceCode;
 
     @Column(name = "description", length = 1000)
     private String description;
@@ -78,6 +78,9 @@ public class VendorCreditNote {
 
     @Column(length = 10)
     private String currency;
+
+    @Column(name = "tds_section", length = 20)
+    private String tdsSection;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
