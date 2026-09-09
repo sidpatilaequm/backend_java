@@ -77,10 +77,10 @@ public class ExcelImportMappingService {
             DatabaseMetaData meta = conn.getMetaData();
             String table = type.getTargetTable();
 
-            Set<String> primaryKeys = new HashSet<>();
-            try (ResultSet rs = meta.getPrimaryKeys(conn.getCatalog(), null, table)) {
-                while (rs.next()) primaryKeys.add(rs.getString("COLUMN_NAME"));
-            }
+            // Primary keys are deliberately left mappable -- e.g. a "Sr. No." column can be a
+            // legitimate source for id. Only FK relationship columns and the two timestamp
+            // columns are actually system-set (Hibernate/DB fill those in, an excel value would
+            // just be ignored or fought over), so only those stay locked.
             Set<String> foreignKeys = new HashSet<>();
             try (ResultSet rs = meta.getImportedKeys(conn.getCatalog(), null, table)) {
                 while (rs.next()) foreignKeys.add(rs.getString("FKCOLUMN_NAME"));
@@ -93,8 +93,7 @@ public class ExcelImportMappingService {
                     boolean nullable = "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE"));
 
                     String reason = null;
-                    if (primaryKeys.contains(name)) reason = "primary key";
-                    else if (foreignKeys.contains(name)) reason = "foreign key";
+                    if (foreignKeys.contains(name)) reason = "foreign key";
                     else if (name.equals("created_at")) reason = "set automatically when the row is created";
                     else if (name.equals("updated_at")) reason = "set automatically whenever the row changes";
 
