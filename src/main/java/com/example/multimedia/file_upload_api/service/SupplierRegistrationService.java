@@ -56,6 +56,7 @@ public class SupplierRegistrationService {
     private final QuestionnaireService questionnaireService;
     private final VendorChangeRequestService vendorChangeRequestService;
     private final SupplierRegistrationDocumentTypeRepository documentTypeSelectionRepository;
+    private final SupplierRegistrationCompanyBusinessTypeRepository companyBusinessTypeRepository;
     private final DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository;
     private final DocumentTypeRepository documentTypeRepository;
     private final AuditLogService auditLogService;
@@ -90,6 +91,7 @@ public class SupplierRegistrationService {
                                         VendorChangeRequestService vendorChangeRequestService,
                                         WorkflowEmailClient workflowEmailClient,
                                         SupplierRegistrationDocumentTypeRepository documentTypeSelectionRepository,
+                                        SupplierRegistrationCompanyBusinessTypeRepository companyBusinessTypeRepository,
                                         DocumentTypeCompanyCodeRepository documentTypeCompanyCodeRepository,
                                         DocumentTypeRepository documentTypeRepository,
                                         AuditLogService auditLogService,
@@ -115,6 +117,7 @@ public class SupplierRegistrationService {
         this.vendorChangeRequestService = vendorChangeRequestService;
         this.workflowEmailClient = workflowEmailClient;
         this.documentTypeSelectionRepository = documentTypeSelectionRepository;
+        this.companyBusinessTypeRepository = companyBusinessTypeRepository;
         this.documentTypeCompanyCodeRepository = documentTypeCompanyCodeRepository;
         this.documentTypeRepository = documentTypeRepository;
         this.auditLogService = auditLogService;
@@ -722,23 +725,7 @@ public class SupplierRegistrationService {
         if (reg == null) {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
         }
-        reg.setVendorTypeProduct(product);
-        reg.setVendorTypeService(service);
-        reg.setVendorTypeSubcontracting(subcontracting);
-        reg.setVendorTypeSchedulingAgreement(schedulingAgreement);
-        registrationRepository.save(reg);
-
-        // company_details is the live source of truth for this (V9 migration) — dual-write so
-        // every post-approval read (GET /api/vendors/all, approved-suppliers list, ...) reflects
-        // this edit immediately. No-op if this vendor predates the migration and hasn't been
-        // linked yet.
-        companyDetailsRepository.findBySupplierRegistrationId(registrationId).ifPresent(company -> {
-            company.setVendorTypeProduct(product);
-            company.setVendorTypeService(service);
-            company.setVendorTypeSubcontracting(subcontracting);
-            company.setVendorTypeSchedulingAgreement(schedulingAgreement);
-            companyDetailsRepository.save(company);
-        });
+        writeAggregateVendorTypes(reg, product, service, subcontracting, schedulingAgreement);
 
         Map<String, Object> data = new HashMap<>();
         data.put("vendorTypeProduct", product);
@@ -747,6 +734,77 @@ public class SupplierRegistrationService {
         data.put("vendorTypeSchedulingAgreement", schedulingAgreement);
         response.addData("result", data);
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Vendor business types updated");
+    }
+
+    /**
+     * The uniform, whole-vendor vendor_type_* flags on SupplierRegistration and (dual-written,
+     * V9 migration) CompanyDetails — kept around as a derived "true if true for ANY linked
+     * company" aggregate now that per-company rows exist (see
+     * SupplierRegistrationCompanyBusinessType / setCompanyBusinessTypes below), so the older
+     * consumers that only know about the uniform flags (vendor dashboard payload, approved-
+     * suppliers list, list-table filters) keep getting a sane answer instead of going stale.
+     */
+    private void writeAggregateVendorTypes(SupplierRegistration reg, boolean product, boolean service,
+                                            boolean subcontracting, boolean schedulingAgreement) {
+        reg.setVendorTypeProduct(product);
+        reg.setVendorTypeService(service);
+        reg.setVendorTypeSubcontracting(subcontracting);
+        reg.setVendorTypeSchedulingAgreement(schedulingAgreement);
+        registrationRepository.save(reg);
+
+        companyDetailsRepository.findBySupplierRegistrationId(reg.getId()).ifPresent(company -> {
+            company.setVendorTypeProduct(product);
+            company.setVendorTypeService(service);
+            company.setVendorTypeSubcontracting(subcontracting);
+            company.setVendorTypeSchedulingAgreement(schedulingAgreement);
+            companyDetailsRepository.save(company);
+        });
+    }
+
+    /**
+     * Per-company alternative to setVendorBusinessTypes above — a vendor linked to more than one
+     * company code (see SupplierRegistrationDocumentType) can have different business types per
+     * company, e.g. Product-only for 1000 and Service-only for 2000. Freely admin-editable anytime,
+     * same as setVendorBusinessTypes; after saving, the uniform vendor_type_* flags are recomputed
+     * as the OR across every company row for this registration, so they stay a sane "any company"
+     * summary for consumers that don't know about per-company scoping.
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ServiceResponse setCompanyBusinessTypes(Long registrationId, String companyCode, boolean product,
+                                                     boolean service, boolean subcontracting, boolean schedulingAgreement) {
+        ServiceResponse response = new ServiceResponse();
+        SupplierRegistration reg = registrationRepository.findById(registrationId).orElse(null);
+        if (reg == null) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
+        }
+        if (companyCode == null || companyCode.isBlank()) {
+            return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "companyCode is required");
+        }
+
+        SupplierRegistrationCompanyBusinessType row = companyBusinessTypeRepository
+                .findByRegistrationIdAndCompanyCode(registrationId, companyCode)
+                .orElseGet(() -> new SupplierRegistrationCompanyBusinessType(registrationId, companyCode));
+        row.setVendorTypeProduct(product);
+        row.setVendorTypeService(service);
+        row.setVendorTypeSubcontracting(subcontracting);
+        row.setVendorTypeSchedulingAgreement(schedulingAgreement);
+        companyBusinessTypeRepository.save(row);
+
+        List<SupplierRegistrationCompanyBusinessType> allRows = companyBusinessTypeRepository.findByRegistrationId(registrationId);
+        boolean anyProduct = allRows.stream().anyMatch(SupplierRegistrationCompanyBusinessType::isVendorTypeProduct);
+        boolean anyService = allRows.stream().anyMatch(SupplierRegistrationCompanyBusinessType::isVendorTypeService);
+        boolean anySubcontracting = allRows.stream().anyMatch(SupplierRegistrationCompanyBusinessType::isVendorTypeSubcontracting);
+        boolean anySchedulingAgreement = allRows.stream().anyMatch(SupplierRegistrationCompanyBusinessType::isVendorTypeSchedulingAgreement);
+        writeAggregateVendorTypes(reg, anyProduct, anyService, anySubcontracting, anySchedulingAgreement);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("companyCode", companyCode);
+        data.put("product", product);
+        data.put("service", service);
+        data.put("subcontracting", subcontracting);
+        data.put("schedulingAgreement", schedulingAgreement);
+        response.addData("result", data);
+        return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Company business types updated");
     }
 
     /**
@@ -767,7 +825,8 @@ public class SupplierRegistrationService {
     @Transactional(rollbackFor = Exception.class)
     public ServiceResponse setVendorDocumentTypes(Long registrationId, List<Map<String, String>> selections) {
         ServiceResponse response = new ServiceResponse();
-        if (registrationRepository.findById(registrationId).isEmpty()) {
+        SupplierRegistration reg = registrationRepository.findById(registrationId).orElse(null);
+        if (reg == null) {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
         }
 
@@ -796,6 +855,23 @@ public class SupplierRegistrationService {
             try {
                 existing = documentTypeSelectionRepository.saveAll(toSave);
                 decidedByYou = true;
+                // Now that which company codes actually apply to this vendor is concrete, seed a
+                // per-company business-type row for each one (copying today's uniform flags) so
+                // there's something for an admin to later diverge per company — see
+                // setCompanyBusinessTypes. Idempotent: skip a company code that somehow already
+                // has a row (e.g. a retried request after a partial failure).
+                java.util.LinkedHashSet<String> newCompanyCodes = toSave.stream()
+                        .map(SupplierRegistrationDocumentType::getCompanyCode)
+                        .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+                for (String companyCode : newCompanyCodes) {
+                    if (companyBusinessTypeRepository.findByRegistrationIdAndCompanyCode(registrationId, companyCode).isPresent()) continue;
+                    SupplierRegistrationCompanyBusinessType seed = new SupplierRegistrationCompanyBusinessType(registrationId, companyCode);
+                    seed.setVendorTypeProduct(reg.isVendorTypeProduct());
+                    seed.setVendorTypeService(reg.isVendorTypeService());
+                    seed.setVendorTypeSubcontracting(reg.isVendorTypeSubcontracting());
+                    seed.setVendorTypeSchedulingAgreement(reg.isVendorTypeSchedulingAgreement());
+                    companyBusinessTypeRepository.save(seed);
+                }
             } catch (DataIntegrityViolationException e) {
                 // Someone else's picks landed first — fall through and return the truth below.
                 existing = documentTypeSelectionRepository.findByRegistrationId(registrationId);
@@ -970,6 +1046,19 @@ public class SupplierRegistrationService {
                     m.put("companyCode", s.getCompanyCode());
                     m.put("docTypeCode", s.getDocTypeCode());
                     m.put("classification", classificationByCode.get(s.getDocTypeCode()));
+                    return m;
+                })
+                .toList());
+        // Per-company business types (Product/Service/Subcontracting/Scheduling Agreement) — one
+        // entry per company code this vendor is linked to; see setCompanyBusinessTypes.
+        data.put("companyBusinessTypes", companyBusinessTypeRepository.findByRegistrationId(reg.getId()).stream()
+                .map(c -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("companyCode", c.getCompanyCode());
+                    m.put("product", c.isVendorTypeProduct());
+                    m.put("service", c.isVendorTypeService());
+                    m.put("subcontracting", c.isVendorTypeSubcontracting());
+                    m.put("schedulingAgreement", c.isVendorTypeSchedulingAgreement());
                     return m;
                 })
                 .toList());

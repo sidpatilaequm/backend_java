@@ -241,6 +241,24 @@ public class SupplierRegistrationController {
     }
 
     /**
+     * Per-company version of the above — a vendor linked to more than one company code (see the
+     * document-types picker below) can have different business types per company, e.g.
+     * Product-only for 1000 and Service-only for 2000. Same admin-editable-anytime semantics.
+     */
+    @PatchMapping("/api/supplier-registration/{registrationId}/company-business-types")
+    public ResponseEntity<ServiceResponse> setCompanyBusinessTypes(@PathVariable Long registrationId, @RequestBody java.util.Map<String, Object> body) {
+        if (!isAdmin()) return ResponseEntity.status(403).body(null);
+        String companyCode = body.get("companyCode") != null ? String.valueOf(body.get("companyCode")) : null;
+        boolean product = Boolean.TRUE.equals(body.get("product"));
+        boolean service_ = Boolean.TRUE.equals(body.get("service"));
+        boolean subcontracting = Boolean.TRUE.equals(body.get("subcontracting"));
+        boolean schedulingAgreement = Boolean.TRUE.equals(body.get("schedulingAgreement"));
+        ServiceResponse response = service.setCompanyBusinessTypes(registrationId, companyCode, product, service_, subcontracting, schedulingAgreement);
+        if (AppConstants.ERRORCODE.equals(response.getErrorCode())) return ResponseEntity.badRequest().body(response);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Reference menu for the document-type picker below — same underlying data as the Purchasing
      * Roles admin screen (PurchaseRoleReferenceController), but without that endpoint's isAdmin()
      * gate: an EMPLOYEE/PURCHASE_DEPT approver reviewing a vendor_registration request needs this
