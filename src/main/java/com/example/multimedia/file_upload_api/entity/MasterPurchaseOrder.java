@@ -62,6 +62,18 @@ public class MasterPurchaseOrder {
     @Column(name = "hsn_code", length = 20)
     private String hsnCode;
 
+    @Column(name = "payment_terms", length = 255)
+    private String paymentTerms;
+
+    @Column(name = "billing_address", columnDefinition = "TEXT")
+    private String billingAddress;
+
+    @Column(name = "delivery_address", columnDefinition = "TEXT")
+    private String deliveryAddress;
+
+    @Column(name = "tax_percent")
+    private Double taxPercent;
+
     @Column(name = "plant", length = 10)
     private String plant;
 

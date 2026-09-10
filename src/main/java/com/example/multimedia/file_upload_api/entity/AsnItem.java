@@ -18,7 +18,7 @@ public class AsnItem {
     @JoinColumn(name = "asn_id", nullable = false)
     private Asn asn;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "po_item_id", nullable = false)
     private PortalPurchaseOrderItem purchaseOrderItem;
 

@@ -34,6 +34,9 @@ public class AsnServiceImpl implements AsnService {
     private AsnItemRepository asnItemRepository;
 
     @Autowired
+    private com.example.multimedia.file_upload_api.repository.MaterialRepository materialRepository;
+
+    @Autowired
     private FileUploadService fileUploadService;
 
     @Autowired
@@ -84,8 +87,14 @@ public class AsnServiceImpl implements AsnService {
 
         for (AsnItemRequestDto reqItem : asnRequestDto.getItems()) {
             Optional<PortalPurchaseOrderItem> poItemOpt = po.getItems().stream()
-                    .filter(i -> i.getLineNumber().equals(reqItem.getLineNumber()))
+                    .filter(i -> i.getLineNumber().equals(reqItem.getLineNumber()) && 
+                                 (reqItem.getPartNumber() == null || reqItem.getPartNumber().isEmpty() || i.getMaterialNumber().equals(reqItem.getPartNumber())))
                     .findFirst();
+            if (poItemOpt.isEmpty()) {
+                poItemOpt = po.getItems().stream()
+                    .filter(i -> i.getMaterialNumber().equals(reqItem.getPartNumber()))
+                    .findFirst();
+            }
 
             if (poItemOpt.isEmpty()) {
                 return serviceControllerUtils.prepareMobileResponseErrorStatus(response, "400", "Line item not found in PO: " + reqItem.getLineNumber());
@@ -94,7 +103,7 @@ public class AsnServiceImpl implements AsnService {
             PortalPurchaseOrderItem poItem = poItemOpt.get();
             BigDecimal ordered = poItem.getQuantity();
             
-            BigDecimal alreadyShipped = asnItemRepository.getTotalShippedQuantityForPoLine(po.getPoNumber(), poItem.getLineNumber());
+            BigDecimal alreadyShipped = asnItemRepository.getTotalShippedQuantityForPoItem(poItem.getId());
             if (alreadyShipped == null) alreadyShipped = BigDecimal.ZERO;
             
             BigDecimal available = ordered.subtract(alreadyShipped);
@@ -194,8 +203,12 @@ public class AsnServiceImpl implements AsnService {
         // 6. Save items and update PO Item shipped quantities
         for (AsnItemRequestDto reqItem : asnRequestDto.getItems()) {
             PortalPurchaseOrderItem poItem = po.getItems().stream()
-                    .filter(i -> i.getLineNumber().equals(reqItem.getLineNumber()))
-                    .findFirst().get();
+                    .filter(i -> i.getLineNumber().equals(reqItem.getLineNumber()) && 
+                                 (reqItem.getPartNumber() == null || reqItem.getPartNumber().isEmpty() || i.getMaterialNumber().equals(reqItem.getPartNumber())))
+                    .findFirst()
+                    .orElseGet(() -> po.getItems().stream()
+                        .filter(i -> i.getMaterialNumber().equals(reqItem.getPartNumber()))
+                        .findFirst().get());
 
             AsnItem asnItem = new AsnItem();
             asnItem.setAsn(asn);
@@ -304,6 +317,10 @@ public class AsnServiceImpl implements AsnService {
         dto.setId(asn.getId());
         if (asn.getPurchaseOrder() != null) {
             dto.setPoNumber(asn.getPurchaseOrder().getPoNumber());
+            if (asn.getPurchaseOrder().getPoDate() != null) {
+                dto.setPoDate(asn.getPurchaseOrder().getPoDate().toString());
+            }
+            dto.setVendorName(asn.getPurchaseOrder().getVendorName());
         }
         if (asn.getVendorBpno() != null) {
             dto.setVendorBpno(asn.getVendorBpno());
@@ -340,9 +357,53 @@ public class AsnServiceImpl implements AsnService {
             List<com.example.multimedia.file_upload_api.dto.AsnItemResponseDto> itemDtos = asn.getItems().stream().map(item -> {
                 com.example.multimedia.file_upload_api.dto.AsnItemResponseDto itemDto = new com.example.multimedia.file_upload_api.dto.AsnItemResponseDto();
                 itemDto.setId(item.getId());
+                
+                String matNum = null;
+                String matDesc = null;
+                String hsn = null;
+                String uom = null;
+                String sloc = null;
+                Integer lineNo = null;
+
                 if (item.getPurchaseOrderItem() != null) {
-                    itemDto.setLineNumber(item.getPurchaseOrderItem().getLineNumber());
+                    lineNo = item.getPurchaseOrderItem().getLineNumber();
+                    matNum = item.getPurchaseOrderItem().getMaterialNumber();
+                    matDesc = item.getPurchaseOrderItem().getMaterialDescription();
+                    hsn = item.getPurchaseOrderItem().getHsnCode();
+                    uom = item.getPurchaseOrderItem().getUom();
+                    sloc = item.getPurchaseOrderItem().getStorageLocation();
                 }
+
+                // Fallback to PartNumber if matNum is null
+                if (matNum == null || matNum.trim().isEmpty()) {
+                    matNum = item.getPartNumber();
+                }
+
+                // Lookup Material table if description or hsn is missing
+                if (matNum != null && (matDesc == null || matDesc.trim().isEmpty() || hsn == null || hsn.trim().isEmpty() || "N/A".equalsIgnoreCase(hsn))) {
+                    try {
+                        java.util.Optional<com.example.multimedia.file_upload_api.entity.Material> matOpt = materialRepository.findByMaterialCode(matNum);
+                        if (matOpt.isPresent()) {
+                            com.example.multimedia.file_upload_api.entity.Material m = matOpt.get();
+                            if (matDesc == null || matDesc.trim().isEmpty()) {
+                                matDesc = m.getDescription() != null ? m.getDescription() : m.getMaterialName();
+                            }
+                            if (hsn == null || hsn.trim().isEmpty() || "N/A".equalsIgnoreCase(hsn)) {
+                                hsn = m.getHsnCode();
+                            }
+                        }
+                    } catch (Exception e) {
+                        // ignore fallback error
+                    }
+                }
+
+                itemDto.setLineNumber(lineNo != null ? lineNo : 1);
+                itemDto.setMaterialNumber(matNum);
+                itemDto.setMaterialDescription(matDesc != null ? matDesc : matNum);
+                itemDto.setHsnCode((hsn != null && !hsn.trim().isEmpty()) ? hsn : "N/A");
+                itemDto.setUom(uom != null ? uom : "EA");
+                itemDto.setStorageLocation(sloc != null ? sloc : "SL01");
+
                 itemDto.setPartNumber(item.getPartNumber());
                 itemDto.setQuantityShipped(item.getQuantityShipped());
                 itemDto.setBatchHeatNumber(item.getBatchHeatNumber());
@@ -378,10 +439,10 @@ public class AsnServiceImpl implements AsnService {
         boolean hasAnyShipment = false;
         
         for (PortalPurchaseOrderItem item : po.getItems()) {
-            BigDecimal received = asnItemRepository.getReceivedQuantity(poNumber, item.getLineNumber());
+            BigDecimal received = asnItemRepository.getReceivedQuantity(item.getId());
             if (received == null) received = BigDecimal.ZERO;
             
-            BigDecimal inTransit = asnItemRepository.getInTransitQuantity(poNumber, item.getLineNumber());
+            BigDecimal inTransit = asnItemRepository.getInTransitQuantity(item.getId());
             if (inTransit == null) inTransit = BigDecimal.ZERO;
             
             BigDecimal totalShipped = received.add(inTransit);

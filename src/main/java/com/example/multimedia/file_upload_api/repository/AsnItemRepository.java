@@ -11,12 +11,12 @@ import java.math.BigDecimal;
 @Repository
 public interface AsnItemRepository extends JpaRepository<AsnItem, Long> {
 
-    @Query("SELECT COALESCE(SUM(a.quantityShipped), 0) FROM AsnItem a WHERE a.purchaseOrderItem.purchaseOrder.poNumber = :poNumber AND a.purchaseOrderItem.lineNumber = :lineNumber")
-    BigDecimal getTotalShippedQuantityForPoLine(@Param("poNumber") String poNumber, @Param("lineNumber") Integer lineNumber);
+    @Query("SELECT COALESCE(SUM(a.quantityShipped), 0) FROM AsnItem a WHERE a.purchaseOrderItem.id = :poItemId")
+    BigDecimal getTotalShippedQuantityForPoItem(@Param("poItemId") Long poItemId);
 
-    @Query("SELECT COALESCE(SUM(a.quantityShipped), 0) FROM AsnItem a WHERE a.purchaseOrderItem.purchaseOrder.poNumber = :poNumber AND a.purchaseOrderItem.lineNumber = :lineNumber AND a.asn.status = 'RECEIVED'")
-    BigDecimal getReceivedQuantity(@Param("poNumber") String poNumber, @Param("lineNumber") Integer lineNumber);
+    @Query("SELECT COALESCE(SUM(a.quantityShipped), 0) FROM AsnItem a WHERE a.purchaseOrderItem.id = :poItemId AND a.asn.status = 'RECEIVED'")
+    BigDecimal getReceivedQuantity(@Param("poItemId") Long poItemId);
 
-    @Query("SELECT COALESCE(SUM(a.quantityShipped), 0) FROM AsnItem a WHERE a.purchaseOrderItem.purchaseOrder.poNumber = :poNumber AND a.purchaseOrderItem.lineNumber = :lineNumber AND a.asn.status IN ('IN_TRANSIT', 'BUYER_APPROVAL_PENDING')")
-    BigDecimal getInTransitQuantity(@Param("poNumber") String poNumber, @Param("lineNumber") Integer lineNumber);
+    @Query("SELECT COALESCE(SUM(a.quantityShipped), 0) FROM AsnItem a WHERE a.purchaseOrderItem.id = :poItemId AND a.asn.status IN ('IN_TRANSIT', 'BUYER_APPROVAL_PENDING')")
+    BigDecimal getInTransitQuantity(@Param("poItemId") Long poItemId);
 }
