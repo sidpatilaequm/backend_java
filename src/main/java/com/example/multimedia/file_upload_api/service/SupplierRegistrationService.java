@@ -614,7 +614,14 @@ public class SupplierRegistrationService {
         if (reg == null) {
             return serviceControllerUtils.prepareMobileResponseErrorStatus(response, AppConstants.ERRORCODE, "Registration not found");
         }
-        response.addData("result", buildRegistrationDetail(reg));
+        Map<String, Object> data = buildRegistrationDetail(reg);
+        // Same company_details live-profile merge as getMyProfile — an approved vendor's address
+        // (and other V9-migrated fields) may have moved on from the application's original
+        // snapshot on `registration` above; a registration still pending has no linked
+        // CompanyDetails yet, so this is a no-op and the frontend falls back to the snapshot.
+        companyDetailsRepository.findBySupplierRegistrationId(reg.getId())
+                .ifPresent(company -> data.put("currentProfile", buildCurrentProfile(company)));
+        response.addData("result", data);
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Registration loaded");
     }
 
@@ -865,24 +872,8 @@ public class SupplierRegistrationService {
         // view should reflect whatever an approved change request actually landed as
         // authoritative, not the application's original/audit copy on `registration` above.
         // Additive field, existing frontend reads are unaffected.
-        companyDetailsRepository.findBySupplierRegistrationId(reg.getId()).ifPresent(company -> {
-            Map<String, Object> currentProfile = new HashMap<>();
-            currentProfile.put("gstNumber", company.getGstinNumber());
-            currentProfile.put("panNumber", company.getPanNumber());
-            currentProfile.put("beneficiaryName", company.getBeneficiaryName());
-            currentProfile.put("accountNumber", company.getAccountNumber());
-            currentProfile.put("ifscCode", company.getIfscCode());
-            currentProfile.put("bankName", company.getBankName());
-            currentProfile.put("msmeNumber", company.getMsmeNumber());
-            currentProfile.put("cinNumber", company.getCinNumber());
-            currentProfile.put("isoCertificateNo", company.getIsoCertificateNo());
-            currentProfile.put("iso14001CertificateNo", company.getIso14001CertificateNo());
-            currentProfile.put("iso45001CertificateNo", company.getIso45001CertificateNo());
-            currentProfile.put("iso27001CertificateNo", company.getIso27001CertificateNo());
-            currentProfile.put("as9100dCertificateNo", company.getAs9100dCertificateNo());
-            currentProfile.put("nadcapCertificateNo", company.getNadcapCertificateNo());
-            data.put("currentProfile", currentProfile);
-        });
+        companyDetailsRepository.findBySupplierRegistrationId(reg.getId())
+                .ifPresent(company -> data.put("currentProfile", buildCurrentProfile(company)));
         // The exact questionnaire this vendor answered — not whatever's active now, which may
         // have moved on since. See QuestionnaireService.getQuestionnaireForResponse.
         JSONObject myQuestionnaire = questionnaireService.getQuestionnaireForResponse(reg.getFormStudioResponseId());
@@ -901,6 +892,31 @@ public class SupplierRegistrationService {
         data.put("changeRequests", changeRequestsOut);
         response.addData("result", data);
         return serviceControllerUtils.prepareMobileResponseSuccessStatus(response, AppConstants.SUCCESSCODE, "Profile loaded");
+    }
+
+    /**
+     * The live-profile fields sourced from company_details (V9 migration) rather than the
+     * one-time supplier_registration snapshot — shared by getMyProfile and
+     * getRegistrationForReview so the two never drift onto separate field lists.
+     */
+    private Map<String, Object> buildCurrentProfile(CompanyDetails company) {
+        Map<String, Object> currentProfile = new HashMap<>();
+        currentProfile.put("address", company.getRegisteredAddress());
+        currentProfile.put("gstNumber", company.getGstinNumber());
+        currentProfile.put("panNumber", company.getPanNumber());
+        currentProfile.put("beneficiaryName", company.getBeneficiaryName());
+        currentProfile.put("accountNumber", company.getAccountNumber());
+        currentProfile.put("ifscCode", company.getIfscCode());
+        currentProfile.put("bankName", company.getBankName());
+        currentProfile.put("msmeNumber", company.getMsmeNumber());
+        currentProfile.put("cinNumber", company.getCinNumber());
+        currentProfile.put("isoCertificateNo", company.getIsoCertificateNo());
+        currentProfile.put("iso14001CertificateNo", company.getIso14001CertificateNo());
+        currentProfile.put("iso45001CertificateNo", company.getIso45001CertificateNo());
+        currentProfile.put("iso27001CertificateNo", company.getIso27001CertificateNo());
+        currentProfile.put("as9100dCertificateNo", company.getAs9100dCertificateNo());
+        currentProfile.put("nadcapCertificateNo", company.getNadcapCertificateNo());
+        return currentProfile;
     }
 
     private Map<String, Object> buildRegistrationDetail(SupplierRegistration reg) {
@@ -1169,9 +1185,12 @@ public class SupplierRegistrationService {
         company.setCompanyCode(vendorCode);
         // company_details is now the live source of truth for an approved vendor's profile
         // (V9 migration) — link it back to the application it came from, and seed every field
-        // that has a home here, not just the 4 originally copied above. Kept in sync afterward
-        // by VendorChangeRequestService.applyApprovedChange whenever the vendor edits any of
-        // these post-approval.
+        // that has a home here, not just the 4 originally copied above. Most of these are kept
+        // in sync afterward by VendorChangeRequestService.applyApprovedChange whenever the vendor
+        // edits one post-approval — address is the one exception: applyApprovedChange's
+        // field-mapping switch has no "address" case, so there is currently no self-service way
+        // to update it after this one-time copy. Direct admin edit or a future change-request
+        // type would be needed to fix a wrong address post-approval.
         company.setSupplierRegistration(reg);
         company.setContactName(reg.getContactName());
         company.setDesignation(reg.getDesignation());

@@ -47,7 +47,7 @@ public class VendorMasterExcelServiceImpl implements VendorMasterExcelService {
 
         // Name/GST/bank/address no longer live on VendorMaster itself — this bulk-import path has
         // no SupplierRegistration to link to (these vendors never went through Become-a-Supplier),
-        // so vendorMaster.supplierRegistration stays null and those details live only on the
+        // so vendorMaster.supplierRegistration stays null and those details live on the
         // CompanyDetails record created below, same as everywhere else that reads a SAP-imported
         // vendor's details.
         vendorMaster.setBpNo(dto.getBpNo());
@@ -79,6 +79,7 @@ public class VendorMasterExcelServiceImpl implements VendorMasterExcelService {
                 company.setCompanyName(dto.getVendorName());
                 company.setCompanyCode(dto.getBpNo());
                 company.setGstinNumber(dto.getGstNumber());
+                company.setRegisteredAddress(formatVendorAddress(dto.getVendorAddress()));
                 company.setStatus("ACTIVE");
                 company.setAuthKey("vendor");
                 if (!admins.isEmpty()) {
@@ -106,5 +107,13 @@ public class VendorMasterExcelServiceImpl implements VendorMasterExcelService {
                 .updated(updated)
                 .failed(0)
                 .build();
+    }
+
+    private String formatVendorAddress(com.example.multimedia.file_upload_api.dto.VendorAddressDto a) {
+        if (a == null) return null;
+        return java.util.stream.Stream.of(a.getStreetAndHouseNumber(), a.getStreetName1(), a.getCityName(),
+                        a.getPostalCode(), a.getCountryCode())
+                .filter(part -> part != null && !part.isBlank())
+                .collect(java.util.stream.Collectors.joining(", "));
     }
 }
