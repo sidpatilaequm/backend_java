@@ -31,6 +31,9 @@ public class AsnServiceImpl implements AsnService {
     private AsnRepository asnRepository;
 
     @Autowired
+    private com.example.multimedia.file_upload_api.repository.VendorMasterRepository vendorMasterRepository;
+
+    @Autowired
     private AsnItemRepository asnItemRepository;
 
     @Autowired
@@ -324,6 +327,13 @@ public class AsnServiceImpl implements AsnService {
         }
         if (asn.getVendorBpno() != null) {
             dto.setVendorBpno(asn.getVendorBpno());
+            vendorMasterRepository.findByBpNo(asn.getVendorBpno()).ifPresent(vm -> {
+                if (vm.getCompanyDetails() != null && vm.getCompanyDetails().getRegisteredAddress() != null) {
+                    dto.setVendorAddress(vm.getCompanyDetails().getRegisteredAddress());
+                } else if (vm.getSupplierRegistration() != null) {
+                    dto.setVendorAddress(vm.getSupplierRegistration().getAddress());
+                }
+            });
         }
         dto.setInvoiceNumber(asn.getInvoiceNumber());
         dto.setInvoiceDate(asn.getInvoiceDate());

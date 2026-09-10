@@ -13,6 +13,7 @@ public class AsnResponseDto {
     private String poDate;
     private String vendorName;
     private String vendorBpno;
+    private String vendorAddress;
     private String invoiceNumber;
     private LocalDate invoiceDate;
     private String ewayBill;
