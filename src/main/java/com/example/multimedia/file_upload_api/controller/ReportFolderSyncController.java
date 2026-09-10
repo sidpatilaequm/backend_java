@@ -3,6 +3,7 @@ package com.example.multimedia.file_upload_api.controller;
 import com.example.multimedia.file_upload_api.entity.ReportFolderSync;
 import com.example.multimedia.file_upload_api.repository.ReportFolderSyncRepository;
 import com.example.multimedia.file_upload_api.security.AdminAuthChecker;
+import com.example.multimedia.file_upload_api.service.FolderItService;
 import com.example.multimedia.file_upload_api.service.ReportFolderSyncService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,20 +22,32 @@ public class ReportFolderSyncController {
 
     private final ReportFolderSyncRepository repository;
     private final ReportFolderSyncService syncService;
+    private final FolderItService folderItService;
     private final AdminAuthChecker adminAuthChecker;
 
     public ReportFolderSyncController(ReportFolderSyncRepository repository,
                                        ReportFolderSyncService syncService,
+                                       FolderItService folderItService,
                                        AdminAuthChecker adminAuthChecker) {
         this.repository = repository;
         this.syncService = syncService;
+        this.folderItService = folderItService;
         this.adminAuthChecker = adminAuthChecker;
     }
 
+    public record SyncStatusDto(
+            String reportType, String folderitFolderUid, String folderName, boolean enabled,
+            int intervalMinutes, Object lastRunAt, String lastRunStatus, int filesProcessedLastRun) {
+    }
+
     @GetMapping
-    public ResponseEntity<List<ReportFolderSync>> list() {
+    public ResponseEntity<List<SyncStatusDto>> list() {
         if (!adminAuthChecker.isAdmin()) return ResponseEntity.status(403).build();
-        return ResponseEntity.ok(repository.findAll());
+        List<SyncStatusDto> out = repository.findAll().stream().map(c -> new SyncStatusDto(
+                c.getReportType(), c.getFolderitFolderUid(), folderItService.getFolderName(c.getFolderitFolderUid()),
+                c.isEnabled(), c.getIntervalMinutes(), c.getLastRunAt(), c.getLastRunStatus(), c.getFilesProcessedLastRun()
+        )).toList();
+        return ResponseEntity.ok(out);
     }
 
     @PatchMapping("/{reportType}")

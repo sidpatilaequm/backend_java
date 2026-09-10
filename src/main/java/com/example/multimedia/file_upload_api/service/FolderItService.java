@@ -292,6 +292,26 @@ public class FolderItService {
         }
     }
 
+    /** A folder's own name/path, for display -- e.g. showing "Vendor Payments" instead of a raw
+     *  uid in an admin screen. Returns null if the folder can't be resolved (deleted, wrong uid). */
+    public String getFolderName(String folderUid) {
+        try {
+            String token = getAccessToken();
+            Request req = new Request.Builder()
+                    .url("https://api.folderit.com/v2/accounts/" + accountUid() + "/folders/" + folderUid)
+                    .addHeader("Authorization", "Bearer " + token)
+                    .build();
+            try (Response response = httpClient.newCall(req).execute()) {
+                if (!response.isSuccessful()) return null;
+                JSONObject json = new JSONObject(response.body().string());
+                return json.optString("name", null);
+            }
+        } catch (Exception e) {
+            logger.warn("Could not resolve folder name for {}: {}", folderUid, e.getMessage());
+            return null;
+        }
+    }
+
     public String findFirstExcelFileInFolder(String folderUid) throws IOException {
         String token = getAccessToken();
         String searchUrl = "https://api.folderit.com/v2/accounts/" + accountUid() + "/search/files";
