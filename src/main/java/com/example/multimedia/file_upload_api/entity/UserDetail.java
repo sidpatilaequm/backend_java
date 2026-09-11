@@ -37,9 +37,6 @@ public class UserDetail {
     private String signupDate;
     private Boolean isActive = true;
     private String designation;
-    private String onboardingStatus;
-    private String onboardingToken;
-    private LocalDateTime tokenExpiry;
 
     @Column(name = "company_code")
     private String companyCode;
@@ -214,30 +211,6 @@ public class UserDetail {
 
     public void setDesignation(String designation) {
         this.designation = designation;
-    }
-
-    public String getOnboardingStatus() {
-        return onboardingStatus;
-    }
-
-    public void setOnboardingStatus(String onboardingStatus) {
-        this.onboardingStatus = onboardingStatus;
-    }
-
-    public String getOnboardingToken() {
-        return onboardingToken;
-    }
-
-    public void setOnboardingToken(String onboardingToken) {
-        this.onboardingToken = onboardingToken;
-    }
-
-    public LocalDateTime getTokenExpiry() {
-        return tokenExpiry;
-    }
-
-    public void setTokenExpiry(LocalDateTime tokenExpiry) {
-        this.tokenExpiry = tokenExpiry;
     }
 
     public String getCompanyCode() {
