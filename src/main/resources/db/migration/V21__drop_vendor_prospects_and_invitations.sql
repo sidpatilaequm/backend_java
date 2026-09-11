@@ -1,7 +1,4 @@
--- V21: Drop vendor prospects/invitations tables and columns
-
-DROP TABLE IF EXISTS `vendor_invitations`;
-DROP TABLE IF EXISTS `supplier_invitation`;
+-- V21: Drop vendor prospects onboarding columns from user_details table
 
 SET @exist_status := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_details' AND COLUMN_NAME = 'onboarding_status');
 SET @sql_status := IF(@exist_status > 0, 'ALTER TABLE user_details DROP COLUMN onboarding_status', 'SELECT 1');
