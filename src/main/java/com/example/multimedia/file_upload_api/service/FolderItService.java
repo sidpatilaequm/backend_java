@@ -244,6 +244,11 @@ public class FolderItService {
         return getOrCreateFolder(token, UID_VENDOR, name);
     }
 
+    public String getOrCreateSubFolder(String parentUid, String folderName) throws IOException {
+        String token = getAccessToken();
+        return getOrCreateFolder(token, parentUid, folderName);
+    }
+
     /**
      * Renames an existing folder — used to relabel a placeholder "REG-{id}" name
      * with the real "{vendorCode} - {vendorName}" once approval assigns a vendor

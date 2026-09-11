@@ -49,6 +49,9 @@ public class GateEntryServiceImpl implements GateEntryService {
     @Autowired
     private com.example.multimedia.file_upload_api.security.OrgConfigGate orgConfigGate;
 
+    @Autowired
+    private GoodsReceiptFolderitSyncService goodsReceiptFolderitSyncService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Real FK first (V9 migration), falling back to the email-based traversal only for a vendor
@@ -283,6 +286,10 @@ public class GateEntryServiceImpl implements GateEntryService {
         }
 
         asnRepository.save(asn);
+
+        if ("ALLOW".equalsIgnoreCase(processDto.getDecision())) {
+            goodsReceiptFolderitSyncService.syncGoodsReceiptAsync(entry);
+        }
 
         Map<String, String> data = new HashMap<>();
         if (entry.getGatePassNumber() != null) {

@@ -22,6 +22,9 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
     private GoodsReceiptRepository goodsReceiptRepository;
 
     @Autowired
+    private com.example.multimedia.file_upload_api.service.GoodsReceiptFolderitSyncService goodsReceiptFolderitSyncService;
+
+    @Autowired
     private AsnRepository asnRepository;
 
     @Autowired
@@ -203,6 +206,11 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
             gr.setRtvNumber("RTV-" + ge.getGatePassNumber().replace("GE-", ""));
         }
         
-        return goodsReceiptRepository.save(gr);
+        GoodsReceipt savedGr = goodsReceiptRepository.save(gr);
+
+        // Sync Excel summary and documents to FolderIT
+        goodsReceiptFolderitSyncService.syncGoodsReceiptAsync(ge);
+
+        return savedGr;
     }
 }
