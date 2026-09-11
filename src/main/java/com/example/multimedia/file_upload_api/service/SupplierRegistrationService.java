@@ -926,6 +926,21 @@ public class SupplierRegistrationService {
         for (SupplierRegistrationDocumentType p : picksForCompany) {
             tiles.addAll(CLASSIFICATION_TILES.getOrDefault(classificationByCode.get(p.getDocTypeCode()), List.of()));
         }
+
+        // Gate by this company's business types (see setCompanyBusinessTypes) — an admin turning
+        // e.g. Product off for one company should hide that tile there even though the underlying
+        // SAP document types would otherwise still grant it. No-op (keeps every doc-type-derived
+        // tile) when this company has no business-type row yet, same "nothing decided yet, show
+        // everything" fallback as picksForCompany.isEmpty() above.
+        if (companyCode != null) {
+            companyBusinessTypeRepository.findByRegistrationIdAndCompanyCode(reg.getId(), companyCode).ifPresent(bt -> {
+                if (!bt.isVendorTypeProduct()) tiles.remove("products");
+                if (!bt.isVendorTypeService()) tiles.remove("services");
+                if (!bt.isVendorTypeSubcontracting()) tiles.remove("subcontracting");
+                if (!bt.isVendorTypeSchedulingAgreement()) tiles.remove("scheduling");
+            });
+        }
+
         return List.copyOf(tiles);
     }
 
