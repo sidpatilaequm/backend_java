@@ -64,6 +64,20 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
     @Autowired
     private WorkflowEmailClient workflowEmailClient;
 
+    @Autowired
+    private com.example.multimedia.file_upload_api.repository.DocumentTypeRepository documentTypeRepository;
+
+    // Same classification -> tile mapping as SupplierRegistrationService.CLASSIFICATION_TILES —
+    // duplicated rather than shared (same precedent as DashboardHome.jsx mirroring it client-side)
+    // since it's small, stable SAP reference-data vocabulary.
+    private static final Map<String, List<String>> CLASSIFICATION_TILES = Map.of(
+            "PRODUCTS", List.of("products"),
+            "SERVICE", List.of("services"),
+            "SUBCONTRACTING", List.of("subcontracting"),
+            "SCHEDULING_AGREEMENT", List.of("scheduling"),
+            "RAW_MATERIAL", List.of("products"),
+            "CAPITAL_EXPENDITURE", List.of("products", "services"));
+
     @Override
     @Transactional
     public PortalPurchaseOrderResponse createPOFromAwardedQuotation(Long quotationId, PortalPurchaseOrderRequest request) {
@@ -208,7 +222,7 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
         if (currentUserService.isCurrentUserSuperAdmin()) {
             Long superAdminId = currentUserService.getCurrentSuperAdminId();
             List<PortalPurchaseOrder> pos = poRepository.findByVendor_SuperAdmin_SuperAdminIdOrderByIdDesc(superAdminId);
-            return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
+            return mapToListResponses(pos);
         } else {
             UserDetail user = currentUserService.getCurrentUser();
             List<Long> allowedUserIds = new java.util.ArrayList<>();
@@ -229,7 +243,7 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
 
             java.util.List<String> createdByList = allowedUserIds.stream().map(String::valueOf).collect(java.util.stream.Collectors.toList());
             List<PortalPurchaseOrder> pos = poRepository.findEmployeePOs(user.getSuperAdmin().getSuperAdminId(), allowedUserIds, createdByList);
-            return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
+            return mapToListResponses(pos);
         }
     }
 
@@ -332,12 +346,28 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
             if (companyCode != null) {
                 pos = pos.stream().filter(p -> companyCode.equals(p.getCompanyCode())).collect(Collectors.toList());
             }
-            return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
+            return mapToListResponses(pos);
         } else {
             // Fallback just in case bpNo is not set
             List<PortalPurchaseOrder> pos = poRepository.findByVendor_CompanyIdOrderByIdDesc(vendorId, companyCode);
-            return pos.stream().map(this::mapToListResponse).collect(Collectors.toList());
+            return mapToListResponses(pos);
         }
+    }
+
+    /** Batches the doc_type_code -> classification lookup once for the whole list, instead of one
+     * query per PO, then maps each row with its resolved tiles. */
+    private List<PortalPurchaseOrderListResponse> mapToListResponses(List<PortalPurchaseOrder> pos) {
+        List<String> docTypeCodes = pos.stream()
+                .map(p -> p.getPurchaseRequisition() != null ? p.getPurchaseRequisition().getDocTypeCode() : null)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<String, String> classificationByCode = docTypeCodes.isEmpty() ? Map.of()
+                : documentTypeRepository.findAllById(docTypeCodes).stream()
+                        .collect(java.util.stream.Collectors.toMap(
+                                com.example.multimedia.file_upload_api.entity.DocumentType::getCode,
+                                com.example.multimedia.file_upload_api.entity.DocumentType::getClassification));
+        return pos.stream().map(po -> mapToListResponse(po, classificationByCode)).collect(Collectors.toList());
     }
 
     @Override
@@ -366,13 +396,17 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
         return mapToResponse(po);
     }
 
-    private PortalPurchaseOrderListResponse mapToListResponse(PortalPurchaseOrder po) {
+    private PortalPurchaseOrderListResponse mapToListResponse(PortalPurchaseOrder po, Map<String, String> classificationByDocTypeCode) {
         PortalPurchaseOrderListResponse res = new PortalPurchaseOrderListResponse();
         res.setPoId(po.getId());
         res.setPoNumber(po.getPoNumber());
         res.setPoDate(po.getPoDate());
         res.setStatus(po.getStatus());
         res.setGrandTotal(po.getGrandTotal());
+
+        String docTypeCode = po.getPurchaseRequisition() != null ? po.getPurchaseRequisition().getDocTypeCode() : null;
+        String classification = docTypeCode != null ? classificationByDocTypeCode.get(docTypeCode) : null;
+        res.setTiles(CLASSIFICATION_TILES.getOrDefault(classification, List.of()));
         return res;
     }
 
