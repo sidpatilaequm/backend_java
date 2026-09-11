@@ -8,6 +8,7 @@ import com.example.multimedia.file_upload_api.enums.PurchaseRequisitionStatus;
 import com.example.multimedia.file_upload_api.repository.*;
 import com.example.multimedia.file_upload_api.service.PortalPurchaseOrderService;
 import com.example.multimedia.file_upload_api.service.CurrentUserService;
+import com.example.multimedia.file_upload_api.service.WorkflowEmailClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,7 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -57,6 +60,9 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
 
     @Autowired
     private com.example.multimedia.file_upload_api.security.OrgConfigGate orgConfigGate;
+
+    @Autowired
+    private WorkflowEmailClient workflowEmailClient;
 
     @Override
     @Transactional
@@ -169,6 +175,30 @@ public class PortalPurchaseOrderServiceImpl implements PortalPurchaseOrderServic
         // Update PR Status to PO_CREATED
         pr.setStatus(PurchaseRequisitionStatus.PO_CREATED);
         prRepository.save(pr);
+
+        // Notify the vendor — admin-editable "PO.1" template (WorkFlow's email_templates), same
+        // pattern as PR.1 above. line_items is a dynamic table (see email_templates.table_blocks)
+        // rather than a fixed detail_rows entry, since a PO can have any number of items.
+        if (finalVendor.getUser() != null && finalVendor.getUser().getEmail() != null) {
+            List<Map<String, Object>> lineItems = poItems.stream().map(item -> {
+                Map<String, Object> row = new HashMap<>();
+                row.put("item_code", item.getMaterialNumber());
+                row.put("description", item.getMaterialDescription());
+                row.put("quantity", item.getQuantity() + " " + (item.getUom() != null ? item.getUom() : ""));
+                row.put("unit_price", item.getUnitPrice());
+                row.put("net_value", item.getNetValue());
+                return row;
+            }).collect(Collectors.toList());
+
+            Map<String, Object> variables = new HashMap<>();
+            variables.put("vendor_name", finalVendor.getCompanyName());
+            variables.put("po_number", poNumber);
+            variables.put("po_date", po.getPoDate() != null ? po.getPoDate().toString() : "");
+            variables.put("currency", po.getCurrency());
+            variables.put("grand_total", po.getGrandTotal());
+            variables.put("line_items", lineItems);
+            workflowEmailClient.trigger("PO.1", finalVendor.getUser().getEmail(), variables);
+        }
 
         return mapToResponse(po);
     }
