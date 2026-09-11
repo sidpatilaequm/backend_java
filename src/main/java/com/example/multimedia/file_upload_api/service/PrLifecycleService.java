@@ -70,10 +70,41 @@ public class PrLifecycleService {
         List<Map<String, Object>> events = buildEvents(pr);
 
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("rootType", "PR");
         result.put("prNumber", pr.getPrNumber());
         result.put("prStatus", pr.getStatus().name());
         result.put("requestedBy", resolveUserName(pr.getRequestedBy()));
         result.put("createdAt", toInstant(pr.getCreatedAt()));
+        result.put("events", events);
+        return result;
+    }
+
+    /**
+     * A PO created with no PR at all (e.g. the SAP Master PO upload path) — there's no workflow
+     * approval/RFQ/quotation history to show since none of that happened, so this starts the
+     * timeline straight at "PO Generated" via buildPoEvents. If the PO turns out to actually have
+     * a PR (a caller guessed wrong, or followed a stale link), delegates to the real PR-rooted
+     * lifecycle instead of returning a needlessly truncated view.
+     */
+    public Map<String, Object> getLifecycleForPo(String poNumber) {
+        PortalPurchaseOrder po = poRepo.findByPoNumber(poNumber)
+                .orElseThrow(() -> new NotFoundException("No PO found with number " + poNumber));
+
+        if (po.getPurchaseRequisition() != null) {
+            return getLifecycle(po.getPurchaseRequisition().getPrNumber());
+        }
+
+        List<Map<String, Object>> events = buildPoEvents(po);
+        events.sort(Comparator.comparing(
+                (Map<String, Object> e) -> (Instant) e.get("timestamp"),
+                Comparator.nullsLast(Comparator.naturalOrder())));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("rootType", "PO");
+        result.put("poNumber", po.getPoNumber());
+        result.put("prStatus", po.getStatus());
+        result.put("requestedBy", po.getCreatedBy());
+        result.put("createdAt", toInstant(po.getCreatedDate()));
         result.put("events", events);
         return result;
     }
@@ -89,11 +120,20 @@ public class PrLifecycleService {
     public Map<String, Object> getFeed(int page, int size) {
         int cappedSize = Math.min(Math.max(size, 1), 200);
         List<PurchaseRequisition> recentPrs = prRepo.findTop100ByOrderByCreatedAtDesc();
+        List<PortalPurchaseOrder> recentStandalonePos = poRepo.findTop100ByPurchaseRequisitionIsNullOrderByCreatedDateDesc();
 
         List<Map<String, Object>> allEvents = new ArrayList<>();
         for (PurchaseRequisition pr : recentPrs) {
             for (Map<String, Object> e : buildEvents(pr)) {
                 e.put("prNumber", pr.getPrNumber());
+                allEvents.add(e);
+            }
+        }
+        // POs with no PR at all (e.g. SAP Master PO upload) — otherwise invisible to this feed,
+        // since it's built purely by iterating PR rows above.
+        for (PortalPurchaseOrder po : recentStandalonePos) {
+            for (Map<String, Object> e : buildPoEvents(po)) {
+                e.put("poNumber", po.getPoNumber());
                 allEvents.add(e);
             }
         }
@@ -171,39 +211,50 @@ public class PrLifecycleService {
         }
 
         for (PortalPurchaseOrder po : poRepo.findByPurchaseRequisition_Id(pr.getId())) {
-            String vendorName = po.getVendor() != null ? po.getVendor().getCompanyName() : null;
-            Map<String, Object> poDetails = poDetails(po);
-            events.add(event("PO_GENERATED", "PO Generated", vendorName,
-                    toInstant(po.getCreatedDate()), null, po.getStatus(), po.getPoNumber(), poDetails));
-            if (po.getAcknowledgedAt() != null) {
-                events.add(event("PO_ACK", "PO Acknowledged", vendorName,
-                        toInstant(po.getAcknowledgedAt()), null, po.getStatus(), po.getPoNumber(), poDetails));
-            }
-
-            for (Asn asn : asnRepo.findByPurchaseOrder_Id(po.getId())) {
-                events.add(event("ASN_SENT", "ASN Sent", vendorName,
-                        toInstant(asn.getCreatedDate()), null, asn.getStatus(), asn.getInvoiceNumber(),
-                        asnDetails(asn)));
-
-                for (GateEntry ge : gateEntryRepo.findByAsnId(asn.getId())) {
-                    events.add(event("GATE_ENTRY", "Gate Entry Created", vendorName,
-                            toInstant(ge.getCreatedDate()), ge.getProcessedBy(), ge.getDecision(), ge.getGatePassNumber(),
-                            gateEntryDetails(ge)));
-
-                    goodsReceiptRepo.findByGateEntryId(ge.getId()).ifPresent(gr -> {
-                        String detail = gr.getGrnNumber() != null ? gr.getGrnNumber() : gr.getRtvNumber();
-                        events.add(event("MATERIAL_INWARD", "Material Inward", vendorName,
-                                toInstant(gr.getCreatedDate()), gr.getProcessedBy(), gr.getDecision(), detail,
-                                goodsReceiptDetails(gr)));
-                    });
-                }
-            }
+            events.addAll(buildPoEvents(po));
         }
 
         events.sort(Comparator.comparing(
                 (Map<String, Object> e) -> (Instant) e.get("timestamp"),
                 Comparator.nullsLast(Comparator.naturalOrder())));
 
+        return events;
+    }
+
+    /**
+     * PO_GENERATED/PO_ACK/ASN_SENT/GATE_ENTRY/MATERIAL_INWARD for one PO — entirely PO-rooted
+     * (no PR involved anywhere in this chain), so it's reused both from buildEvents(pr) above and
+     * directly from getLifecycleForPo/getFeed for a PO that has no PR at all.
+     */
+    private List<Map<String, Object>> buildPoEvents(PortalPurchaseOrder po) {
+        List<Map<String, Object>> events = new ArrayList<>();
+        String vendorName = po.getVendor() != null ? po.getVendor().getCompanyName() : null;
+        Map<String, Object> poDetails = poDetails(po);
+        events.add(event("PO_GENERATED", "PO Generated", vendorName,
+                toInstant(po.getCreatedDate()), null, po.getStatus(), po.getPoNumber(), poDetails));
+        if (po.getAcknowledgedAt() != null) {
+            events.add(event("PO_ACK", "PO Acknowledged", vendorName,
+                    toInstant(po.getAcknowledgedAt()), null, po.getStatus(), po.getPoNumber(), poDetails));
+        }
+
+        for (Asn asn : asnRepo.findByPurchaseOrder_Id(po.getId())) {
+            events.add(event("ASN_SENT", "ASN Sent", vendorName,
+                    toInstant(asn.getCreatedDate()), null, asn.getStatus(), asn.getInvoiceNumber(),
+                    asnDetails(asn)));
+
+            for (GateEntry ge : gateEntryRepo.findByAsnId(asn.getId())) {
+                events.add(event("GATE_ENTRY", "Gate Entry Created", vendorName,
+                        toInstant(ge.getCreatedDate()), ge.getProcessedBy(), ge.getDecision(), ge.getGatePassNumber(),
+                        gateEntryDetails(ge)));
+
+                goodsReceiptRepo.findByGateEntryId(ge.getId()).ifPresent(gr -> {
+                    String detail = gr.getGrnNumber() != null ? gr.getGrnNumber() : gr.getRtvNumber();
+                    events.add(event("MATERIAL_INWARD", "Material Inward", vendorName,
+                            toInstant(gr.getCreatedDate()), gr.getProcessedBy(), gr.getDecision(), detail,
+                            goodsReceiptDetails(gr)));
+                });
+            }
+        }
         return events;
     }
 
@@ -427,6 +478,16 @@ public class PrLifecycleService {
         return prRepo.findTop20ByPrNumberContainingIgnoreCaseOrderByCreatedAtDesc(q.trim()).stream()
                 .limit(Math.min(Math.max(limit, 1), 20))
                 .map(PurchaseRequisition::getPrNumber)
+                .toList();
+    }
+
+    /** PO numbers matching a search string, restricted to POs with no PR (a PR-linked PO is
+     * already reachable by searching its PR number instead) — backs the tab's typeahead. */
+    public List<String> searchPoNumbers(String q, int limit) {
+        if (q == null || q.trim().isEmpty()) return List.of();
+        return poRepo.findTop20ByPoNumberContainingIgnoreCaseAndPurchaseRequisitionIsNullOrderByCreatedDateDesc(q.trim()).stream()
+                .limit(Math.min(Math.max(limit, 1), 20))
+                .map(PortalPurchaseOrder::getPoNumber)
                 .toList();
     }
 

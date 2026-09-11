@@ -42,4 +42,11 @@ public interface PortalPurchaseOrderRepository extends JpaRepository<PortalPurch
     );
 
     List<PortalPurchaseOrder> findByPurchaseRequisition_Id(Long prId);
+
+    // "Standalone" POs — created directly (e.g. the SAP Master PO upload path), with no
+    // originating PR at all — used by PrLifecycleService to surface these in the feed/search
+    // since they're otherwise invisible to the PR-rooted lifecycle aggregation.
+    List<PortalPurchaseOrder> findTop100ByPurchaseRequisitionIsNullOrderByCreatedDateDesc();
+
+    List<PortalPurchaseOrder> findTop20ByPoNumberContainingIgnoreCaseAndPurchaseRequisitionIsNullOrderByCreatedDateDesc(String poNumber);
 }

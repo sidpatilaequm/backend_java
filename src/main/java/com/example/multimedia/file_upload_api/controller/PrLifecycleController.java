@@ -29,12 +29,21 @@ public class PrLifecycleController {
     }
 
     @GetMapping
-    public ResponseEntity<?> getLifecycle(@RequestParam String prNumber) {
+    public ResponseEntity<?> getLifecycle(@RequestParam(required = false) String prNumber,
+                                           @RequestParam(required = false) String poNumber) {
         if (!adminAuthChecker.isAdmin()) {
             return ResponseEntity.status(403).body(Map.of("detail", "Admin access required for this account."));
         }
+        if ((prNumber == null || prNumber.isBlank()) && (poNumber == null || poNumber.isBlank())) {
+            return ResponseEntity.badRequest().body(Map.of("detail", "prNumber or poNumber is required."));
+        }
         try {
-            return ResponseEntity.ok(service.getLifecycle(prNumber));
+            // A PO created with no PR (e.g. a SAP Master PO) has no PR number to look up by, so
+            // this also accepts poNumber directly — see PrLifecycleService.getLifecycleForPo.
+            Map<String, Object> result = (prNumber != null && !prNumber.isBlank())
+                    ? service.getLifecycle(prNumber)
+                    : service.getLifecycleForPo(poNumber);
+            return ResponseEntity.ok(result);
         } catch (PrLifecycleService.NotFoundException e) {
             return ResponseEntity.status(404).body(Map.of("detail", e.getMessage()));
         }
@@ -45,7 +54,11 @@ public class PrLifecycleController {
         if (!adminAuthChecker.isAdmin()) {
             return ResponseEntity.status(403).body(Map.of("detail", "Admin access required for this account."));
         }
-        return ResponseEntity.ok(Map.of("prNumbers", service.searchPrNumbers(q, 20)));
+        return ResponseEntity.ok(Map.of(
+                "prNumbers", service.searchPrNumbers(q, 20),
+                // POs with no PR at all -- a PR-linked PO is already reachable by searching its PR.
+                "poNumbers", service.searchPoNumbers(q, 20)
+        ));
     }
 
     /** Default (no PR picked yet) view: a flat, paginated feed across the most recently active PRs. */
