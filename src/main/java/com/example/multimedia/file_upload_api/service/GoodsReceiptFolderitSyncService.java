@@ -24,25 +24,34 @@ public class GoodsReceiptFolderitSyncService {
 
     private final FolderItService folderItService;
     private final GoodsReceiptExcelExportService excelExportService;
+    private final com.example.multimedia.file_upload_api.repository.GateEntryRepository gateEntryRepository;
 
     public GoodsReceiptFolderitSyncService(FolderItService folderItService,
-                                          GoodsReceiptExcelExportService excelExportService) {
+                                          GoodsReceiptExcelExportService excelExportService,
+                                          com.example.multimedia.file_upload_api.repository.GateEntryRepository gateEntryRepository) {
         this.folderItService = folderItService;
         this.excelExportService = excelExportService;
+        this.gateEntryRepository = gateEntryRepository;
     }
 
     /**
      * Asynchronously creates folder hierarchy and uploads Excel + document attachments into FolderIT.
      * Hierarchy: Goods receipt (wwmTu0yiRa) > MMM yyyy (e.g. Sept 2026) > {vendor_bpno} - {vendor_name}
      */
-    public void syncGoodsReceiptAsync(GateEntry gateEntry) {
+    public void syncGoodsReceiptAsync(GateEntry rawGateEntry) {
+        Long gateEntryId = rawGateEntry != null ? rawGateEntry.getId() : null;
+        if (gateEntryId == null) return;
+
         CompletableFuture.runAsync(() -> {
             try {
-                logger.info("Starting FolderIT sync for Gate Entry ID: {}, Pass: {}", gateEntry.getId(), gateEntry.getGatePassNumber());
+                logger.info("Starting FolderIT sync for Gate Entry ID: {}", gateEntryId);
                 
+                GateEntry gateEntry = gateEntryRepository.findWithDetailsById(gateEntryId)
+                        .orElse(rawGateEntry);
+
                 Asn asn = gateEntry.getAsn();
                 if (asn == null) {
-                    logger.warn("No ASN associated with Gate Entry ID {}, skipping FolderIT sync.", gateEntry.getId());
+                    logger.warn("No ASN associated with Gate Entry ID {}, skipping FolderIT sync.", gateEntryId);
                     return;
                 }
 
@@ -88,7 +97,7 @@ public class GoodsReceiptFolderitSyncService {
                 logger.info("FolderIT Goods Receipt sync completed successfully for Gate Entry Pass: {}", gatePassNo);
 
             } catch (Exception e) {
-                logger.error("Error during FolderIT Goods Receipt sync for Gate Entry ID: {}", gateEntry.getId(), e);
+                logger.error("Error during FolderIT Goods Receipt sync for Gate Entry ID: {}", gateEntryId, e);
             }
         });
     }
