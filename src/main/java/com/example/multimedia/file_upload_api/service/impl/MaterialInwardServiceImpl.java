@@ -188,7 +188,7 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
     }
 
     @Override
-    public GoodsReceipt submitVerification(Long gateEntryId, MaterialInwardSubmitDto dto) {
+    public GoodsReceiptResponseDto submitVerification(Long gateEntryId, MaterialInwardSubmitDto dto) {
         GateEntry ge = gateEntryRepository.findById(gateEntryId)
                 .orElseThrow(() -> new RuntimeException("GateEntry not found"));
                 
@@ -211,6 +211,18 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
         // Sync Excel summary and documents to FolderIT
         goodsReceiptFolderitSyncService.syncGoodsReceiptAsync(ge);
 
-        return savedGr;
+        GoodsReceiptResponseDto responseDto = new GoodsReceiptResponseDto();
+        responseDto.setId(savedGr.getId());
+        responseDto.setGateEntryId(ge.getId());
+        responseDto.setGatePassNumber(ge.getGatePassNumber());
+        responseDto.setAsnId(ge.getAsn() != null ? ge.getAsn().getId() : null);
+        responseDto.setDecision(savedGr.getDecision());
+        responseDto.setGrnNumber(savedGr.getGrnNumber());
+        responseDto.setRtvNumber(savedGr.getRtvNumber());
+        responseDto.setProcessedBy(savedGr.getProcessedBy());
+        responseDto.setRemarks(savedGr.getRemarks());
+        responseDto.setCreatedDate(savedGr.getCreatedDate());
+
+        return responseDto;
     }
 }

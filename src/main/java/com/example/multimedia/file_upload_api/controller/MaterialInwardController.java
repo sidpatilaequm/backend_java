@@ -30,7 +30,7 @@ public class MaterialInwardController {
     }
 
     @PostMapping("/{gateEntryId}/verify")
-    public ResponseEntity<GoodsReceipt> submitVerification(@PathVariable Long gateEntryId, @RequestBody MaterialInwardSubmitDto dto) {
+    public ResponseEntity<com.example.multimedia.file_upload_api.dto.materialinward.GoodsReceiptResponseDto> submitVerification(@PathVariable Long gateEntryId, @RequestBody MaterialInwardSubmitDto dto) {
         return ResponseEntity.ok(materialInwardService.submitVerification(gateEntryId, dto));
     }
 }
