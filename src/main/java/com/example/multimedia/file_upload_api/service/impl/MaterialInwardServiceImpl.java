@@ -206,7 +206,7 @@ public class MaterialInwardServiceImpl implements MaterialInwardService {
             gr.setRtvNumber("RTV-" + ge.getGatePassNumber().replace("GE-", ""));
         }
         
-        GoodsReceipt savedGr = goodsReceiptRepository.save(gr);
+        GoodsReceipt savedGr = goodsReceiptRepository.saveAndFlush(gr);
 
         // Sync Excel summary and documents to FolderIT
         goodsReceiptFolderitSyncService.syncGoodsReceiptAsync(ge);

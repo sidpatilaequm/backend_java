@@ -288,8 +288,10 @@ public class GateEntryServiceImpl implements GateEntryService {
 
         asnRepository.save(asn);
 
+        GateEntry savedEntry = gateEntryRepository.saveAndFlush(entry);
+
         if ("ALLOW".equalsIgnoreCase(processDto.getDecision())) {
-            goodsReceiptFolderitSyncService.syncGoodsReceiptAsync(entry);
+            goodsReceiptFolderitSyncService.syncGoodsReceiptAsync(savedEntry);
         }
 
         Map<String, String> data = new HashMap<>();
