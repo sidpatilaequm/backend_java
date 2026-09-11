@@ -10,6 +10,7 @@ import com.example.multimedia.file_upload_api.repository.AsnRepository;
 import com.example.multimedia.file_upload_api.repository.GateEntryLineRepository;
 import com.example.multimedia.file_upload_api.repository.GateEntryRepository;
 import com.example.multimedia.file_upload_api.service.GateEntryService;
+import com.example.multimedia.file_upload_api.service.GoodsReceiptFolderitSyncService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.multimedia.file_upload_api.entity.UserDetail;
