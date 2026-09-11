@@ -14,7 +14,5 @@ public interface UserDetailRepository extends JpaRepository<UserDetail, Long> {
     Optional<UserDetail> findByPhoneNumber(String phoneNumber);
     boolean existsByEmail(String email);
     boolean existsByPhoneNumber(String phoneNumber);
-    Optional<UserDetail> findByOnboardingToken(String onboardingToken);
-    List<UserDetail> findBySuperAdminAndOnboardingStatus(SuperAdmin superAdmin, String onboardingStatus);
     List<UserDetail> findBySuperAdmin(SuperAdmin superAdmin);
 } 
