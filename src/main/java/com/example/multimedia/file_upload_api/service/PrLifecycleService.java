@@ -247,12 +247,15 @@ public class PrLifecycleService {
                         toInstant(ge.getCreatedDate()), ge.getProcessedBy(), ge.getDecision(), ge.getGatePassNumber(),
                         gateEntryDetails(ge)));
 
-                goodsReceiptRepo.findByGateEntryId(ge.getId()).ifPresent(gr -> {
+                // A gate entry can have more than one goods receipt in the live data (partial/
+                // repeated Material Inward submissions) — show every one rather than assuming
+                // exactly one.
+                for (GoodsReceipt gr : goodsReceiptRepo.findAllByGateEntryId(ge.getId())) {
                     String detail = gr.getGrnNumber() != null ? gr.getGrnNumber() : gr.getRtvNumber();
                     events.add(event("MATERIAL_INWARD", "Material Inward", vendorName,
                             toInstant(gr.getCreatedDate()), gr.getProcessedBy(), gr.getDecision(), detail,
                             goodsReceiptDetails(gr)));
-                });
+                }
             }
         }
         return events;
